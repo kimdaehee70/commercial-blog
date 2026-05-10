@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>commercial-blog 프로젝트 트리</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #21262d;
+    --text: #e6edf3;
+    --muted: #7d8590;
+    --blue: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --orange: #f0883e;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --teal: #39d353;
+    --folder: #79c0ff;
+    --new-bg: rgba(240,136,62,0.12);
+    --new-border: rgba(240,136,62,0.4);
+    --reuse-bg: rgba(63,185,80,0.08);
+    --reuse-border: rgba(63,185,80,0.3);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    min-height: 100vh;
+    padding: 40px 24px;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  /* 헤더 */
+  .header {
+    margin-bottom: 36px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 24px;
+  }
+  .header-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(88,166,255,0.1);
+    border: 1px solid rgba(88,166,255,0.3);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 12px;
+    color: var(--blue);
+    font-weight: 700;
+    margin-bottom: 14px;
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .header p {
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  /* 범례 */
+  .legend {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 28px;
+    padding: 14px 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* 메인 트리 */
+  .tree {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .tree-header {
+    background: #1c2128;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .tree-header .dot-row { display: flex; gap: 6px; }
+  .tree-header .dot-row span {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  .tree-body { padding: 20px; }
+
+  /* 트리 아이템 */
+  .tree-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1;
+    margin-bottom: 3px;
+    border-radius: 6px;
+    padding: 5px 8px;
+    cursor: default;
+    transition: background 0.15s;
+  }
+  .tree-item:hover { background: rgba(255,255,255,0.04); }
+
+  .tree-prefix {
+    color: #3d444d;
+    white-space: pre;
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  .tree-icon { margin-right: 7px; font-size: 14px; flex-shrink: 0; }
+
+  .tree-name {
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .tree-desc {
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: 12px;
+    padding-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 색상 분류 */
+  .is-folder .tree-name { color: var(--folder); }
+  .is-new .tree-name { color: var(--orange); }
+  .is-new { background: var(--new-bg) !important; border-left: 2px solid var(--orange); }
+  .is-reuse .tree-name { color: var(--green); }
+  .is-copy .tree-name { color: var(--blue); }
+  .is-config .tree-name { color: var(--purple); }
+  .is-data .tree-name { color: var(--teal); }
+
+  /* 섹션 구분 */
+  .section-gap {
+    height: 8px;
+    border-top: 1px solid var(--border);
+    margin: 8px 0;
+  }
+
+  /* 설명 패널 */
+  .explain-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 28px;
+  }
+
+  @media (max-width: 700px) {
+    .explain-grid { grid-template-columns: 1fr; }
+  }
+
+  .explain-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  .explain-card h3 {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .explain-card ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .explain-card li {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.5;
+  }
+  .explain-card li .tag {
+    flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 4px;
+    margin-top: 1px;
+  }
+  .tag-new   { background: var(--new-bg); color: var(--orange); border: 1px solid var(--new-border); }
+  .tag-reuse { background: var(--reuse-bg); color: var(--green); border: 1px solid var(--reuse-border); }
+  .tag-copy  { background: rgba(88,166,255,0.1); color: var(--blue); border: 1px solid rgba(88,166,255,0.3); }
+
+  /* 총정리 바 */
+  .summary-bar {
+    margin-top: 28px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .summary-stat { text-align: center; }
+  .summary-stat .num {
+    font-size: 28px;
+    font-weight: 900;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .summary-stat .label {
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 헤더 -->
+  <div class="header">
+    <div class="header-badge">📋 commercial-blog / 폴더 트리</div>
+    <h1>상용화 프로젝트 전체 구조</h1>
+    <p>반장(banjang-blog)과 완전 독립 · D:\commercial-blog\commercial-blog\ 에 신규 생성</p>
+  </div>
+
+  <!-- 범례 -->
+  <div class="legend">
+    <div class="legend-item"><div class="dot" style="background:#f0883e"></div> 🔴 신규 작성 — 업종 전용 핵심 파일</div>
+    <div class="legend-item"><div class="dot" style="background:#3fb950"></div> 🟢 재사용 — 구조·로직 그대로 사용</div>
+    <div class="legend-item"><div class="dot" style="background:#58a6ff"></div> 🔵 복사+수정 — 경로/키워드만 교체</div>
+    <div class="legend-item"><div class="dot" style="background:#bc8cff"></div> 🟣 설정 파일</div>
+    <div class="legend-item"><div class="dot" style="background:#39d353"></div> 🟩 데이터/DB</div>
+  </div>
+
+  <!-- 트리 -->
+  <div class="tree">
+    <div class="tree-header">
+      <div class="dot-row">
+        <span style="background:#ff5f56"></span>
+        <span style="background:#ffbd2e"></span>
+        <span style="background:#27c93f"></span>
+      </div>
+      &nbsp;&nbsp;commercial-blog/
+    </div>
+    <div class="tree-body">
+
+      <!-- 루트 -->
+      <div class="tree-item is-folder">
+        <span class="tree-prefix"></span>
+        <span class="tree-icon">🗂️</span>
+        <span class="tree-name">commercial-blog/</span>
+        <span class="tree-desc">← 프로젝트 루트</span>
+      </div>
+
+      <!-- ── pages ── -->
+      <div class="section-gap"></div>
+      <div class="tree-item is-folder">
+        <span class="tree-prefix">├── </span>
+        <span class="tree-icon">📁</span>
+        <span class="tree-name">pages/</span>
+        <span class="tree-desc">Next.js 라우팅 · 화면 페이지</span>
+      </div>
+
+      <div class="tree-item is-new">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">⭐</span>
+        <span class="tree-name">index.js</span>
+        <span class="tree-desc">메인 앱 — 대화형 UI 허브 (신규)</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">keyword.js</span>
+        <span class="tree-desc">키워드 분석 페이지 (재사용)</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│   └── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">_app.js</span>
+        <span class="tree-desc">전역 스타일 (재사용)</span>
+      </div>
+
+      <!-- ── pages/api ── -->
+      <div class="tree-item is-folder">
+        <span class="tree-prefix">│   └── 📁 </span>
+        <span class="tree-icon"></span>
+        <span class="tree-name">api/</span>
+        <span class="tree-desc">서버 API 라우트</span>
+      </div>
+
+      <div class="tree-item is-new">
+        <span class="tree-prefix">│       ├── </span>
+        <span class="tree-icon">⭐</span>
+        <span class="tree-name">generate.js</span>
+        <span class="tree-desc">핵심 생성 엔진 — 업종별 분기 (신규)</span>
+      </div>
+      <div class="tree-item is-copy">
+        <span class="tree-prefix">│       ├── </span>
+        <span class="tree-icon">🔵</span>
+        <span class="tree-name">diagnose.js</span>
+        <span class="tree-desc">SEO 진단 — PROGRAM_KEYWORDS만 교체</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│       ├── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">analyze.js</span>
+        <span class="tree-desc">사진 분석 GPT-4o (수정 없음)</span>
+      </div>
+      <div class="tree-item is-copy">
+        <span class="tree-prefix">│       ├── </span>
+        <span class="tree-icon">🔵</span>
+        <span class="tree-name">supplement.js</span>
+        <span class="tree-desc">재가공 API — clinic 프롬프트로 교체</span>
+      </div>
+      <div class="tree-item is-copy">
+        <span class="tree-prefix">│       ├── </span>
+        <span class="tree-icon">🔵</span>
+        <span class="tree-name">extractCompetitor.js</span>
+        <span class="tree-desc">경쟁글 패턴 추출 — 키워드 배열만 교체</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│       ├── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">naver-keyword.js</span>
+        <span class="tree-desc">네이버 검색 API (수정 없음)</span>
+      </div>
+      <div class="tree-item is-copy">
+        <span class="tree-prefix">│       ├── </span>
+        <span class="tree-icon">🔵</span>
+        <span class="tree-name">getPosts.js</span>
+        <span class="tree-desc">저장 글 읽기 — 폴더 경로만 교체</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│       ├── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">getPatterns.js</span>
+        <span class="tree-desc">패턴DB 읽기 (수정 없음)</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│       └── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">image.js</span>
+        <span class="tree-desc">DALL-E 이미지 생성 (수정 없음)</span>
+      </div>
+
+      <!-- ── components ── -->
+      <div class="section-gap"></div>
+      <div class="tree-item is-folder">
+        <span class="tree-prefix">├── </span>
+        <span class="tree-icon">📁</span>
+        <span class="tree-name">components/</span>
+        <span class="tree-desc">React UI 컴포넌트</span>
+      </div>
+
+      <div class="tree-item is-new">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">⭐</span>
+        <span class="tree-name">ChatPanel.jsx</span>
+        <span class="tree-desc">좌측 대화 패널 (신규)</span>
+      </div>
+      <div class="tree-item is-new">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">⭐</span>
+        <span class="tree-name">ResultPanel.jsx</span>
+        <span class="tree-desc">우측 결과 패널 (신규)</span>
+      </div>
+      <div class="tree-item is-copy">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">🔵</span>
+        <span class="tree-name">DiagnosePage.jsx</span>
+        <span class="tree-desc">SEO 진단 UI — 색상·키워드만 교체</span>
+      </div>
+      <div class="tree-item is-copy">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">🔵</span>
+        <span class="tree-name">KeywordPage.jsx</span>
+        <span class="tree-desc">키워드 분석 UI — 업종 패턴으로 교체</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│   └── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">WatermarkTab.jsx</span>
+        <span class="tree-desc">워터마크 편집기 (수정 없음)</span>
+      </div>
+
+      <!-- ── lib ── -->
+      <div class="section-gap"></div>
+      <div class="tree-item is-folder">
+        <span class="tree-prefix">├── </span>
+        <span class="tree-icon">📁</span>
+        <span class="tree-name">lib/</span>
+        <span class="tree-desc">공통 유틸 · 데이터 라이브러리</span>
+      </div>
+
+      <div class="tree-item is-new">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">⭐</span>
+        <span class="tree-name">clinic-data.js</span>
+        <span class="tree-desc">성형/피부 마스터 데이터 (신규)</span>
+      </div>
+      <div class="tree-item is-new">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">⭐</span>
+        <span class="tree-name">clinic-prompts.js</span>
+        <span class="tree-desc">전환형 블로그 프롬프트 엔진 ✅ 완성</span>
+      </div>
+      <div class="tree-item is-new">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">⭐</span>
+        <span class="tree-name">clinic-playConfig.js</span>
+        <span class="tree-desc">상담→선택→결과 FLOW ENGINE (신규)</span>
+      </div>
+      <div class="tree-item is-copy">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">🔵</span>
+        <span class="tree-name">patternDB.js</span>
+        <span class="tree-desc">패턴DB 읽기/쓰기 — 경로만 교체</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">extractPattern.js</span>
+        <span class="tree-desc">90점↑ 패턴 자동 추출 (수정 없음)</span>
+      </div>
+      <div class="tree-item is-copy">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">🔵</span>
+        <span class="tree-name">savePost.js</span>
+        <span class="tree-desc">글 저장 — 폴더 경로만 교체</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">imageScore.js</span>
+        <span class="tree-desc">이미지 점수 계산 (수정 없음)</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">scoreToPercent.js</span>
+        <span class="tree-desc">SEO 점수→노출확률 (수정 없음)</span>
+      </div>
+      <div class="tree-item is-reuse">
+        <span class="tree-prefix">│   └── </span>
+        <span class="tree-icon">♻️</span>
+        <span class="tree-name">watermark.js</span>
+        <span class="tree-desc">워터마크 6종 테마 (수정 없음)</span>
+      </div>
+
+      <!-- ── data ── -->
+      <div class="section-gap"></div>
+      <div class="tree-item is-folder">
+        <span class="tree-prefix">├── </span>
+        <span class="tree-icon">📁</span>
+        <span class="tree-name">data/</span>
+        <span class="tree-desc">업종별 학습 데이터 저장소</span>
+      </div>
+
+      <div class="tree-item is-data">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">🗃️</span>
+        <span class="tree-name">patterns_clinic.json</span>
+        <span class="tree-desc">성형/피부 패턴DB — 초기 빈 파일 생성</span>
+      </div>
+      <div class="tree-item is-data">
+        <span class="tree-prefix">│   ├── </span>
+        <span class="tree-icon">📂</span>
+        <span class="tree-name">best_posts_clinic/</span>
+        <span class="tree-desc">90점↑ 우수 글 저장 폴더</span>
+      </div>
+      <div class="tree-item is-data">
+        <span class="tree-prefix">│   └── </span>
+        <span class="tree-icon">📂</span>
+        <span class="tree-name">generated_posts_clinic/</span>
+        <span class="tree-desc">전체 생성 글 저장 폴더 (프로그램별 10개)</span>
+      </div>
+
+      <!-- ── 설정 파일 ── -->
+      <div class="section-gap"></div>
+      <div class="tree-item is-config">
+        <span class="tree-prefix">├── </span>
+        <span class="tree-icon">🔑</span>
+        <span class="tree-name">.env.local</span>
+        <span class="tree-desc">API 키 (OPENAI / NAVER / ANTHROPIC)</span>
+      </div>
+      <div class="tree-item is-config">
+        <span class="tree-prefix">├── </span>
+        <span class="tree-icon">⚙️</span>
+        <span class="tree-name">next.config.js</span>
+        <span class="tree-desc">Next.js 설정</span>
+      </div>
+      <div class="tree-item is-config">
+        <span class="tree-prefix">└── </span>
+        <span class="tree-icon">📦</span>
+        <span class="tree-name">package.json</span>
+        <span class="tree-desc">의존성 (next, react, openai)</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 설명 카드 그리드 -->
+  <div class="explain-grid">
+
+    <div class="explain-card">
+      <h3 style="color:#f0883e">⭐ 신규 작성 파일 (7개)</h3>
+      <ul>
+        <li>
+          <span class="tag tag-new">NEW</span>
+          <span><strong style="color:#e6edf3">index.js</strong> — 대화형 UI 메인. ChatPanel(좌)과 ResultPanel(우)을 연결하는 허브</span>
+        </li>
+        <li>
+          <span class="tag tag-new">NEW</span>
+          <span><strong style="color:#e6edf3">generate.js</strong> — 생성 엔진. clinic-data + clinic-prompts 조합해서 전환형 글 생성</span>
+        </li>
+        <li>
+          <span class="tag tag-new">NEW</span>
+          <span><strong style="color:#e6edf3">ChatPanel.jsx</strong> — 좌측 대화창. 버튼 선택 + 텍스트 입력 혼합 흐름</span>
+        </li>
+        <li>
+          <span class="tag tag-new">NEW</span>
+          <span><strong style="color:#e6edf3">ResultPanel.jsx</strong> — 우측 결과창. 글 미리보기 + SEO 점수 + 복사</span>
+        </li>
+        <li>
+          <span class="tag tag-new">NEW</span>
+          <span><strong style="color:#e6edf3">clinic-data.js</strong> — 시술별 SEO 데이터. 제목패턴·장면·키워드·흐름 전부 포함</span>
+        </li>
+        <li>
+          <span class="tag tag-new">NEW</span>
+          <span><strong style="color:#e6edf3">clinic-prompts.js</strong> — 전환형 프롬프트 엔진. ✅ 이미 완성됨</span>
+        </li>
+        <li>
+          <span class="tag tag-new">NEW</span>
+          <span><strong style="color:#e6edf3">clinic-playConfig.js</strong> — 상담→시술→결과 FLOW ENGINE. 섹션별 행동 분해</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="explain-card">
+      <h3 style="color:#58a6ff">🔵 복사 후 수정 파일 (6개)</h3>
+      <ul>
+        <li>
+          <span class="tag tag-copy">COPY</span>
+          <span><strong style="color:#e6edf3">diagnose.js</strong> — PROGRAM_KEYWORDS 배열을 clinic 키워드로 교체</span>
+        </li>
+        <li>
+          <span class="tag tag-copy">COPY</span>
+          <span><strong style="color:#e6edf3">supplement.js</strong> — buildClinicSupplementPrompt() 함수로 교체</span>
+        </li>
+        <li>
+          <span class="tag tag-copy">COPY</span>
+          <span><strong style="color:#e6edf3">extractCompetitor.js</strong> — PROGRAM_KEYWORDS 배열 교체</span>
+        </li>
+        <li>
+          <span class="tag tag-copy">COPY</span>
+          <span><strong style="color:#e6edf3">getPosts.js</strong> — data 폴더 경로를 clinic 폴더로 교체</span>
+        </li>
+        <li>
+          <span class="tag tag-copy">COPY</span>
+          <span><strong style="color:#e6edf3">patternDB.js</strong> — DB_PATH를 patterns_clinic.json 으로 교체</span>
+        </li>
+        <li>
+          <span class="tag tag-copy">COPY</span>
+          <span><strong style="color:#e6edf3">savePost.js</strong> — DATA_DIR를 clinic 폴더로 교체</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="explain-card">
+      <h3 style="color:#3fb950">♻️ 완전 재사용 파일 (8개)</h3>
+      <ul>
+        <li><span class="tag tag-reuse">REUSE</span><span>analyze.js — 사진 분석, 수정 없음</span></li>
+        <li><span class="tag tag-reuse">REUSE</span><span>naver-keyword.js — 네이버 API, 수정 없음</span></li>
+        <li><span class="tag tag-reuse">REUSE</span><span>getPatterns.js — 수정 없음</span></li>
+        <li><span class="tag tag-reuse">REUSE</span><span>image.js — DALL-E, 수정 없음</span></li>
+        <li><span class="tag tag-reuse">REUSE</span><span>extractPattern.js — 패턴 추출, 수정 없음</span></li>
+        <li><span class="tag tag-reuse">REUSE</span><span>imageScore.js — 수정 없음</span></li>
+        <li><span class="tag tag-reuse">REUSE</span><span>scoreToPercent.js — 수정 없음</span></li>
+        <li><span class="tag tag-reuse">REUSE</span><span>watermark.js + WatermarkTab.jsx — 수정 없음</span></li>
+      </ul>
+    </div>
+
+    <div class="explain-card">
+      <h3 style="color:#39d353">🗃️ 데이터 파일 초기 설정</h3>
+      <ul>
+        <li>
+          <span class="tag" style="background:rgba(57,211,83,0.1);color:#39d353;border:1px solid rgba(57,211,83,0.3)">DATA</span>
+          <span><strong style="color:#e6edf3">patterns_clinic.json</strong> — 빈 JSON으로 생성. 글 생성할수록 자동 축적됨</span>
+        </li>
+        <li>
+          <span class="tag" style="background:rgba(57,211,83,0.1);color:#39d353;border:1px solid rgba(57,211,83,0.3)">DATA</span>
+          <span><strong style="color:#e6edf3">best_posts_clinic/</strong> — 빈 폴더 생성. 90점↑ 글 자동 저장됨</span>
+        </li>
+        <li>
+          <span class="tag" style="background:rgba(57,211,83,0.1);color:#39d353;border:1px solid rgba(57,211,83,0.3)">DATA</span>
+          <span><strong style="color:#e6edf3">generated_posts_clinic/</strong> — 빈 폴더 생성. 전체 생성 글 저장됨</span>
+        </li>
+        <li>
+          <span class="tag" style="background:rgba(188,140,255,0.1);color:#bc8cff;border:1px solid rgba(188,140,255,0.3)">ENV</span>
+          <span><strong style="color:#e6edf3">.env.local</strong> — OPENAI_API_KEY, NAVER_CLIENT_ID/SECRET 설정 필수</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+  <!-- 총정리 -->
+  <div class="summary-bar">
+    <div style="flex:1; min-width:200px">
+      <div style="font-size:13px; font-weight:700; color:#e6edf3; margin-bottom:4px">📊 작업 규모 요약</div>
+      <div style="font-size:12px; color:#7d8590">총 21개 파일 · 3개 데이터 폴더</div>
+    </div>
+    <div class="summary-stat">
+      <div class="num" style="color:#f0883e">7</div>
+      <div class="label">신규 작성</div>
+    </div>
+    <div class="summary-stat">
+      <div class="num" style="color:#58a6ff">6</div>
+      <div class="label">복사+수정</div>
+    </div>
+    <div class="summary-stat">
+      <div class="num" style="color:#3fb950">8</div>
+      <div class="label">완전 재사용</div>
+    </div>
+    <div class="summary-stat">
+      <div class="num" style="color:#39d353">3</div>
+      <div class="label">데이터 파일</div>
+    </div>
+    <div class="summary-stat">
+      <div class="num" style="color:#bc8cff">1</div>
+      <div class="label">이미 완성 ✅</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
