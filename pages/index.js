@@ -470,6 +470,7 @@ function parseNaturalInput(text) {
     else if (text.includes("지르코니아") || text.includes("크라운"))                             { treatmentId = "zirconia";       treatmentName = "지르코니아크라운"; }
     else if (text.includes("미백"))                                                              { treatmentId = "whitening";      treatmentName = "치아미백"; }
     else if (text.includes("턱관절"))                                                            { treatmentId = "tmj";            treatmentName = "턱관절치료"; }
+    else if (text.includes("틀니"))                                                              { treatmentId = "denture";        treatmentName = "틀니"; }
     // ent 치료 인식
     else if (text.includes("코골이") || text.includes("수면무호흡"))                             { treatmentId = "snoring";         treatmentName = "코골이수면치료"; }
     else if (text.includes("비중격") || (text.includes("코막힘") && text.includes("수술")))      { treatmentId = "septum";          treatmentName = "비중격만곡증수술"; }
