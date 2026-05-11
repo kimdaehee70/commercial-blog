@@ -1977,6 +1977,28 @@ function TreatmentSelectBoard({ treatments, cats, onSelect }) {
               </div>
             </button>
           ))}
+
+          {/* ★ 메뉴 추가요청 카드 — 채팅창 안내 + 번호 */}
+          <div
+            style={{ textAlign: "left", background: "#FFF3D0", borderRadius: 8,
+              border: "2px dashed #FF8F00",
+              padding: isMany ? "9px 10px" : "12px 13px",
+              fontFamily: "inherit",
+              boxShadow: "0 2px 10px rgba(255,143,0,.15)" }}>
+            <div style={{ fontSize: isMany ? 16 : 20, marginBottom: 3 }}>💬</div>
+            <div style={{ fontSize: isMany ? 13 : 14, fontWeight: 900, color: "#4E2A00",
+              marginBottom: 5, lineHeight: 1.3 }}>
+              원하는 메뉴가 없나요?
+            </div>
+            <div style={{ fontSize: isMany ? 12 : 13, color: "#4E2A00", fontWeight: 700,
+              lineHeight: 1.45, marginBottom: 6 }}>
+              필요한 시술은 채팅창에 적어주세요 🙂
+            </div>
+            <div style={{ fontSize: isMany ? 13 : 14, color: "#C62828", fontWeight: 900,
+              letterSpacing: 0.3 }}>
+              📞 010-9020-4545
+            </div>
+          </div>
         </div>
       </div>
     </div>
