@@ -404,11 +404,11 @@ import { SUPPORT_KINDS, SUPPORT_CONTACT_NOTE, kindLabel as supKindLabel, kindCol
 // [v7] 오버레이 폐기 — 기존 AI 대화창이 랜딩+체험+네비 담당. import 비활성.
 // import ExperienceOverlay from "../components/ExperienceOverlay";
 // [v32] 정책문서 외부 분리 — 본문은 /pages/policies/*.js 에 보관, index.js는 호출만.
-import POLICY_TERMS   from "./policies/terms";
-import POLICY_PRIVACY from "./policies/privacy";
-import POLICY_REFUND  from "./policies/refund";
-import POLICY_AINOTICE from "./policies/aiNotice";
-import POLICY_SUPPORT from "./policies/support";
+import POLICY_TERMS   from "../lib/policies/terms";
+import POLICY_PRIVACY from "../lib/policies/privacy";
+import POLICY_REFUND  from "../lib/policies/refund";
+import POLICY_AINOTICE from "../lib/policies/aiNotice";
+import POLICY_SUPPORT from "../lib/policies/support";
 
 // 업종별 카테고리 탭 (컴포넌트보다 먼저 선언)
 // [v2 승격 2026-07-13] "피부" 제거 — clinic-v2 화이트리스트(CLINIC_V2_ALLOWED 15종)에 피부 시술 없음.
