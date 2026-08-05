@@ -36,9 +36,9 @@
 // 55차 v0.2: Bearer 토큰 검증 + OWNER_UID 가드
 // 48차 v0.1: 운영 콘솔 v1 통합 보드 API (read-only)
 
-import { supabaseAdmin } from '../../../lib/supabaseAdmin';
-import { getPlan, quotaUsageRatio, DEFAULT_PLAN_ID } from '../../../lib/billing/plans';
-import { requireOwner } from '../../../lib/guards';
+import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import { getPlan, quotaUsageRatio, DEFAULT_PLAN_ID } from '../../lib/billing/plans';
+import { requireOwner } from '../../lib/guards';
 
 const RECENT_LIMIT = 10;
 
