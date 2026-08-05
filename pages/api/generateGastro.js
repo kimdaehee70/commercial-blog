@@ -1,6 +1,38 @@
 // ============================================================
-// generateGastro.js — 소화기내과 전용 블로그 생성기 v2.3
+// generateGastro.js — 소화기내과 전용 블로그 생성기 v3.0.3
 // ⚠️ clinic/dental/pediatrics 등 타 업종 데이터 절대 참조 금지
+//
+// v3.0.3 변경 (2026.05) — semi-migration to commonPhotoBox:
+//   ① stripMarkdownForNaver 헤더 변환만 공통 모듈(_stripMarkdownForNaver) 위임
+//   ② GASTRO_PHOTO_POOL / buildGastroPhotoPlaceholder 무변경 (3줄 인라인 형식 보존)
+//   ③ 박스 placeholder 변환은 gastro 전용 후처리로 분리 (visual identity 보존)
+//   ④ 박스 변환 → 헤더 변환 순서 유지 (gastro 특수성 / 다른 업종과 반대 순서)
+//   ⑤ fallback `|| [이미지: alt]` 유지 (gastro 전용)
+//   ⑥ ABSORB / whitelist / cleanGastro / PATCH A·B 무변경
+//   ⑦ dental v3.6.7 / ent v3.6.4 semi-migration 패턴 + gastro 특수성 보존
+//
+// v3.0.2 변경 (2026.05) — PATCH A 의미 보정 롤백 + B 화이트리스트 확장:
+//   - PATCH A: "검색해 보니," 강제 삽입 제거 → 단순 공백 1칸 분리
+//     사유: 의미 보완은 후처리가 아닌 재작성에 가까움 / 문맥 중복 위험
+//   - PATCH B: 화이트리스트 확장 — 소화기내과/점/곳/거/것/때문/덕분/시기/부분/단계
+//   ※ 이상 freeze — 추가 보정은 다음 세션에서 누적 데이터 5건+ 후 재검토
+//
+// v3.0.1 변경 (2026.05) — 잔존 fossil 미세패치:
+//   - PATCH A: 따옴표 직후 subKw 결합 fossil 제거
+//     ex) "강남 소화기내과"염증성... → "강남 소화기내과"로 검색해 보니, 염증성...
+//   - PATCH B: 명사 충돌형 fossil 제거
+//     ex) 염증성...(궤양성)이 병이 → 이 병이 (의미 보존, 반복 방지)
+//   ※ PATCH C (ALT→CRP 카테고리 분기) 보류 — contamination 위험
+//
+// v3.0 변경 (2026.05) — ortho v3.7.5 패턴 이식:
+//   - GASTRO_PHOTO_POOL 5종 (검사/상담/시술/치료/일상)
+//   - buildGastroPhotoPlaceholder — 박스 placeholder 생성
+//   - stripMarkdownForNaver 박스 변환 1줄 추가
+//   - calcGastroCharCount — 박스 제외 글자수
+//   - 동적 whitelist (GASTRO_TREATMENTS.map 참조)
+//   - ABSORB_RULES — 부위 기반 흡수 6규칙 + fallback
+//   - Phase A 후처리 (BB-1/6/7 + 치료명 중복 + GG-1)
+//   - assembled 후처리 (region + subKw 패치)
 //
 // v2.3 변경 (2026.05) — 미세 자연화:
 //   - 규칙 1 강화: "${subKw}이/가 + 명사" 패턴 자체 금지
@@ -33,6 +65,9 @@ import {
 // ★ v2.0 — 과별 침투 차단 + 안전 단어 제거 모듈
 import { getCrossBlocks } from "../../lib/industryBlocks";
 import { safeRemoveWords } from "../../lib/safeRemove";
+
+// ★ v3.0.3 — semi-migration: stripMarkdownForNaver 헤더 변환만 공통 모듈 위임
+import { stripMarkdownForNaver as _stripMarkdownForNaver } from "../../lib/commonPhotoBox";
 
 // ★ v2.0 — 과별 침투 차단 (lib/industryBlocks.js)
 //   다른 과 정체성 키워드 자동 차단 (한 곳 수정 = 16개 파일 동시 적용)
@@ -936,6 +971,48 @@ function cleanGastroText(text, treatmentName) {
     .replace(/\s+([.!?])/g, '$1')
     .replace(/\.{2,}/g, '.');
 
+  // ─────────────────────────────────────────────────────
+  // ★ v3.0 Phase A 후처리 (ortho v3.7.5 패턴 이식)
+  //   BB-1 키워드 절단 복원 / BB-6 토큰 절단 / BB-7 부유 '이'
+  //   치료형·검사형 중복 / GG-1 fossil 회피어
+  // ─────────────────────────────────────────────────────
+  if (treatmentName && treatmentName.length > 1) {
+    const tnE = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // BB-7: "치료명 + 이 + 치료/검사 + 조사" → "치료명 + 조사"
+    try {
+      result = result.replace(
+        new RegExp(`${tnE}\\s+이\\s+(치료|검사|진료|시술)(을|를|은|는|이|가|의|에|에서|로|으로)`, 'g'),
+        `${treatmentName}$2`
+      );
+    } catch(e) {}
+
+    // 치료형 중복: "치료명 치료 + 조사" → "치료명 + 조사" (치료명이 "치료"로 끝날 때만)
+    if (/치료$/.test(treatmentName)) {
+      try {
+        result = result.replace(
+          new RegExp(`${tnE}\\s+치료(을|를|은|는|이|가|의|에|로|으로)`, 'g'),
+          `${treatmentName}$1`
+        );
+      } catch(e) {}
+    }
+
+    // 검사형 중복: "치료명 검사 + 조사" 의미 충돌 차단 (치료명이 "검사"로 끝날 때만)
+    if (/검사$/.test(treatmentName)) {
+      try {
+        result = result.replace(
+          new RegExp(`${tnE}\\s+검사(을|를|은|는|이|가|의)`, 'g'),
+          `${treatmentName}$1`
+        );
+      } catch(e) {}
+    }
+  }
+
+  // GG-1: fossil 회피어 (해당/이번 + 치료/시술/방법 → 이 + 동일)
+  result = result
+    .replace(/해당\s+(치료|시술|방법|검사|진료)/g, '이 $1')
+    .replace(/이번\s+(치료|시술|방법|검사|진료)/g, '이 $1');
+
   return result.replace(/\n{3,}/g, '\n\n').trim();
 }
 
@@ -980,7 +1057,74 @@ const GASTRO_REC_MAP = {
 };
 
 // ============================================================
+// ★ v3.0 — GASTRO_PHOTO_POOL 5종 (ortho v3.7.5 패턴 이식)
+// 소화기내과 맥락: 검사·상담·시술·치료·일상
+// ============================================================
+const GASTRO_PHOTO_POOL = {
+  "검사 사진": [
+    { spot: "위내시경 검사 화면 — 결과 영상",         caption: "검사 결과 영상 같이 본 자리" },
+    { spot: "대장내시경 영상 판독실",                 caption: "용종 위치 확인하던 화면" },
+    { spot: "복부 초음파 결과 모니터",                caption: "간·담낭 상태 보이던 화면" },
+    { spot: "혈액검사 결과지",                        caption: "간수치·염증수치 확인하던 자리" },
+    { spot: "검사실 입장 전 대기 베드",               caption: "검사 직전 누워 있던 자리" },
+  ],
+  "상담 사진": [
+    { spot: "상담실 진료 데스크",                     caption: "증상 메모 펼쳐 놓고 설명 들은 자리" },
+    { spot: "치료 옵션 안내 차트",                    caption: "약물치료·내시경 비교 설명 받던 화면" },
+    { spot: "진료실 입구",                            caption: "처음 들어가던 순간" },
+    { spot: "원장님 설명용 모형",                     caption: "위·장 구조 짚어가며 설명해주신 자리" },
+    { spot: "검진 결과지 같이 본 책상",               caption: "수치 하나하나 같이 본 자리" },
+  ],
+  "시술 사진": [
+    { spot: "내시경실 입장 전 복도",                  caption: "검사 직전 마지막으로 걸은 길" },
+    { spot: "수면내시경 회복실",                      caption: "검사 마치고 깨어난 자리" },
+    { spot: "처치실 진료 의자",                       caption: "주사·시술 처치 받던 자리" },
+    { spot: "내시경 장비 옆 진료대",                  caption: "시술 직전 안내 받던 자리" },
+    { spot: "용종 절제 직후 회복실",                  caption: "처치 마치고 안정 취하던 자리" },
+  ],
+  "치료 사진": [
+    { spot: "처방약 받던 데스크",                     caption: "약 받던 날 — 복용법 안내" },
+    { spot: "식이요법 안내 자료",                     caption: "식단 관리 안내 받던 자리" },
+    { spot: "제균치료 약 패키지",                     caption: "1~2주 복용분 받던 순간" },
+    { spot: "검사 결과 설명 책상",                    caption: "치료 방향 같이 정리한 자리" },
+    { spot: "약 복용 일정표",                         caption: "아침·저녁 복용 일정 정리한 메모" },
+  ],
+  "일상 사진": [
+    { spot: "회복 후 가벼운 식사",                    caption: "회복 후 첫 식사 — 죽으로 시작" },
+    { spot: "동네 산책길 — 가볍게 걷던 길",           caption: "검사 다음 날 가볍게 걷던 길" },
+    { spot: "평소 식단으로 복귀한 식탁",              caption: "평범한 식사 다시 시작한 자리" },
+    { spot: "약 챙겨 먹던 아침 식탁",                 caption: "아침마다 약 먹던 자리" },
+    { spot: "물 자주 마시던 책상 위 컵",              caption: "회복 기간 물 자주 마시던 자리" },
+  ],
+};
+
+function buildGastroPhotoPlaceholder(altRaw) {
+  const alt = String(altRaw || "").trim();
+  const pool = GASTRO_PHOTO_POOL[alt];
+  if (!pool || pool.length === 0) return null;
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  return `[📷 추천 사진: ${alt}]\n   • 어디서: ${pick.spot}\n   • 캡션: ${pick.caption}`;
+}
+
+// 박스 제외 글자수 계산 (placeholder는 본문 글자수에서 제외)
+function calcGastroCharCount(text) {
+  if (!text) return 0;
+  const withoutBox = text.replace(/\[📷 추천 사진:[\s\S]*?(?=\n\n|\n[가-힣A-Z]|$)/g, "");
+  return calcCharCount(withoutBox);
+}
+
+// ============================================================
 // ★ v2 패치: stripMarkdownForNaver — 네이버 블로그 복사용 평문 변환
+// 목적: 사용자가 글 복사 후 #/##/### 마크다운 기호를 수동 제거하지 않도록
+// 네이버는 마크다운 렌더링 안 함 → 평문으로 변환 필요
+// 위치: 모든 후처리 끝난 뒤 마지막 단계 (응답 직전)
+// ★ v3.0 — [이미지: alt] → 박스 placeholder 변환 추가
+// ============================================================
+// ★ v3.0.3 patch: stripMarkdownForNaver — semi-migration
+// 헤더/마크다운 변환은 공통 모듈(_stripMarkdownForNaver) 위임 (photoPool=null → 박스 변환 skip)
+// 박스 placeholder 변환은 gastro 전용 후처리로 분리 (3줄 인라인 형식 보존)
+// ★ gastro 특수성: 박스 변환 → 헤더 변환 순서 유지 (다른 업종과 반대)
+// ★ fallback `|| [이미지: alt]` 유지 (gastro 전용)
 // 목적: 사용자가 글 복사 후 #/##/### 마크다운 기호를 수동 제거하지 않도록
 // 네이버는 마크다운 렌더링 안 함 → 평문으로 변환 필요
 // 위치: 모든 후처리 끝난 뒤 마지막 단계 (응답 직전)
@@ -988,20 +1132,14 @@ const GASTRO_REC_MAP = {
 function stripMarkdownForNaver(text) {
   let t = text;
 
-  // ① 줄 시작 헤더 변환 (제목·섹션·하위섹션)
-  t = t.replace(/^#\s+(.+)$/gm, "$1");                    // # 제목 → 평문
-  t = t.replace(/^##\s+(.+)$/gm, "\n$1\n");              // ## 섹션 → 빈줄+텍스트+빈줄
-  t = t.replace(/^###\s+(.+)$/gm, "▶ $1");                // ### 변화(1일/1주) → ▶ 마커
+  // ★ [OneClick] 이미지 마커 통일 — [이미지: alt] 표준 유지. 박스 변환 비활성.
+  //    QC의 boxCount=0 / plainNoBox==plain 은 정상(로그 전용, 차단 아님).
+  // (구) gastro 전용 인라인 변환 — 비활성. buildGastroPhotoPlaceholder는 롤백용 보존.
 
-  // ② 인라인에 끼어있는 헤더 (줄바꿈 없이 본문 중간에 박힌 경우)
-  t = t.replace(/\s+##\s+([가-힣A-Za-z0-9])/g, "\n\n$1"); // " ## 제목" → 줄바꿈
-  t = t.replace(/\s+###\s+([가-힣A-Za-z0-9])/g, "\n▶ $1"); // " ### 1일" → 줄바꿈+마커
+  // 헤더/마크다운 변환 공통 모듈 위임 (photoPool=null → 박스 변환 skip)
+  t = _stripMarkdownForNaver(t, null);
 
-  // ③ 굵게/이탤릭 마크다운 제거 (혹시 GPT가 출력했을 경우)
-  t = t.replace(/\*\*([^*]+)\*\*/g, "$1");                 // **굵게** → 평문
-  t = t.replace(/\*([^*]+)\*/g, "$1");                     // *이탤릭* → 평문
-
-  // ④ 연속 빈 줄 압축 (3줄 이상 → 2줄)
+  // 연속 빈 줄 압축 (3줄 이상 → 2줄)
   t = t.replace(/\n{3,}/g, "\n\n");
 
   return t;
@@ -1011,34 +1149,60 @@ function stripMarkdownForNaver(text) {
 // 메인 핸들러
 // ============================================================
 export default async function handleGastro(req, res) {
-  const { target, program, blogType, userRegion, userMemo, overrideTitle } = req.body;
+  const { target, blogType, userRegion, userMemo, overrideTitle, storeId } = req.body;
+  let program = req.body.program;
 
-  const subKw      = program.name || '';
+  let subKw       = program.name || '';
   const region     = (userRegion || '강남').trim();
   const blogTypeId = blogType?.id || 'review';
   const industry   = 'gastro'; // 절대 고정
 
-  // ── 소화기내과 진료 검증 ─────────────────────────────────
-  const GASTRO_IDS = [
-    'gastroscopy', 'colonoscopy', 'gerd', 'helicobacter', 'peptic_ulcer',
-    'ibs', 'ibd', 'fatty_liver', 'hepatitis', 'cirrhosis',
-    'gallstone', 'pancreatitis', 'dyspepsia', 'colon_polyp', 'abdominal_us',
-    // ★ v1.4 — gastro-data.js v1.1 신규 7개 진료
-    'sedation_endoscopy', 'gastric_cancer', 'colorectal_cancer',
-    'hemorrhoid', 'chronic_constipation', 'intestinal_metaplasia', 'esophageal_varices',
+  // ── 소화기내과 진료 검증 (v3.0 동적 whitelist — GASTRO_TREATMENTS 참조) ─
+  const GASTRO_IDS   = GASTRO_TREATMENTS.map(t => t.id);
+  const GASTRO_NAMES = GASTRO_TREATMENTS.map(t => t.name);
+
+  // ★ v3.0 — 부위 흡수 규칙 (router에서 미등록 카드 들어와도 fallback 처리)
+  // 소화기내과 맥락: 위/장/간/담췌/항문 5계열
+  const ABSORB_RULES = [
+    { match: /위염|위산|역류|식도염|속쓰림/,           targetId: 'gerd',           targetName: '역류성 식도염' },
+    { match: /헬리코박터|제균|hp/i,                     targetId: 'helicobacter',   targetName: '헬리코박터 제균치료' },
+    { match: /궤양|십이지장/,                            targetId: 'peptic_ulcer',   targetName: '위궤양·십이지장궤양' },
+    { match: /과민성|ibs|장증후군/i,                    targetId: 'ibs',            targetName: '과민성대장증후군' },
+    { match: /크론|궤양성대장염|염증성장|ibd/i,         targetId: 'ibd',            targetName: '염증성 장질환(크론병·궤양성 대장염)' },
+    { match: /지방간|간수치|간기능/,                    targetId: 'fatty_liver',    targetName: '지방간' },
+    { match: /b형간염|c형간염|간염|바이러스간/i,        targetId: 'hepatitis',      targetName: '바이러스 간염(B형·C형)' },
+    { match: /담석|담낭|쓸개/,                           targetId: 'gallstone',      targetName: '담석·담낭염' },
+    { match: /췌장|아밀라아제|리파아제/,                targetId: 'pancreatitis',   targetName: '췌장염' },
+    { match: /소화불량|더부룩|기능성/,                  targetId: 'dyspepsia',      targetName: '기능성 소화불량' },
+    { match: /용종|폴립/,                                targetId: 'colon_polyp',    targetName: '대장 용종' },
+    { match: /치질|치핵|항문/,                           targetId: 'hemorrhoid',     targetName: '치질·치핵치료' },
+    { match: /변비/,                                     targetId: 'chronic_constipation', targetName: '만성변비치료' },
   ];
-  const GASTRO_NAMES = [
-    '위내시경', '대장내시경', '역류성 식도염', '헬리코박터 제균치료', '위궤양·십이지장궤양',
-    '과민성대장증후군', '염증성 장질환(크론병·궤양성 대장염)', '지방간', '바이러스 간염(B형·C형)',
-    '간경변', '담석·담낭염', '췌장염', '기능성 소화불량', '대장 용종', '복부 초음파',
-    // ★ v1.4 — gastro-data.js v1.1 신규 7개 진료
-    '수면내시경', '위암 검진', '대장암 검진',
-    '치질·치핵치료', '만성변비치료', '장상피화생', '위·식도 정맥류',
-  ];
-  const isGastroTreatment = GASTRO_IDS.includes(program.id) || GASTRO_NAMES.includes(subKw);
+
+  let isGastroTreatment = GASTRO_IDS.includes(program.id) || GASTRO_NAMES.includes(subKw);
+  let absorbedProgram = program;
+  let absorbedSubKw   = subKw;
+
   if (!isGastroTreatment) {
-    return res.status(400).json({ error: `소화기내과 생성기에 잘못된 진료가 전달되었습니다: ${subKw}` });
+    // 부위 흡수 시도
+    const probe = `${program.id || ''} ${subKw}`;
+    const rule = ABSORB_RULES.find(r => r.match.test(probe));
+    if (rule) {
+      console.log(`[gastro] 부위 흡수: "${subKw}" → "${rule.targetName}"`);
+      absorbedProgram = { ...program, id: rule.targetId, name: rule.targetName };
+      absorbedSubKw   = rule.targetName;
+      isGastroTreatment = true;
+    } else {
+      // fallback → 위내시경 (소화기내과 가장 일반)
+      console.log(`[gastro] 부위 흡수 실패 → fallback: "${subKw}" → "위내시경"`);
+      absorbedProgram = { ...program, id: 'gastroscopy', name: '위내시경' };
+      absorbedSubKw   = '위내시경';
+      isGastroTreatment = true;
+    }
   }
+  // 흡수 결과를 이후 로직에 반영
+  program = absorbedProgram;
+  subKw   = absorbedSubKw;
   console.log(`[gastro] 진료 검증 통과: ${subKw}`);
 
   const treatmentData = GASTRO_TREATMENTS.find(t => t.id === program.id || t.name === program.name) || GASTRO_TREATMENTS[0];
@@ -1056,7 +1220,7 @@ export default async function handleGastro(req, res) {
   const typeGuide = getTypeGuide(titleType, subKw);
   console.log(`[gastro] 제목: "${title}" | 타입: ${titleType}`);
 
-  // ── 시스템 프롬프트 (타입별 가이드 주입) ──────────────────
+  // ── 시스템 프롬프트 (타입별 가이드 주입) ──
   const systemPrompt = `당신은 ${region}에 사는 성인입니다. 소화기내과 방문 경험을 1인칭 블로그 후기로 작성합니다.
 업종: 소화기내과 | 진료: ${subKw} | 지역: ${region}
 [제목] ${title}${typeGuide}
@@ -1237,24 +1401,67 @@ ${richPrompt}`;
 
   // ─────────────────────────────────────────────
   // ★ [PATCH] alt 강제 정규화 — GPT가 본문에 만든 [이미지: ...] 도 5종으로 통일
-  //   풀: 검사 / 상담 / 시술 / 처방 / 일상
+  //   v3.0 풀: 검사 / 상담 / 시술 / 치료 / 일상 (PHOTO_POOL과 동기)
   // ─────────────────────────────────────────────
   assembled = assembled.replace(/\[이미지:\s*([^\]]+)\]/g, (_m, inner) => {
     const s = String(inner);
-    if (/^(검사|상담|시술|처방|일상)\s*사진$/.test(s.trim())) return `[이미지: ${s.trim()}]`;
+    if (/^(검사|상담|시술|치료|일상)\s*사진$/.test(s.trim())) return `[이미지: ${s.trim()}]`;
     if (/검사|내시경|위내시경|대장내시경|초음파|영상|진단|소견/i.test(s)) return "[이미지: 검사 사진]";
     if (/시술|용종|폴립|제거|레이저|절제|소작/.test(s))      return "[이미지: 시술 사진]";
-    if (/처방|약물|복용|투약|약제/.test(s))                  return "[이미지: 처방 사진]";
+    if (/처방|약물|복용|투약|약제|식이|식단/.test(s))        return "[이미지: 치료 사진]";
     if (/상담|진료|설명|차트|문진|원장|의사|병원/.test(s))   return "[이미지: 상담 사진]";
     if (/일상|회복|복귀|평소|생활|마무리/.test(s))           return "[이미지: 일상 사진]";
     return "[이미지: 상담 사진]";
   });
 
-  const _altAll = assembled.match(/\[이미지:[^\]]+\]/g) || [];
-  const _altOk  = _altAll.filter(a => /\[이미지:\s*(검사|상담|시술|처방|일상)\s*사진\]/.test(a));
-  console.log(`[QC] alt 총 ${_altAll.length}개 / 정상 ${_altOk.length}개 / 비정상 ${_altAll.length - _altOk.length}개`);
+  // ─────────────────────────────────────────────
+  // ★ v3.0 assembled 후처리 — region + subKw 패치 (ortho v3.7.5 패턴)
+  //   조립 후 region 정보 필요한 조사 교정만 처리
+  // ─────────────────────────────────────────────
+  {
+    const subEsc = subKw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // PATCH ① "region + 이 치료" 복원 → "region + subKw"
+    try {
+      assembled = assembled.replace(
+        new RegExp(`${region}\\s+이\\s+(치료|검사|진료)(?=[\\s가-힣])`, 'g'),
+        `${region} ${subKw}`
+      );
+    } catch(e) {}
+    // PATCH ② 부유 "이 치료" 잔존 정리 (문장 시작 위치만)
+    assembled = assembled.replace(/(^|[.!?]\s+)이\s+치료은/gm, '$1이 치료는');
 
-  const charCount = calcCharCount(assembled);
+    // ─────────────────────────────────────────────────
+    // ★ v3.0.2 PATCH A — 따옴표 직후 subKw 결합 fossil (단순 분리)
+    //   ex) "강남 소화기내과"대장내시경... → "강남 소화기내과" 대장내시경...
+    //   ⚠️ 의미 보완·조사 강제 생성 금지 — 단순 공백 1칸만 삽입
+    // ─────────────────────────────────────────────────
+    try {
+      assembled = assembled.replace(
+        new RegExp(`("[^"\\n]+")${subEsc}`, 'g'),
+        `$1 ${subKw}`
+      );
+    } catch(e) {}
+
+    // ─────────────────────────────────────────────────
+    // ★ v3.0.2 PATCH B — 명사 충돌형 fossil 제거 (화이트리스트 확장)
+    //   subKw + "이/가" + 후행명사 → "이 + 후행명사"
+    //   v3.0.2: 소화기내과/점/곳/거/것/때문/덕분/시기 추가
+    // ─────────────────────────────────────────────────
+    try {
+      assembled = assembled.replace(
+        new RegExp(`${subEsc}(이|가)\\s+(소화기내과|병원|병이|병을|병의|병은|병에|증상|상태|검사|약물|치료|진료|효과|결과|이야기|과정|점|곳|거|것|때문|덕분|시기|부분|단계)`, 'g'),
+        (_m, _josa, noun) => `이 ${noun}`
+      );
+    } catch(e) {}
+  }
+
+  const _altAll = assembled.match(/\[이미지:[^\]]+\]/g) || [];
+  const _altOk  = _altAll.filter(a => /\[이미지:\s*(검사|상담|시술|치료|일상)\s*사진\]/.test(a));
+  const _boxAll = assembled.match(/\[📷 추천 사진:[^\]]+\]/g) || [];
+  console.log(`[QC] alt 총 ${_altAll.length}개 / 정상 ${_altOk.length}개 / 비정상 ${_altAll.length - _altOk.length}개`);
+  console.log(`[QC] 박스 placeholder: ${_boxAll.length}개`);
+
+  const charCount = calcGastroCharCount(assembled);
   const seoScore  = diagnosePost(assembled, subKw);
 
   // ★ QC 검증 로그
@@ -1267,7 +1474,7 @@ ${richPrompt}`;
   if (!hasExamValue) console.warn(`[gastro] ⚠️ 검사 수치 미포함`);
   if (repeatCount > 5) console.warn(`[gastro] ⚠️ 키워드 ${repeatCount}회 반복`);
 
-  await autoSave({ assembled, charCount, subKw, region, seoScore, industry });
+  await autoSave({ assembled, charCount, subKw, region, seoScore, industry, storeId });
 
   const imageRegex = /\[이미지:\s*([^\]]+)\]/g;
   const images = [];

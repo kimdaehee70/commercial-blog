@@ -990,6 +990,7 @@ export default async function handleClinic(req, res) {
     target, program, blogType,
     userRegion, userMemo, overrideTitle,
     mode = "personal",   // ✅ 신규: personal | commercial (기본 personal)
+    storeId,
   } = req.body;
 
   const subKw      = program.name || "";
@@ -1238,7 +1239,7 @@ ${compareExtra}`.trim();
     if (qc.priceCount > 0)       console.warn(`[clinic] ⚠️ commercial 모드에서 가격 ${qc.priceCount}건 잔존`);
   }
 
-  await autoSave({ assembled, charCount, subKw, region, seoScore, industry });
+  await autoSave({ assembled, charCount, subKw, region, seoScore, industry, storeId });
 
   // ── 이미지 메타 ─────────────────────────────────
   const imageRegex = /\[이미지:\s*([^\]]+)\]/g;

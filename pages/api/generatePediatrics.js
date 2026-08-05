@@ -19,17 +19,24 @@
 // ⚠️ 보호자(부모) 1인칭 시점 유지 필수
 // ============================================================
 import { PEDIATRICS_TREATMENTS }               from "../../lib/pediatrics-data";
-import { buildPediatricsPrompt }               from "../../lib/pediatrics-prompts";
+import {
+  buildPediatricsPrompt,
+  PEDIATRICS_SYSTEM_PROMPT,   // ★ V2 정보형·비1인칭 시스템 프롬프트 (병원군 One Axis 축)
+} from "../../lib/pediatrics-prompts";
 import { PEDIATRICS_FLOW_ENGINE }              from "../../lib/pediatrics-playConfig";
 import {
   openai, calcCharCount, removeDuplicateSentences,
-  stripInlineImages, restoreKeyword, diagnosePost,
+  stripInlineImages, restoreKeyword, restoreKeywordV2, diagnosePost,
   generateSection, autoSave,
 } from "./generateUtils";
 
 // ★ v2.0 — 과별 침투 차단 + 안전 단어 제거 모듈
 import { getCrossBlocks } from "../../lib/industryBlocks";
 import { safeRemoveWords } from "../../lib/safeRemove";
+
+// ★ PATCH-07 — 위치 공통화(locationBlock) 후단 연결 (SOP v4.2)
+//   narrative·prompt·QC 무관. 응답 직전 「📍 찾아오시는 길」 삽입 전용.
+import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
 
 // ★ v2.0 — 과별 침투 차단 (lib/industryBlocks.js)
 //   다른 과 정체성 키워드 자동 차단 (한 곳 수정 = 16개 파일 동시 적용)
@@ -62,24 +69,24 @@ function buildPediatricsTitle(treatmentName, region, seoData, blogTypeId) {
     const raw = seoData.titlePatterns[Math.floor(Math.random() * seoData.titlePatterns.length)];
     return raw.replace(/\{region\}/g, region);
   }
-  // 2순위: 비교형
+  // 2순위: 비교형 (정보형)
   if (blogTypeId === "compare") {
-    const cw = seoData?.compareWith || "다른 방법";
+    const cw = seoData?.compareWith || "다른 접근";
     return [
-      `${region} ${treatmentName} vs ${cw} 비교｜소아과 상담 후 선택한 이유`,
-      `${region} ${treatmentName}｜${cw} 고민하다 결정한 이유`,
+      `${region} 소아과 ${treatmentName} vs ${cw}｜함께 고려하는 기준 안내`,
+      `${region} ${treatmentName}과(와) ${cw}｜어떤 상황에서 고려되는지 정보`,
     ][Math.floor(Math.random() * 2)];
   }
-  // 3순위: 상담형
+  // 3순위: 상담형 (정보형)
   if (blogTypeId === "consult") {
-    return `${region} 소아과 ${treatmentName} 상담 후기｜처음 가기 전 알았으면 좋았을 것들`;
+    return `${region} 소아과 ${treatmentName}｜진료 진행 방식과 확인 항목 안내`;
   }
-  // 4순위: 소아과 전용 default
+  // 4순위: 소아과 전용 default (정보형·비1인칭)
   const defaults = [
-    `${region} 소아과 ${treatmentName} 후기｜아이 데리고 가보니 이랬어요`,
-    `${treatmentName} 걱정했는데｜${region} 소아청소년과에서 들은 이야기`,
-    `${region} ${treatmentName}｜밤새 고민하다 결국 소아과 간 이유`,
-    `${treatmentName} 처음 경험한 날｜${region} 소아과 실제 후기`,
+    `${region} 소아과 ${treatmentName}｜증상·진료 정보 안내`,
+    `${treatmentName}, 어떤 상황에서 고려되나요｜${region} 소아청소년과 정보`,
+    `${region} ${treatmentName} 진료 안내｜확인·관리 항목 정리`,
+    `${treatmentName} 진료 정보｜${region} 소아청소년과 안내`,
   ];
   return defaults[Math.floor(Math.random() * defaults.length)];
 }
@@ -87,10 +94,11 @@ function buildPediatricsTitle(treatmentName, region, seoData, blogTypeId) {
 // ── 소아청소년과 전용 해시태그 ───────────────────────────
 function buildPediatricsHashtags(treatmentName, region) {
   const kw = treatmentName.replace(/\s/g, "");
+  // ★ V2 정보형: 후기 계열 태그(#OO후기·#소아과후기) 제거 — PHILOSOPHY 광고/후기형 배제
   return [
-    `#${region}소아과`, `#${kw}후기`, `#소아청소년과`,
-    `#${kw}`, `#${region}${kw}`, `#아이건강`,
-    `#육아`, `#소아과후기`, `#${region}육아`,
+    `#${region}소아과`, `#소아청소년과`, `#${kw}`,
+    `#${region}${kw}`, `#아이건강`, `#소아과정보`,
+    `#육아정보`, `#${region}소아청소년과`,
   ].slice(0, 10).join(" ");
 }
 
@@ -125,16 +133,16 @@ function cleanPediatricsText(text, treatmentName) {
     .replace(/이\s*치료의\s+(필요|진행|시작|결정|중요)해요/g,   "이 치료가 $1해요")
     // 이중 "통해 통해"
     .replace(/통해\s+통해/g, "통해")
-    // ── 톤 약화 (병원 안전 표현으로) ──
-    .replace(/추천드리고 싶어요/g,  "고려해볼 수 있어요")
-    .replace(/추천드립니다/g,        "고려해볼 수 있어요")
-    .replace(/적극 추천/g,           "괜찮은 선택")
-    .replace(/강력 추천/g,           "괜찮은 선택")
+    // ── 톤 약화 (병원 안전·정보형 표현으로) ──
+    .replace(/추천드리고 싶어요/g,  "고려됩니다")
+    .replace(/추천드립니다/g,        "고려됩니다")
+    .replace(/적극 추천/g,           "고려 대상")
+    .replace(/강력 추천/g,           "고려 대상")
     .replace(/적절하게 짧아서/g,     "짧아서")
     .replace(/적절하게 길어서/g,     "여유 있게")
     // 두 문장 합쳐진 어색한 패턴
-    .replace(/고려해보는 것도\s+덕분에/g, "고려해볼 수 있어요. 덕분에")
-    .replace(/고려하는 것도\s+덕분에/g,   "고려해볼 수 있어요. 덕분에");
+    .replace(/고려해보는 것도\s+덕분에/g, "고려됩니다. ")
+    .replace(/고려하는 것도\s+덕분에/g,   "고려됩니다. ");
 
   // 진료명 직접 조사 연결 오류 패턴 교정 (버그 #3 방지)
   if (treatmentName) {
@@ -200,20 +208,20 @@ function cleanPediatricsText(text, treatmentName) {
     }
   }
 
-  // 문장 끊김 패턴 교정 (버그 #2)
+  // 문장 끊김 패턴 교정 (버그 #2) — ★ V2 정보형: 후기형 인용("하셨어요") 마감 제거, 열린 따옴표는 중립 제거
   result = result
     .replace(/\u201c|\u201d|\u2018|\u2019/g, '"')
-    .replace(/([\uAC00-\uD7A3])\s*"\s*\n/g, '$1 이라고 하셨어요\n')
-    .replace(/([\uAC00-\uD7A3])\s*"\s*$/gm, '$1 이라고 하셨어요')
-    .replace(/하는 것이\s*"\s*$/gm, '하는 것이 중요하다고 하셨어요');
+    .replace(/([\uAC00-\uD7A3])\s*"\s*\n/g, '$1\n')
+    .replace(/([\uAC00-\uD7A3])\s*"\s*$/gm, '$1')
+    .replace(/하는 것이\s*"\s*$/gm, '하는 것이 확인됩니다');
 
-  // AI 투 표현 추가 제거
+  // ★ V2 정보형: 후기형/감성 표현 잔재 → 중립 정보형으로 치환
   result = result
-    .replace(/드디어 결심하고/g, "결국")
-    .replace(/결국 선택하게 되었어요/g, "선택했어요")
-    .replace(/마음이 편안해졌어요/g, "안심이 됐어요")
-    .replace(/믿음이 갔어요/g, "믿음직스러웠어요")
-    .replace(/친절하고 전문적이셔서/g, "꼼꼼하게 봐주셔서");
+    .replace(/드디어 결심하고/g, "")
+    .replace(/결국 선택하게 되었어요/g, "고려됩니다")
+    .replace(/마음이 편안해졌어요/g, "안정적으로 관리됩니다")
+    .replace(/믿음이 갔어요/g, "")
+    .replace(/친절하고 전문적이셔서/g, "");
 
   // 공백 오류 교정
   result = result
@@ -229,39 +237,39 @@ function cleanPediatricsText(text, treatmentName) {
     .replace(/면역\s*효과가\s*높다고\s*해서/g, "표준 권장 방식이라고 해서")
     .replace(/면역\s*효과\s*높음/g, "표준 권장 방식");
 
-  // ★ v2.2: ADHD/발달 카테고리 전용 후처리 ─────────────────────
+  // ★ v2.2→V2: ADHD/발달 카테고리 전용 후처리 (정보형·비1인칭) ───────
   if (isAdhdDev) {
     result = result
-      // 약효 단정 약화
-      .replace(/메틸페니데이트\s*약물의\s*효과가\s*눈에\s*띄었어요/g, "약 복용 후 변화를 관찰하고 있어요")
-      .replace(/메틸페니데이트\s*효과가\s*눈에\s*띄었어요/g, "약 복용 후 변화를 관찰하고 있어요")
-      .replace(/약물의\s*효과가\s*눈에\s*띄었어요/g, "약 복용 후 변화를 관찰하고 있어요")
-      .replace(/효과가\s*눈에\s*띄었어요/g, "변화가 보였어요")
-      .replace(/효과가\s*나타나기\s*시작했어요/g, "변화가 조금씩 보이기 시작했어요")
-      .replace(/행동치료\s*효과가\s*나타나/g, "행동치료 후 변화가 보이")
-      .replace(/약\s*복용한\s*지\s*3일째\s*되던\s*날부터는/g, "약 복용을 시작하고 며칠 지나서는")
+      // 약효 단정 약화 (정보형)
+      .replace(/메틸페니데이트\s*약물의\s*효과가\s*눈에\s*띄었어요/g, "약물 반응은 전문의 관찰로 확인됩니다")
+      .replace(/메틸페니데이트\s*효과가\s*눈에\s*띄었어요/g, "약물 반응은 전문의 관찰로 확인됩니다")
+      .replace(/약물의\s*효과가\s*눈에\s*띄었어요/g, "약물 반응은 전문의 관찰로 확인됩니다")
+      .replace(/효과가\s*눈에\s*띄었어요/g, "변화는 관찰을 통해 확인됩니다")
+      .replace(/효과가\s*나타나기\s*시작했어요/g, "변화는 관찰을 통해 확인됩니다")
+      .replace(/행동치료\s*효과가\s*나타나/g, "행동치료 후 변화는 관찰으로 확인되")
+      .replace(/약\s*복용한\s*지\s*3일째\s*되던\s*날부터는/g, "약물 반응 시점은 개인차가 있으며")
       .replace(/즉각적인\s*효과/g, "초기 변화")
-      .replace(/극적인\s*변화/g, "조금씩 변화")
-      // 미래/희망 감성 차단
-      .replace(/아이의\s*미래가\s*더\s*밝게\s*느껴져요/g, "조금씩 지켜보고 있어요")
+      .replace(/극적인\s*변화/g, "점진적 변화")
+      // 미래/희망 감성 차단 (정보형)
+      .replace(/아이의\s*미래가\s*더\s*밝게\s*느껴져요/g, "경과는 관찰을 통해 확인됩니다")
       .replace(/아이의\s*밝은\s*미래/g, "아이의 일상")
-      .replace(/밝은\s*미래/g, "앞으로의 일상")
-      .replace(/작은\s*변화가\s*큰\s*차이를\s*만들/g, "작은 변화도 의미가 있")
-      .replace(/긍정적으로\s*바라볼\s*수\s*있게\s*되었어요/g, "조금씩 지켜보게 되었어요")
-      .replace(/좋은\s*선택이었음을\s*확신/g, "방문해보길 잘했다고 생각")
-      .replace(/확신하게\s*되었어요/g, "생각하게 되었어요")
-      // 권유·CTA 약화
-      .replace(/꼭\s*한\s*번\s*소아과\s*상담을\s*받아보세요/g, "소아청소년과 상담을 한 번 고려해볼 수 있어요")
-      .replace(/꼭\s*방문해\s*보시길\s*권해요/g, "방문을 한 번 고려해볼 수 있어요")
-      .replace(/방문해\s*보시길\s*권해요/g, "방문을 한 번 고려해볼 수 있어요")
-      .replace(/가장\s*빠른\s*길이에요/g, "한 가지 방법이에요")
-      .replace(/전문\s*진료가\s*큰\s*도움이\s*될\s*수\s*있어요/g, "전문의 상담을 통해 확인해볼 수 있어요")
-      .replace(/전문가\s*상담이\s*큰\s*도움이\s*됩니다/g, "전문의 상담을 통해 확인해볼 수 있어요")
-      // 단정형 약화
-      .replace(/대견했어요/g, "지켜봤어요")
-      .replace(/뿌듯해하는\s*모습을\s*보니\s*정말\s*대견했어요/g, "스스로 마무리하는 모습을 봤어요")
-      .replace(/정말\s*기뻤답니다/g, "지켜봤답니다")
-      .replace(/정말\s*기뻤어요/g, "지켜봤어요");
+      .replace(/밝은\s*미래/g, "이후 일상")
+      .replace(/작은\s*변화가\s*큰\s*차이를\s*만들/g, "작은 변화도 관찰 대상이 되")
+      .replace(/긍정적으로\s*바라볼\s*수\s*있게\s*되었어요/g, "관찰을 통해 확인됩니다")
+      .replace(/좋은\s*선택이었음을\s*확신/g, "진료 필요 여부는 상담에서 확인")
+      .replace(/확신하게\s*되었어요/g, "확인됩니다")
+      // 권유·CTA 약화 (정보형)
+      .replace(/꼭\s*한\s*번\s*소아과\s*상담을\s*받아보세요/g, "전문 평가를 고려할 수 있습니다")
+      .replace(/꼭\s*방문해\s*보시길\s*권해요/g, "전문 평가를 고려할 수 있습니다")
+      .replace(/방문해\s*보시길\s*권해요/g, "전문 평가를 고려할 수 있습니다")
+      .replace(/가장\s*빠른\s*길이에요/g, "한 가지 확인 방법입니다")
+      .replace(/전문\s*진료가\s*큰\s*도움이\s*될\s*수\s*있어요/g, "전문의 진료에서 확인됩니다")
+      .replace(/전문가\s*상담이\s*큰\s*도움이\s*됩니다/g, "전문의 진료에서 확인됩니다")
+      // 단정형·감성 잔재 약화 (정보형)
+      .replace(/뿌듯해하는\s*모습을\s*보니\s*정말\s*대견했어요/g, "스스로 마무리하는 모습이 관찰됩니다")
+      .replace(/대견했어요/g, "관찰됩니다")
+      .replace(/정말\s*기뻤답니다/g, "확인됩니다")
+      .replace(/정말\s*기뻤어요/g, "확인됩니다");
   }
 
   return result.replace(/\n{3,}/g, "\n\n").trim();
@@ -402,7 +410,7 @@ function insertPediatricsTimeline(text, treatmentName) {
   // ★ v2.2: ADHD/발달 카테고리는 회복 템플릿 차단 → 관찰 변화 블록으로 교체
   const isAdhdDev = /ADHD|발달장애|발달지연|틱|자폐|주의력|과잉행동/.test(treatmentName || "");
   if (isAdhdDev) {
-    const observeBlock = `\n\n**아이 관찰 변화 메모**\n- 진료 직후: 검사 결과 듣고 일상 점검 시작\n- 1~2주차: 가정·기관에서의 행동을 기록\n- 1개월차: 환경 조정과 약 복용 여부 전문의와 상의\n- 이후: 지속 상담을 통해 변화 점검\n\n※ 변화 양상은 아이마다 달라요. 위 내용은 저희 가족 기록일 뿐 일반적 효과를 보장하지 않아요.`;
+    const observeBlock = `\n\n**관찰·확인 흐름 안내**\n- 진료 직후: 검사 결과 확인 및 일상 점검\n- 1~2주차: 가정·기관에서의 행동 관찰\n- 1개월차: 환경 조정과 약물 여부를 전문의와 확인\n- 이후: 지속 진료를 통한 변화 점검\n\n※ 변화 양상은 아이마다 개인차가 있으며, 일반적 효과를 보장하지 않습니다.`;
     return text.trimEnd() + observeBlock;
   }
 
@@ -471,7 +479,12 @@ function stripMarkdownForNaver(text) {
 // 메인 핸들러
 // ============================================================
 export default async function handlePediatrics(req, res) {
-  const { target, program, blogType, userRegion, userMemo, overrideTitle } = req.body;
+  const {
+    target, program, blogType, userRegion, userMemo, overrideTitle,
+    // ★ PATCH-07 위치 5필드 (발행코치=값 존재 / 일반글쓰기=빈값 → 부작용 0)
+    address, map_guide, transit, building_desc, parking_info,
+  } = req.body;
+  const _locStore = { address, map_guide, transit, building_desc, parking_info };
 
   // ── 소아청소년과 전용: 진료명 강제 검증 ─────────────────
   const subKw      = program.name || "";
@@ -482,15 +495,20 @@ export default async function handlePediatrics(req, res) {
   const industry   = "pediatrics"; // 절대 고정 — 변경 금지
 
   // 소아청소년과 진료인지 검증
+  // ★ data.js(PEDIATRICS_TREATMENTS) 22건과 완전 동기화 — 신규 진료 400 차단 방지
   const PEDIATRICS_IDS = [
     "flu", "gastroenteritis", "fever", "pneumonia",
     "otitis", "atopy", "growth", "infectious", "asthma",
     "adhd", "newborn", "precocious_puberty", "constipation", "anemia", "vaccination",
+    "rhinitis", "stomatitis", "enuresis", "growth_hormone", "bronchiolitis",
+    "conjunctivitis", "obesity",
   ];
   const PEDIATRICS_NAMES = [
     "독감예방접종", "소아 장염", "고열·열성경련", "소아 폐렴·기관지염",
     "소아 중이염", "소아 아토피", "영유아 건강검진", "수족구·수두", "소아 천식·알레르기",
     "소아 ADHD·발달장애", "신생아·영아 진료", "성조숙증", "소아 변비", "소아 빈혈", "영유아 예방접종",
+    "소아 비염·축농증", "구내염·헤르판지나", "소아 야뇨증", "소아 키성장클리닉", "모세기관지염·RSV",
+    "소아 결막염·다래끼", "소아 비만관리",
   ];
   const isPediatricsTreatment =
     PEDIATRICS_IDS.includes(program.id) || PEDIATRICS_NAMES.includes(subKw);
@@ -516,32 +534,20 @@ export default async function handlePediatrics(req, res) {
   // ── 시스템 프롬프트 ──────────────────────────────────────
   // ★ v2.2: ADHD/발달 카테고리 전용 가드 (의료광고법·정신건강 민감)
   const isAdhdDevTop = /ADHD|발달장애|발달지연|틱|자폐|주의력|과잉행동/.test(subKw || "");
+  // ★ V2: 정보형·비1인칭 정합. 약효/미래 단정만 추가 억제 (1인칭 한정표현 제거)
   const adhdGuide = isAdhdDevTop ? `
 
-[★ ADHD·발달 카테고리 안전 가드 — 절대 준수]
+[★ ADHD·발달 카테고리 안전 가드 — 절대 준수 (정보형)]
 - "효과가 눈에 띄었다", "극적인 변화", "즉각적인 효과" 등 약효 단정 표현 금지
-- "메틸페니데이트 효과" 같은 약물명+효과 직접 결합 금지 → "약 복용 후 변화를 관찰" 수준으로
+- 약물명+효과 직접 결합 금지 → "약물 반응은 전문의 관찰로 확인됩니다" 수준으로
 - "아이의 미래가 밝아진다", "큰 차이를 만든다" 등 미래·희망 단정 금지
-- "꼭 방문해보세요", "가장 빠른 길", "권해요" 등 권유형 CTA 금지 → "고려해볼 수 있어요" 수준
-- "확신", "대견", "기뻐" 등 단정·감성 강한 표현 자제 → "지켜보고 있어요" 수준
-- 진단·치료 효과를 일반화하지 말 것 — "저희 아이의 경우" 한정 표현 사용
-- 약물 복용 시기·용량 구체 명시 금지 → 전문의 면담 결과로만 표현
-- 회복·완치 표현 금지 → "관찰 중", "지속 상담 중" 표현 사용` : "";
+- 권유형 CTA 금지 → "전문 평가를 고려할 수 있습니다" 수준
+- 진단·치료 효과를 일반화하지 말 것 — 경과는 아이마다 개인차가 있음을 안내
+- 약물 복용 시기·용량 구체 명시 금지 → 전문의 진료 안내로만 표현
+- 회복·완치 표현 금지 → "관찰·확인" 수준 표현 사용` : "";
 
-  const systemPrompt = `당신은 ${region}에 사는 아이의 부모입니다. 소아청소년과 방문 경험을 1인칭 블로그 후기로 작성합니다.
-업종: 소아청소년과 | 진료: ${subKw} | 지역: ${region}
-
-[절대 금지]
-- 성형외과·피부과·치과·비뇨기과 관련 표현 일절 금지
-- "첫째/둘째/셋째" 나열 구조, "중요합니다", "살펴보겠습니다", "결론적으로"
-- 진료명을 문장에 직접 조사 연결 금지: ❌ "${subKw}이 소아과" ❌ "${subKw}을 치료" → 증상 표현으로 대체
-
-[필수]
-- ~했어요, ~더라고요 블로그 구어체 | 1인칭 "저는/제가" + "저희 아이" 포함
-- 보호자 시점 — 아이 상태를 지켜보는 부모의 감정과 행동
-- 검사 수치 or 구체적 변화 최소 1개 포함 (산소포화도·체온·X-ray 소견 등)
-- 의사 말 간접 인용 1회 이상: "선생님이 '~' 라고 하시더라고요" 형태
-- 동일 키워드 3회 초과 반복 금지 — 유사 표현으로 분산${adhdGuide}`;
+  // ★ V2 정보형 시스템 프롬프트 (병원군 One Axis 축) + 민감군 안전 가드
+  const systemPrompt = PEDIATRICS_SYSTEM_PROMPT + adhdGuide;
 
   // ── 섹션별 순차 생성 ─────────────────────────────────────
   const SECTIONS = PEDIATRICS_FLOW_ENGINE.sections;
@@ -559,14 +565,15 @@ ${prevBlock}
 ---
 [현재 섹션: ${sec.label} (${sec.key})]
 ⚠️ 이 섹션만 작성. 성형외과·피부과·치과 표현 절대 금지. 반드시 200자 이상.
-보호자(부모) 1인칭 시점으로 아이의 상태를 묘사할 것.
+⚠️ 정보 안내형·비1인칭. "저는/제가/저희 아이/우리 아이" 및 "~했어요/~더라고요" 후기 톤 금지.
+아이 증상·상황을 일반 정보로 설명할 것 (특정 아이 사연 아님).
 ${richPrompt}`;
 
     let secText = await generateSection({ systemPrompt, userPrompt });
     secText = cleanPediatricsText(secText, subKw);
     secText = stripInlineImages(secText);
-    secText = restoreKeyword(secText, subKw);
-    secText = cleanPediatricsText(secText, subKw); // ★ v2.1: restoreKeyword 후 재정제 (변수 치환 깨짐 방지)
+    secText = restoreKeywordV2(secText, subKw);    // ★ V2 정보형: 지시관형사·보다 오탐 차단 (병원군 One Axis)
+    secText = cleanPediatricsText(secText, subKw); // 재정제 (V2 후 잔여 보정)
 
     // 빈 섹션 재생성
     if (calcCharCount(secText) < 100) {
@@ -578,8 +585,8 @@ ${richPrompt}`;
       });
       retry = cleanPediatricsText(retry, subKw);
       retry = stripInlineImages(retry);
-      retry = restoreKeyword(retry, subKw);
-      retry = cleanPediatricsText(retry, subKw); // ★ v2.1: 재정제
+      retry = restoreKeywordV2(retry, subKw);    // ★ V2 정보형
+      retry = cleanPediatricsText(retry, subKw); // 재정제
       if (calcCharCount(retry) > calcCharCount(secText)) secText = retry;
     }
 
@@ -615,11 +622,11 @@ ${richPrompt}`;
     /쌍꺼풀|눈매|리프팅|울쎄라|써마지|필러|보톡스|피코레이저|성형외과|임플란트|스케일링/;
   if (PEDIATRICS_TITLE_BLOCK.test(title)) {
     console.log(`[pediatrics] 제목 오염 감지 → 교체: "${title}"`);
-    title = `${region} 소아과 ${subKw} 후기｜걱정했는데 막상 가보니 이랬어요`;
+    title = `${region} 소아과 ${subKw}｜증상·진료 정보 안내`;
   }
   if (!title.includes(subKw) && !title.includes("소아")) {
     console.log(`[pediatrics] 제목 싱크 실패 → 교체`);
-    title = `${region} 소아과 ${subKw} 후기｜아이 데리고 가보니 이랬어요`;
+    title = `${region} 소아과 ${subKw} 진료 안내｜확인·관리 항목 정리`;
   }
 
   // ── 조립 ─────────────────────────────────────────────────
@@ -651,18 +658,18 @@ ${richPrompt}`;
 
     if (isAdhdDev) {
       const recBlock = recList.length > 0
-        ? `\n\n**이런 경우 전문의 상담을 한 번 고려해볼 수 있어요**\n${recList.map(r => `- ${r}`).join("\n")}`
+        ? `\n\n**전문 평가가 고려되는 경우**\n${recList.map(r => `- ${r}`).join("\n")}`
         : "";
       sectionTexts[lastKey] = sectionTexts[lastKey].trimEnd()
         + recBlock
-        + "\n\n저희 가족은 이렇게 지켜보고 있어요. 같은 고민이 있으신 분들도 각자의 상황에 맞춰 결정하시면 좋을 것 같아요.";
+        + "\n\n경과는 아이마다 개인차가 있으며, 정확한 평가 필요 여부는 전문의 진료에서 안내됩니다.";
     } else {
       const recBlock = recList.length > 0
-        ? `\n\n**이런 경우라면 소아과 방문을 권해요**\n${recList.map(r => `- ${r}`).join("\n")}`
+        ? `\n\n**소아과 확인이 권장되는 경우**\n${recList.map(r => `- ${r}`).join("\n")}`
         : "";
       sectionTexts[lastKey] = sectionTexts[lastKey].trimEnd()
         + recBlock
-        + "\n\n혼자 걱정만 하지 말고 소아청소년과 상담 한 번 받아보시는 게 가장 빠른 길이에요.";
+        + "\n\n증상·상황에 따라 진료 범위가 달라지므로, 정확한 확인은 소아청소년과 진료에서 안내됩니다.";
     }
   }
 
@@ -700,6 +707,12 @@ ${richPrompt}`;
   const _altAll = assembled.match(/\[이미지:[^\]]+\]/g) || [];
   const _altOk  = _altAll.filter(a => /\[이미지:\s*(진료|상담|치료|처방|일상)\s*사진\]/.test(a));
   console.log(`[QC] alt 총 ${_altAll.length}개 / 정상 ${_altOk.length}개 / 비정상 ${_altAll.length - _altOk.length}개`);
+
+  // ★ PATCH-07 — 위치블록 후단 삽입 (해시태그 직전 「📍 찾아오시는 길」)
+  //   발행코치: 위치 5필드 존재 → 삽입 / 일반글쓰기: 빈값 → 원문 그대로(부작용 0)
+  //   해시태그를 떼어 [본문 + 위치블록 + 해시태그] 재조립 (daycare/dental/restaurant/bedding 동형)
+  //   삽입 이후에 charCount·seoScore·autoSave 산출 → 저장·채점 대상에 위치블록 포함
+  assembled = insertLocationBeforeHashtags(assembled, _locStore);
 
   const charCount = calcCharCount(assembled);
   const seoScore  = diagnosePost(assembled, subKw);

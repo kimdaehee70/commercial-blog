@@ -344,6 +344,143 @@ function cleanText(text, keyword, region) {
 }
 
 // ============================================================
+// ★ finalEyeClean — light scene engine 보조 후처리
+//   - Z 블록: photoContext 메타 잔존 정리
+//   - AA 블록: 후기 어미 동결 해제 (~했어요/~더라고요 단조 변환)
+//   - AB 블록: timeline 어미 다양화 + 감성 ending 차단
+//   - 안과 맞춤: ~됨/~확인됨 같은 보고서 어미 변환 ❌ (eye는 1인칭 후기톤)
+// ============================================================
+function finalEyeClean(text) {
+  if (!text) return text;
+  let t = text;
+
+  // ─── Z. photoContext scene 합성 잔존 정리 ─────────
+  t = t.replace(/사진을?\s*보면[,.]?\s*/g, "");
+  t = t.replace(/이미지에서는?\s*/g, "");
+  t = t.replace(/위\s*사진은?\s*/g, "");
+  t = t.replace(/사진\s*속(?:에서)?\s*(?=[가-힣])/g, "");
+
+  // 이중 조사
+  t = t.replace(/([가-힣])이이(?=[\s,.])/g, "$1이");
+  t = t.replace(/([가-힣])가가(?=[\s,.])/g, "$1가");
+  t = t.replace(/([가-힣])은은(?=[\s,.])/g, "$1은");
+  t = t.replace(/([가-힣])는는(?=[\s,.])/g, "$1는");
+
+  // scene 메타 평가어 — photoContext에서 종종 새어나옴
+  t = t.replace(/체계적인?\s*(공간|환경|구조)으?로?\s*(보였어요|확인됐어요|관찰됐어요)\.?/g, "");
+  t = t.replace(/전문적인?\s*(공간|분위기|환경)으?로?\s*(보였어요|확인됐어요)\.?/g, "");
+
+  // ─── AB-1. 감성 ending 차단 (eye 핵심) ───
+  // "또렷한 시야 / 밝아진 세상 / 새로운 세상 / 환해진 일상" 류
+  t = t.replace(/또렷한?\s*(시야|세상)(을|이|가)?\s*[^.!?\n]{0,15}(됐|되)으?면?\s*[^.!?\n]{0,15}[.!?]/g, "검사 결과가 안정적으로 유지되는 흐름을 확인할 수 있었어요.");
+  t = t.replace(/밝아진?\s*(시야|세상|일상)(을|이|가)?\s*[^.!?\n]{0,15}[.!?]/g, "");
+  t = t.replace(/새로운\s*세상(을|이|가|에)?\s*[^.!?\n]{0,20}[.!?]/g, "");
+  t = t.replace(/환해진?\s*(일상|세상)(을|이|가)?\s*[^.!?\n]{0,15}[.!?]/g, "");
+  t = t.replace(/세상이?\s*달라\s*보(였|이)어요\.?/g, "");
+  t = t.replace(/(시야|일상)가?\s*완전히?\s*달라(졌어요|진\s*기분)\.?/g, "검사 수치가 안정 범위로 들어왔어요.");
+
+  // ─── AB-1b. v2 추가: emotional phrase blacklist 확장 ───
+  // 이전 버전에서 누락된 "명확해지기 / 선명해지기 / 시야가 넓어지고 / 자신감도 회복" 류
+  t = t.replace(/시야가?\s*점점\s*더\s*명확해지(기|기\s*시작)[^.!?\n]{0,15}[.!?]/g, "검사 결과 수치가 안정 범위로 들어오는 흐름이었어요.");
+  t = t.replace(/시야가?\s*(명확해|선명해|또렷해)지(는\s*것을?|기\s*시작)[^.!?\n]{0,15}[.!?]/g, "");
+  t = t.replace(/시야가?\s*점점\s*더\s*(명확|선명|또렷)해[^.!?\n]{0,15}[.!?]/g, "");
+  t = t.replace(/시야도?\s*넓어지(고|면서)\s*자신감도?\s*회복[^.!?\n]{0,15}[.!?]/g, "검사 결과와 일상 적응을 함께 확인할 수 있었어요.");
+  t = t.replace(/자신감도?\s*(회복|되찾)[^.!?\n]{0,15}[.!?]/g, "");
+  t = t.replace(/안경에?\s*의존하지\s*않게\s*되면서[^.!?\n]{0,30}자신감[^.!?\n]{0,15}[.!?]/g, "");
+
+  // closing soft tone 감소 — "도움이 되었으면" / "기준이 되었으면" 잔존
+  // 시스템이 끝에 강한 판단형 closing을 별도 삽입하므로 중간 본문의 약한 표현은 제거
+  {
+    let softCount = 0;
+    t = t.replace(/[^.!?\n]{0,30}(도움이\s*되(기|었으면)|기준이\s*되었으면)[^.!?\n]{0,15}[.!?]/g, (m) => {
+      softCount++;
+      // 1개는 보존 (자연), 2개부터 제거
+      if (softCount <= 1) return m;
+      return "";
+    });
+  }
+
+  // ─── AB-1c. v2 추가: AA 변환 합성 깨짐 자동 복구 ───
+  // 과거 잘못된 변환의 잔존 정리:
+  //   "판단라고 느꼈어요" / "시작라고 판단했어요" / "선택라고..." 류
+  t = t.replace(/([가-힣]{2,})\s*라고\s*판단했어요\./g, (m, base) => {
+    // 명사형 어간이면 "판단했어요"로 복구
+    const UNSAFE = ["판단", "시작", "결정", "선택", "생각", "고민", "검사", "수술", "회복", "관리", "상담", "검진", "유지", "확인", "비교", "복귀", "적응", "치료", "진료"];
+    if (UNSAFE.includes(base)) {
+      return base + "했어요.";
+    }
+    return m;
+  });
+  t = t.replace(/([가-힣]{2,})\s*라고\s*느꼈어요\./g, (m, base) => {
+    const UNSAFE = ["판단", "시작", "결정", "선택", "생각", "고민", "검사", "수술", "회복", "관리", "상담", "검진", "유지", "확인", "비교", "복귀", "적응", "치료", "진료"];
+    if (UNSAFE.includes(base)) {
+      return base + "했어요.";
+    }
+    return m;
+  });
+  t = t.replace(/([가-힣]{2,})\s*한\s*셈이에요\./g, (m, base) => {
+    // 명사 어간 + "한 셈이에요"는 자연스러우니 유지. 단 "판단한 셈이에요" / "시작한 셈이에요"는 어색 → 복구
+    const AWKWARD = ["판단", "시작", "결정", "복귀", "적응"];
+    if (AWKWARD.includes(base)) {
+      return base + "했어요.";
+    }
+    return m;
+  });
+
+  // "이점였어요" / "선택였어요" 류 — `~이었어요` 누락형 자동 교정
+  t = t.replace(/([가-힣])였어요/g, (m, ch) => {
+    // 받침 있는 글자 + "였어요" → "이었어요"
+    // 받침 없는 글자 + "였어요" → 그대로 (예: "선생님이었어요"의 단축형이 아니라 "쉬웠어요"는 정상)
+    const code = ch.charCodeAt(0);
+    if (code >= 0xAC00 && code <= 0xD7A3) {
+      const hasBatchim = ((code - 0xAC00) % 28) !== 0;
+      if (hasBatchim) return ch + "이었어요";
+    }
+    return m;
+  });
+
+  // ─── AA. 후기 어미 단조 변환 (안전화 v2 — 매우 보수적) ───
+  // 이전 버전 문제: "판단했어요" → "판단라고 느꼈어요" 합성 깨짐
+  // v2 방침: 합성 변환 전면 제거. "~했어요" 4연속 이상일 때만 마지막 1개를 "~했습니다"로 격조 전환.
+  // (격조 전환은 어간 무관하게 안전 — 의미·문법 깨지지 않음)
+  t = t.replace(/((?:[^.!?\n]+했어요\.\s*){4,})/g, (m) => {
+    // 4문장 이상 연속 "~했어요" 종결 — 마지막에서 두 번째 문장만 "~했습니다."로 변형
+    const sentences = m.split(/(?<=했어요\.\s*)/).filter(Boolean);
+    if (sentences.length < 4) return m;
+    // 마지막에서 두 번째만 변환 (마지막은 자연 종결 유지)
+    const idx = sentences.length - 2;
+    sentences[idx] = sentences[idx].replace(/했어요\.(\s*)$/, "했습니다.$1");
+    return sentences.join("");
+  });
+
+  // ─── AB-2. timeline 어미 다양화 ───
+  // ### 1일 ~ ### 1개월 안에서 "~했어요" 단조 반복 완화
+  t = t.replace(
+    /(### (?:1일|1주|2주|1개월)[\s\S]*?)(?=###|##|$)/g,
+    (block) => {
+      let b = block;
+      let count = 0;
+      b = b.replace(/(보였|느껴졌|확인됐)어요\./g, (m, base) => {
+        count++;
+        if (count >= 3) {
+          // 3번째부터는 변형
+          const map = { 보였: "보였습니다", 느껴졌: "느껴졌습니다", 확인됐: "확인됐습니다" };
+          return (map[base] || base + "어요") + ".";
+        }
+        return m;
+      });
+      return b;
+    }
+  );
+
+  // 연속 공백·줄바꿈 정리
+  t = t.replace(/[ \t]{2,}/g, " ");
+  t = t.replace(/\n{3,}/g, "\n\n");
+
+  return t;
+}
+
+// ============================================================
 // 헤더 누락 자동 복원 — GPT가 ## 헤더 없이 평문으로만 출력했을 때
 // 문단 길이/위치 기반으로 6섹션 헤더 강제 삽입
 // ============================================================
@@ -1316,13 +1453,100 @@ function repositionVsBlock(text, treatmentId) {
 }
 
 // ============================================================
+// ★ v3.1 패치: EYE_PHOTO_POOL — 평문 복붙 UX (안과 맥락)
+//   "시야 변화·빛 번짐·건조감·회복 체감" 중심 / 행동씬 과다 금지
+//   5종(검사/상담/시술/경과/일상) × {photos, captions} 3개씩
+// ============================================================
+const EYE_PHOTO_POOL = {
+  "검사 사진": {
+    photos: [
+      "시력검사표 화면",
+      "안압검사 기기 / OCT 결과 화면",
+      "검사실 입구 · 대기실",
+    ],
+    captions: [
+      "검사받던 날 시야 상태",
+      "OCT 결과 화면 같이 본 순간",
+      "안압·굴절 측정 끝나고",
+    ],
+  },
+  "상담 사진": {
+    photos: [
+      "상담실 내부",
+      "라식·라섹·ICL 비교 차트 화면",
+      "안과 입구 · 진료 데스크",
+    ],
+    captions: [
+      "상담 가기 전 시야 불편했던 상태",
+      "수술 옵션 설명 듣던 순간",
+      "상담실에서 일정 잡던 날",
+    ],
+  },
+  "시술 사진": {
+    photos: [
+      "시술실 입장 전 대기",
+      "회복실 입구 · 보호안경 착용",
+      "안과 입구 셀카 (시술 직전)",
+    ],
+    captions: [
+      "시술 직전 마지막 사진",
+      "시술 마치고 회복실에서",
+      "보호안경 쓰고 나오던 길",
+    ],
+  },
+  "경과 사진": {
+    photos: [
+      "인공눈물 점안 · 안약 챙기기",
+      "회복 1주차 셀카",
+      "빛 번짐 줄어드는 시기 야간 풍경",
+    ],
+    captions: [
+      "점안 1일차 회복 메모",
+      "보호안경 쓰던 시기",
+      "빛 번짐 줄어들기 시작한 때",
+    ],
+  },
+  "일상 사진": {
+    photos: [
+      "안경 없이 외출 셀카",
+      "회복 후 첫 운동 / 독서",
+      "평소 일상 · 카페",
+    ],
+    captions: [
+      "시술 전 평소 안경 쓴 모습",
+      "회복 후 안경 없이 첫 외출",
+      "건조감 없는 일상으로 돌아온 날",
+    ],
+  },
+};
+
+function buildEyePhotoPlaceholder(altRaw) {
+  const alt = String(altRaw || "").trim();
+  const pool = EYE_PHOTO_POOL[alt] || EYE_PHOTO_POOL["상담 사진"];
+  const photos = pool.photos.map((p) => "• " + p).join("\n");
+  const captions = pool.captions.map((c) => "• " + c).join("\n");
+  return (
+    "━━━━━━━━━━━━━━━━━━━\n" +
+    "📷 " + alt + " 첨부 위치\n" +
+    "(업로드 후 이 안내문 삭제)\n\n" +
+    "추천 사진\n" + photos + "\n\n" +
+    "사진 설명 예시\n" + captions + "\n" +
+    "━━━━━━━━━━━━━━━━━━━"
+  );
+}
+
+// ============================================================
 // ★ v2 패치: stripMarkdownForNaver — 네이버 블로그 복사용 평문 변환
 // 목적: 사용자가 글 복사 후 #/##/### 마크다운 기호를 수동 제거하지 않도록
 // 네이버는 마크다운 렌더링 안 함 → 평문으로 변환 필요
 // 위치: 모든 후처리 끝난 뒤 마지막 단계 (응답 직전)
+// 🆕 v3.1: [이미지: X] → 점선 박스 placeholder 변환 (사용자 복붙 UX)
 // ============================================================
 function stripMarkdownForNaver(text) {
   let t = text;
+
+  // ⓪ 🆕 v3.1: [이미지: X] → 점선 박스 placeholder (복붙 UX)
+  t = t.replace(/\[이미지:\s*([^\]]+)\]/g, (_m, alt) => buildEyePhotoPlaceholder(alt));
 
   // ① 줄 시작 헤더 변환 (제목·섹션·하위섹션)
   t = t.replace(/^#\s+(.+)$/gm, "$1");                    // # 제목 → 평문
@@ -1348,8 +1572,14 @@ function stripMarkdownForNaver(text) {
 // ============================================================
 export default async function handleEye(req, res) {
   const startTime = Date.now();
-  const { program, region: regionInput, keyword: keywordInput } = req.body;
+  const { program, region: regionInput, keyword: keywordInput, photoContext } = req.body;
   const region = regionInput || "강남";
+
+  // photoContext (analyze.js 결과 — 사진 1~3장 scene 묘사)
+  const photoCtx = (photoContext && typeof photoContext === "string") ? photoContext.trim() : "";
+  if (photoCtx) {
+    console.log("[eye] photoContext 주입: " + photoCtx.length + "자");
+  }
 
   // 진료 매칭
   const treatment =
@@ -1430,11 +1660,124 @@ export default async function handleEye(req, res) {
         "\n🔒 비용 표현은 '월 약물비', '회당 주사비', '정기 검진비' 형태로 — 일회성 총비용 금지."
       : "");
 
+  // ══════════════════════════════════════════════════════════
+  // ★ LIGHT SCENE ENGINE (eye 전용 — pain heavy engine 대비 축소판)
+  //   - 단일 호출 유지: fullPrompt에 통합 주입
+  //   - scene density 목표 25~35% (pain 40~45%보다 낮음)
+  //   - 안과 맥락: 검사실 / 턱받침 / 시력표 / 차트화면 / 렌즈 비교 / 검사기기
+  //   - ⚠️ closing 섹션 hard 금지 — "또렷한 시야 / 새로운 세상" 감성 ending 차단
+  // ══════════════════════════════════════════════════════════
+  const SCENE_POOL_EYE = {
+    이동: [
+      "검안실 의자에 앉아 턱을 받침대에 가볍게 올린다",
+      "대기실에서 호명을 듣고 검사실로 들어간다",
+      "복도 끝 검사실로 안내받아 걸어 들어간다",
+    ],
+    자세: [
+      "턱받침 위치를 조정하고 이마를 가만히 댄다",
+      "한쪽 눈을 가린 채 정면 시선을 고정한다",
+      "고개를 살짝 들고 시야 중앙을 응시한다",
+    ],
+    검사기기: [
+      "기기 안에서 작은 빛이 천천히 깜빡인다",
+      "렌즈가 차르륵 바뀌며 도수가 비교된다",
+      "검사기기 헤드가 눈앞으로 가까이 다가온다",
+    ],
+    상담: [
+      "차트 화면을 함께 보며 검사 수치를 짚어 설명한다",
+      "안구 단면 모형을 가리키며 부위를 설명한다",
+      "검사 결과지를 책상 위에 펼쳐 보여준다",
+    ],
+    적응: [
+      "시력표를 한 줄씩 천천히 읽어 내려간다",
+      "눈을 깜빡이며 빛에 천천히 적응한다",
+      "거울을 보며 안약을 조심스럽게 점안한다",
+    ],
+  };
+
+  // ── 섹션-카테고리 매핑 (light: hard 주입은 3섹션만, pain은 4섹션) ──
+  //   search   → 이동·상담 (병원 방문 동선 / 첫 대면)
+  //   consult  → 검사기기·자세 (실제 검사 장면)
+  //   result   → 적응 (회복 체감 — timeline 안에 1개만)
+  //
+  //   ⚠️ decision 제외 — eye는 결정 섹션이 짧고 판단 중심이라 scene 박히면 어색
+  //   ⚠️ closing 제외 — "또렷한 세상" 류 감성 ending 위험 (pain과 동일)
+  const SECTION_SCENE_MAP_EYE = {
+    search:   ["이동", "상담"],
+    consult:  ["검사기기", "자세"],
+    result:   ["적응"],
+  };
+
+  // pick 헬퍼 (단일 호출 컨텍스트라 한 번씩만 사용)
+  const _pickEye = (cat) => {
+    const arr = SCENE_POOL_EYE[cat] || [];
+    return arr[Math.floor(Math.random() * arr.length)] || "";
+  };
+
+  // ── PHOTO_BLOCK 또는 SCENE_BLOCK 빌드 ──
+  let sceneEngineBlock = "";
+  if (photoCtx) {
+    // 사진 있음 → PHOTO_BLOCK (강함, 직접 주입)
+    sceneEngineBlock =
+      "\n\n[사진 기반 scene 묘사 — 필수 적용]\n" +
+      "다음은 글에 사용될 사진의 실제 장면 묘사입니다. 이 내용을 본문 scene에 반영하세요.\n\n" +
+      "──── 사진 분석 ────\n" +
+      photoCtx + "\n" +
+      "──────────────\n\n" +
+      "[적용 규칙]\n" +
+      "- 위 내용을 별도 단락으로 설명하지 말 것. 직접 인용·나열 금지.\n" +
+      "- '사진을 보면', '이미지에서', '위 사진은' 같은 메타 표현 금지.\n" +
+      "- scene으로 녹일 것 — 정보 나열 ❌, 행동·상황 묘사 ⭕.\n" +
+      "- ⭐ 검사·상담 단락에서 실제 검안실에 있는 듯한 장면 묘사 1~2개 분산 배치 (필수).\n" +
+      "  ▸ 디테일 선택: 검안실 / 턱받침 / 시력표 / 차트화면 / 렌즈 비교 / 검사기기 / 조명 / 안약\n" +
+      "  ▸ 예 (상담 섹션): \"차트 화면을 함께 보며 검사 수치를 짚어 설명한다\"\n" +
+      "  ▸ 예 (검사 섹션): \"턱받침 위치를 조정하고 이마를 가만히 댄다\"\n" +
+      "  ▸ 예 (변화 섹션 1일/1주): \"눈을 깜빡이며 빛에 천천히 적응한다\"\n" +
+      "- ⛔ closing/마무리 섹션엔 scene 박지 말 것 (정리 톤 유지).\n" +
+      "- ⛔ 감성 묘사 금지: '또렷한 시야', '밝아진 세상', '새로운 세상', '환해진 일상' ❌\n" +
+      "- 추상 표현 금지: '체계적인', '전문적인' 같은 평가어 ❌ / '검사실 빛 아래' 같은 구체 묘사 ⭕.\n" +
+      "- 부위 일치: 눈 진료이므로 청력·소리·미각·후각 동작 절대 금지.\n";
+  } else {
+    // 사진 없음 → SCENE_BLOCK fallback (soft + 섹션별 light hard)
+    const sceneSearch  = _pickEye(SECTION_SCENE_MAP_EYE.search[Math.floor(Math.random() * 2)]);
+    const sceneConsult = _pickEye(SECTION_SCENE_MAP_EYE.consult[Math.floor(Math.random() * 2)]);
+    const sceneResult  = _pickEye("적응");
+
+    console.log("[eye] LIGHT SCENE_POOL fallback 작동 — 3섹션 hard 주입");
+    console.log("[eye] hard scene — search: " + sceneSearch.slice(0, 30) + "...");
+    console.log("[eye] hard scene — consult: " + sceneConsult.slice(0, 30) + "...");
+    console.log("[eye] hard scene — result(적응): " + sceneResult.slice(0, 30) + "...");
+
+    sceneEngineBlock =
+      "\n\n[scene 자연 삽입 — light overlay (안과 맥락 한정)]\n" +
+      "본문 전체에서 다음 행동·공간 디테일을 섹션별로 자연스럽게 녹여 쓸 것.\n" +
+      "(보고서 톤 회피 — 사람의 실제 검사 동작이 글에 들어가야 함)\n\n" +
+      "🎬 ## 탐색 섹션 안에 1문장 자연 삽입:\n" +
+      "   참고: \"" + sceneSearch + "\"\n" +
+      "🎬 ## 상담 섹션 안에 1문장 자연 삽입:\n" +
+      "   참고: \"" + sceneConsult + "\"\n" +
+      "🎬 ## 진료 후 변화 ### 1일 또는 ### 1주 단락에 1문장 자연 삽입:\n" +
+      "   참고: \"" + sceneResult + "\"\n\n" +
+      "[적용 규칙]\n" +
+      "- 위 문장을 그대로 복붙 금지 — 본문 흐름에 맞춰 표현 변형.\n" +
+      "- 한 문장으로 자연 삽입. 별도 단락 띄우지 말 것.\n" +
+      "- ⛔ ## 결정 / ## 마무리 섹션엔 scene 박지 말 것 (판단·정리 톤 유지).\n" +
+      "- ⛔ 감성 ending 금지: '또렷한 시야', '밝아진 세상', '새로운 세상', '환해진 일상' ❌\n" +
+      "- ⛔ 부위 일치: 눈 진료 — 청력·소리·미각·후각 동작 절대 금지.\n" +
+      "- ⛔ 평가어 금지: '따뜻한 / 전문적인 / 깔끔한 / 체계적인' ❌\n" +
+      "- ⭐ 행동·공간 묘사 비율 25~35% (나머지는 정보·판단 — pain보다 낮게).\n" +
+      "- 정보형 어미만 4문장 연속 금지 — 사이에 이런 검사 동작 문장 끼울 것.\n";
+  }
+
+  // fullPrompt에 scene engine block 추가
+  const fullPromptWithScene = fullPrompt + sceneEngineBlock;
+  // ══════════════════════════════════════════════════════════
+
   const completion = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
       { role: "system", content: EYE_SYSTEM_PROMPT },
-      { role: "user", content: fullPrompt },
+      { role: "user", content: fullPromptWithScene },
     ],
     temperature: 0.7,
     max_tokens: 3500,
@@ -1452,7 +1795,7 @@ export default async function handleEye(req, res) {
       "🚨🚨🚨 직전 응답이 헤더 구조를 무시했습니다. 무효 처리.\n" +
       "🚨 이번에는 반드시 \"## 고민\" 으로 시작해서 ## 헤더 6개·### 헤더 4개를 정확히 출력하세요.\n" +
       "🚨 평문 출력 절대 금지. 모든 섹션은 ## 으로 시작하는 헤더가 줄 맨 앞에 있어야 합니다.\n\n" +
-      fullPrompt;
+      fullPromptWithScene;
 
     const retry = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -1583,6 +1926,11 @@ export default async function handleEye(req, res) {
   // ── v2.6 마무리 판단형 톤 보강 ──
   // 마무리에 광고형 종결 흔적 정리 후 판단형 한 줄 추가
   // (cleanText가 1차로 정리하지만, 새로 생긴 케이스 대비 + 글의 명시적 마지막 한 줄)
+
+  // ★ finalEyeClean — light scene engine 보조 후처리 (judgmentClosing 직전)
+  //   AA: 후기 어미 단조 완화 / AB: 감성 ending 차단 + timeline 어미 / Z: scene 메타 잔존
+  result = finalEyeClean(result);
+
   const judgmentClosing =
     "\n시력 교정을 고민하고 있다면 단순한 후기보다는 검사 결과와 생활 패턴을 기준으로 선택 방향을 잡는 것이 도움이 됐어요. " +
     "개인적으로는 회복 속도와 일상 복귀 시점을 기준으로 결정했고, 그 기준이 결과적으로 맞는 선택이었다고 판단하게 됐어요.\n";
@@ -1665,10 +2013,20 @@ export default async function handleEye(req, res) {
   console.log(`[QC] 글자수: ${charCount}`);
   console.log(`[QC] 소요시간: ${elapsed}초 (단일 호출)`);
 
+  // ★ scene engine QC — light overlay 상태 체크
+  const sceneEngineMode = photoCtx ? "PHOTO_BLOCK" : "SCENE_POOL fallback";
+  const emotionalEndingHits = (result.match(/(또렷한?\s*(시야|세상)|밝아진?\s*(시야|세상|일상)|새로운\s*세상|환해진?\s*(일상|세상)|세상이?\s*달라\s*보)/g) || []).length;
+  console.log(`[QC] scene engine: ${sceneEngineMode}`);
+  console.log(`[QC] 감성ending 잔존: ${emotionalEndingHits} (목표 0)`);
+
   // ★★★ v2 패치: 네이버 블로그 복사용 평문 변환 ★★★
   const resultMarkdown = result;                          // 마크다운 원본 보존
   result = stripMarkdownForNaver(result);                 // 네이버 복사용 평문
   const charCountPlain = calcEyeCharCount(result);
+
+  // 🆕 v3.1 QC: 박스 변환 카운트
+  const photoBoxCount = (result.match(/━{5,}\n📷/g) || []).length;
+  console.log(`[QC] 사진 placeholder 박스: ${photoBoxCount}개`);
 
   return res.status(200).json({
     success: true,
@@ -1681,10 +2039,12 @@ export default async function handleEye(req, res) {
 
 // ============================================================
 // 글자수 계산 (이미지·해시태그·헤더·공백 제외)
+// 🆕 v3.1: 점선 박스 placeholder 제거 추가
 // ============================================================
 function calcEyeCharCount(text) {
   if (!text) return 0;
   return text
+    .replace(/━{5,}[\s\S]*?━{5,}/g, "")        // 🆕 점선 박스 제거
     .replace(/\[이미지:[^\]]*\]/g, "")
     .replace(/^HASHTAGS:.+$/gm, "")
     .replace(/^##\s*/gm, "")

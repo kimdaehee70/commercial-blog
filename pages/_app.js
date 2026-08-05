@@ -1,24 +1,13 @@
-// 📁 저장 위치: D:\banjang-blog\banjang-blog\pages\_app.js
+// pages/_app.js
+// StoreProvider로 전체 앱 wrap
+// 기존 _app.js가 있다면 StoreProvider만 추가하세요
 
-export default function App({ Component, pageProps }) {
+import { StoreProvider } from '../contexts/StoreContext';
+
+export default function MyApp({ Component, pageProps }) {
   return (
-    <>
-      <style>{`
-        * { box-sizing: border-box; }
-        button:focus,
-        button:focus-visible,
-        button:active {
-          outline: none !important;
-        }
-        input:focus,
-        textarea:focus {
-          outline: none !important;
-        }
-        button {
-          -webkit-tap-highlight-color: transparent;
-        }
-      `}</style>
+    <StoreProvider>
       <Component {...pageProps} />
-    </>
+    </StoreProvider>
   );
 }

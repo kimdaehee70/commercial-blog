@@ -74,17 +74,24 @@ import {
 } from "./generateUtils";
 // 🛡️ 과별 침투 차단 (v1.0) — 16개 업종 정체성 토큰 자동 차단
 import { getCrossBlocks } from "../../lib/industryBlocks";
+// 📍 [SOP v4.2 PATCH-07] 위치 공통 모듈 — 후단 1줄 삽입 전용 (narrative 무관)
+import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
+import { insertVisitBeforeHashtags } from "../../lib/visitBlock.js";       // VISIT-01
 
 // ============================================================
 // 0. 금지 키워드 (FORBIDDEN)
 // ============================================================
 const ORIENTAL_FORBIDDEN_BASE = [
   // 광고성
-  "중요합니다", "확인하세요", "추천드립니다", "최고의", "검증된 의료진",
+  // ⚠️ [BUGFIX·축A] "중요합니다"/"확인하세요" 등 서술어는 ""로 삭제 금지 —
+  //    "매우 중요합니다." → "매우." 문장 파손 발생. 아래 SAFE_REPLACE에서 치환 처리.
+  "추천드립니다", "최고의", "검증된 의료진",
   "완전 대박", "인생 시술", "후회 제로", "강력 추천", "베스트",
   // AI 투
   "결론적으로", "따라서", "이와 같이", "정리하면", "앞서 언급한",
-  "해당 시술", "이 방법",
+  // ⚠️ [축A2] "해당 시술"/"이 방법" 삭제 항목 제거 —
+  //    "이 방법이 결정되는 기준은" → "이 결정되는 기준은" 파손 유발.
+  //    → runOrientalSafeReplace / 헤더 정규화에서 처리.
   // ⚠️ "이 치료가/를/은"은 빈 문자열로 제거하면 조사 깨짐 발생
   //    예: "이 치료를 통해" → " 통해" / "이 치료의 필요" → 문장 와해
   //    → 헤더 정규화(아래)에서 치료명으로 치환 + 본문 정규화 블록에서 안전 보정 처리
@@ -114,23 +121,28 @@ const ORIENTAL_FORBIDDEN_AI = [
 
 const ORIENTAL_FORBIDDEN_COMMERCIAL = [
   // ── 1인칭 시점 ──
-  "저는 ", "제가 ", "내가 ", "나는 ", "저도 ",
+  // ⚠️ [BUGFIX] "나는 " / "내가 " 등 문자열 삭제 금지 —
+  //    "흔히 나타나는 문제" → "나는 " 매칭 → "흔히 나타문제" 파손 발생.
+  //    1인칭은 아래 ORIENTAL_FIRST_PERSON_RE(경계 포함 regex)로만 처리한다.
   "받아봤어요", "받았어요", "받고 나서", "받았더니",
   "느꼈어요", "느꼈다", "느껴졌다",
-  "결심했어요", "결정했어요", "고민했어요", "고민하다",
+  "결심했어요", "결정했어요", "고민했어요",
   "맞아봤어요", "맞았어요",
   // ── 효과 단정 ──
   "좋아졌어요", "좋아졌다", "또렷해졌어요", "또렷해졌다",
   "만족합니다", "만족했어요", "만족했다", "마음에 들었어요",
-  "잘 됐어요", "잘됐다", "결과가 좋", "결과가 마음에",
-  "확실히 좋", "확실히 효과", "확실히 잘", "분명히 좋",
+  "잘 됐어요", "잘됐다",
+  // ⚠️ [축A2] "결과가 좋"/"결과가 마음에" 어간 절단형 삭제 제거.
+  // ⚠️ [축A2] 어간 절단형("확실히 좋"/"분명히 좋") 삭제 제거 — 조사 고아 유발.
+  //    → runOrientalSafeReplace 1-A 에서 문맥 보존 치환.
   "완치", "100%", "반드시 효과", "효과 보장",
   // ── 추천·유도 ──
+  // ⚠️ [BUGFIX] "도움이 됩니다" 등 서술어를 ""로 삭제하면 문장이 잘림
+  //    ("참고하면 도움이 됩니다." → "참고하면 .") → 아래 SAFE_REPLACE에서 치환 처리.
   "추천합니다", "추천해요", "추천드립니다", "추천드려요",
   "꼭 받으세요", "꼭 한 번", "꼭 받아보세요",
   "상담 받아보세요", "상담받아보세요", "상담 받아 보세요",
   "받아보시길", "받아보시는 걸",
-  "도움이 됩니다", "도움 됩니다", "도움이 될 거",
   // ── 환자 유인 ──
   "실비 적용", "실비로 거의", "실손 보험", "본인부담 없음",
   "할인 이벤트", "프로모션", "특가",
@@ -309,6 +321,223 @@ function buildOrientalHashtags(treatmentName, region, mode) {
 }
 
 // ============================================================
+// [축A2] 후처리 책임 분리 — SafeReplace / RemoveList / RepairGuard
+//   FORBIDDEN_*  = 완전 삭제 전용 (문장 파손 없는 토큰만)
+//   SAFE_REPLACE = 문맥 보존 치환 (서술어·어간형 전부 여기)
+//   REPAIR_GUARD = 삭제 후 잔해 복구 (공백 정리는 최후단)
+//   ⚠️ 실행 순서 고정: runOrientalSafeReplace → removeList → repairOrientalText
+//      순서 변경 금지. 삭제 후에는 치환 대상이 이미 소실됨.
+// ============================================================
+
+/**
+ * STEP 1 — 안전 치환. 반드시 removeList 삭제보다 먼저 실행.
+ * ⚠️ 이 함수에서 서술어를 빈 문자열("")로 치환 금지. 문장이 끊긴다.
+ */
+function runOrientalSafeReplace(text, treatmentName) {
+  let r = text;
+
+  // ── 1-A. 효과 단정 / 권유형 → 정보형 (삭제 금지) ──────────
+  r = r
+    .replace(/변화를?\s*느끼실?\s*수\s*있을?\s*(거?예요|겁니다)/g, "경과는 진료 시 안내됩니다")
+    .replace(/효과를?\s*보실?\s*수\s*있을?\s*(거?예요|겁니다)/g, "경과는 진료 시 안내됩니다")
+    .replace(/(\d+)%\s*는?\s*(좋아진?|나아진?)\s*것\s*같아요/g, "경과에는 개인차가 있습니다")
+    .replace(/확실히\s*(좋아|효과|잘)/g, "경과는 개인차가 있으")
+    .replace(/분명히\s*좋아/g, "경과는 개인차가 있으")
+    .replace(/마음이\s*놓였(어요|습니다|다)/g, "확인 후 진행합니다")
+    .replace(/혈액\s*순환을?\s*(도와주는?|돕는?)(\s*방법)?/g, "순환 상태를 함께 살피는 방법")
+    .replace(/혈액\s*순환에?\s*도움이?\s*된다?(고|는)?/g, "순환 상태를 함께 살핀다$1")
+    .replace(/특정\s*부위에?\s*집중해서?\s*자극을?\s*줄?\s*수\s*있/g, "부위별로 안내받을 수 있")
+    .replace(/직접적으로?\s*특정\s*부위/g, "필요한 부위")
+    .replace(/근본\s*치료/g, "진료 방향")
+    .replace(/근본적으로?\s*개선/g, "상태를 관리")
+    .replace(/피부\s*상태를?\s*개선/g, "피부 상태를 관리")
+    .replace(/체감\s*변화/g, "변화")
+    .replace(/(안정|회복)되길?\s*기대/g, "경과를 확인")
+    .replace(/호르몬제?\s*없이도?\s*체질\s*개선/g, "비호르몬 방식으로 관리");
+
+  // ── 1-B. "도움" 계열 — ⚠️ 절대 삭제 금지 ("참고하면 ." 파손원) ──
+  //   [축A2-2] 단일 치환어("상담 시 참고됩니다") 남용 → 문맥별 분산 + 수식어 고아 처리.
+  //   ⚠️ 수식어("큰/많은/실질적인") 선소진 필수 — 남으면 "큰 상담 시 참고됩니다" 비문.
+  r = r
+    // ① 수식어 동반형 — 수식어까지 소진
+    .replace(/(큰|많은|실질적인|상당한|적지\s*않은)\s*도움이?\s*(됩니다|될\s*수\s*있습니다|이\s*됩니다)/g, "유용한 참고가 됩니다")
+    .replace(/(큰|많은|실질적인|상당한)\s*도움을?\s*(줍니다|줄\s*수\s*있습니다)/g, "참고 자료가 됩니다")
+    // ② "~에 도움이 됩니다" — 앞 명사구 보존형
+    .replace(/([가-힣]+)에\s*(큰|많은)?\s*도움이?\s*됩니다/g, "$1에 유용합니다")
+    .replace(/([가-힣]+)하는\s*데\s*(큰|많은)?\s*도움이?\s*됩니다/g, "$1하는 데 유용합니다")
+    .replace(/([가-힣]+)하는\s*데\s*(큰|많은)?\s*도움을?\s*줍니다/g, "$1하는 데 유용합니다")
+    // ③ 문두·독립형
+    .replace(/참고하면\s*도움이?\s*됩니다/g, "미리 정리해 두면 상담이 원활합니다")
+    .replace(/도움이?\s*될\s*수\s*있(습니다|어요)/g, "참고가 될 수 있$1")
+    .replace(/도움이?\s*될\s*거?(예요|것\s*같아요)/g, "참고가 될 수 있습니다")
+    .replace(/도움이?\s*되[실길]\s*거?예요/g, "참고가 될 수 있습니다")
+    .replace(/도움을?\s*줄\s*수\s*있(습니다|어요)/g, "참고가 될 수 있$1")
+    .replace(/도움이?\s*됩니다/g, "참고가 됩니다")
+    .replace(/도움\s*됩니다/g, "참고가 됩니다")
+    .replace(/도움을?\s*(줍니다|주며|주고)/g, "참고가 $1");
+
+  // ── 1-C. "중요" 계열 — 부사 고아 방지 위해 부사 포함형 선소진 ──
+  //   ⚠️ [축A2] 기존 "$1 해당합니다" 강제 치환 폐기 — 비문 양산
+  //      ("기록하는 것이 중요합니다" → "기록하는 것이 해당합니다")
+  const ADV = "매우|가장|특히|무엇보다|아주|정말|굉장히|충분히";
+  r = r
+    .replace(new RegExp(`(${ADV})\\s*중요한\\s*(요소|부분|사항|역할|기준|자료|정보|과정|단계)`, "g"), "핵심 $2")
+    .replace(new RegExp(`(${ADV})\\s*중요합니다`, "g"), "핵심 확인 항목입니다")
+    .replace(new RegExp(`(${ADV})\\s*중요하(다|며|고|여|게)`, "g"), "핵심에 해당하$2")
+    .replace(/중요한\s*역할을\s*(합니다|하며|하고|할|하)/g, "주요 기준으로 작용$1")
+    .replace(/중요한\s*(요소|부분|사항|역할|기준|자료|정보|과정|단계)/g, "주요 $1")
+    // [축A2-2] 치환어 분산 — "상담에 참고됩니다" 만능화 방지.
+    //   동사별로 자연스러운 종결을 매핑한다.
+    .replace(/(기록|정리|준비|메모)하는\s*것이\s*중요합니다/g, "$1해 두면 상담이 수월합니다")
+    // ⚠️ 앞에 목적격(을/를)이 있으면 주격 치환 금지 — "상태를 확인이 먼저" 비문 방지
+    .replace(/(을|를)\s*(확인|점검|파악|검토)하는\s*것이\s*중요합니다/g, "$1 먼저 $2해 두는 것이 좋습니다")
+    .replace(/(확인|점검|파악|검토)하는\s*것이\s*중요합니다/g, "$1이 먼저 필요합니다")
+    .replace(/(상담|문의|진료)하는\s*것이\s*중요합니다/g, "$1을 통해 확인하게 됩니다")
+    .replace(/([가-힣]+)하는\s*것이\s*중요합니다/g, "$1하는 과정이 필요합니다")
+    .replace(/([가-힣]+)하는\s*것이\s*중요하(다|며|고)/g, "$1하는 과정이 필요하$2")
+    .replace(/(을|를)\s*파악하는\s*데\s*중요합니다/g, "$1 파악하는 기준이 됩니다")
+    .replace(/데\s*중요합니다/g, "데 기준이 됩니다")
+    .replace(/것이\s*중요합니다/g, "것이 권장됩니다")
+    .replace(/점이\s*중요합니다/g, "점을 확인하게 됩니다")
+    .replace(/(에|에서)\s*중요합니다/g, "$1 확인 대상입니다")
+    // [축B-3] 주격(~이/가) 뒤 "중요합니다" → "확인 대상입니다" 치환은 비문
+    //   ("상담이 확인 대상입니다" / "접근이 확인 대상입니다"). 서술어를 호응형으로 분기.
+    //   ⚠️ 402의 무조건 치환보다 반드시 먼저 소진할 것.
+    .replace(/(상담|진료|검토|확인|관찰|기록|준비)(이|가)\s*중요합니다/g, "$1 과정이 필요합니다")
+    .replace(/([가-힣]{2,10})(이|가)\s*중요합니다/g, "$1$2 주요 요소입니다")
+    .replace(/중요합니다/g, "확인 대상입니다")
+    .replace(/중요하(다|며|고|여|게|지만|므로|기\s*때문에)/g, "주요하$1")
+    .replace(/중요성/g, "필요성")
+    .replace(/확인하세요/g, "확인해 볼 수 있습니다");
+
+  // ── 1-D. 추천·광고형 → 정보형 (⚠️ 1인칭 주입 금지) ──
+  r = r
+    .replace(/추천드리고\s*싶어요|추천하고\s*싶어요/g, "검토해 볼 수 있습니다")
+    .replace(/추천드려요|추천드립니다|추천해요|추천합니다/g, "검토 대상이 됩니다")
+    .replace(/적극\s*추천|강력\s*추천/g, "검토 대상")
+    .replace(/고려해\s*보시는\s*것도\s*([^.!?\n]{0,20}?)(좋|괜찮|도움)([^.!?\n]*)/g, "검토해 볼 수 있습니다")
+    .replace(/고려해\s*보시는\s*것도/g, "함께 검토할 수 있는 항목으로는")
+    .replace(/꼭\s*(한\s*번\s*)?받아보세요/g, "진료 시 상담을 통해 확인할 수 있습니다")
+    .replace(/상담\s*받아\s*보세요|상담받아보세요/g, "진료 시 상담을 통해 확인할 수 있습니다")
+    .replace(/합리적인\s*(비용|가격)/g, "비용은 진료 시 안내")
+    .replace(/친절한\s*상담/g, "상담")
+    .replace(/친절하고\s*전문적/g, "차분하게 안내")
+    .replace(/원장님이\s*친절하/g, "원장님이 차근차근 안내해주")
+    .replace(/친절하(셨어요|셨고|셨습니다)/g, "차근차근 안내해주$1")
+    .replace(/세심(한|하게)\s*설명/g, "차근차근 설명")
+    .replace(/자연스러운\s*방법/g, "비수술적 방법")
+    .replace(/자연\s*치유의?\s*힘/g, "신체 회복 과정")
+    .replace(/비슷한\s*고민이라면\s*한의원\s*상담[^.!?]*(도움이?\s*됩니다|참고가?\s*됩니다)\.?/g, "")
+    .replace(/비슷한\s*상황이라면\s*참고가?\s*될\s*수\s*있어요\.?/g, "")
+    .replace(/\*\*이런\s*분들께\s*추천\*\*[\s\S]*?(?=\n\n|$)/g, "")
+    .replace(/이런\s*분들께\s*추천\s*\n[\s\S]*?(?=\n\n|$)/g, "")
+    .replace(/고민하다가/g, "검토 과정에서")
+    .replace(/고민하다/g, "검토하다");
+
+  // ── 1-E. "체질 개선" 빈도 제어 (2회 초과분만 축약) ──
+  {
+    const ce = /체질\s*개선/g;
+    if ((r.match(ce) || []).length > 2) {
+      let cnt = 0;
+      r = r.replace(ce, (m) => (++cnt <= 2 ? m : (cnt % 2 === 0 ? "관리" : m)));
+    }
+  }
+
+  return r;
+}
+
+/**
+ * STEP 3 — 복구 가드. removeList 삭제 이후에만 실행.
+ * ⚠️ 공백 정리(" ." → ".")는 반드시 복구 패턴 '뒤'에 온다.
+ *    앞에 두면 파손 문장이 정상 문장처럼 위장되어 오치환된다.
+ */
+function repairOrientalText(text) {
+  let r = text;
+
+  // ① 1인칭 — 경계 regex 로만 제거 (단어 내부 절단 방지)
+  //    문자열 blocklist "나는 " 사용 금지 → "나타나는 문제" 파손 재발
+  const FIRST_PERSON_RE = /(^|[\s.,!?"'()\n])(저는|제가|내가|나는|저도|저희는|저처럼)\s+/g;
+  r = r.replace(FIRST_PERSON_RE, "$1");
+
+  // ② 삭제로 어절이 붙은 경우 분리 ("상담이루어질" → "상담이 이루어질")
+  r = r
+    .replace(/([은는이가을를])(이루어|진행되|필요하|가능하|권장되|안내되|적용되|고려되|작용하|해당하)/g, "$1 $2")
+    .replace(/([가-힣])(가능할|가능한|가능합니다|가능하며)(?=[\s.,!?]|$)/g, "$1 $2");
+
+  // ③ 서술어 소실 문장 복구 — ⚠️ 공백 정리 '전'에 수행
+  r = r
+    .replace(/(매우|가장|특히|무엇보다|아주|정말|굉장히|충분히)\s*\.(?=\s|$)/g, "확인이 필요합니다.")
+    .replace(/(참고하면|정리해\s*두면|기록하면)\s*\.(?=\s|$)/g, "$1 상담이 원활합니다.")
+    .replace(/([은는이가])\s*\.(?=\s|$)/g, "$1 확인 대상입니다.")
+    .replace(/([을를])\s*\.(?=\s|$)/g, "$1 확인하게 됩니다.")
+    .replace(/([의에서로과와도])\s*\.(?=\s|$)/g, "$1 관련된 사항입니다.")
+    .replace(/(^|\s)(데|것이|점이|바가)\s*\.(?=\s|$)/g, "$1$2 참고됩니다.");
+
+  // ④ 술어부 소실 복구 ("한방피부질환치료가 정보를" 유형)
+  r = r.replace(/([가-힣]{2,}(?:치료|요법|진료|한약))(이|가)\s+(정보|내용|사항)를\s+/g, "$1 관련 $3를 ");
+
+  // ⑤ [축A2-3] 치환어 반복 완화 — ⚠️ 호응 안전형만 회전.
+  //   교훈: 종결형을 앞 문맥(조사·의존명사) 무시하고 교체하면 새 비문 발생.
+  //         ("정리해 두는 것이 확인해 볼 수 있습니다" / "~하는 데 판단 기준으로 쓰입니다")
+  //   원칙: 앞 문맥이 무엇이든 붙을 수 있는 '독립 서술어'만 회전 대상.
+  //         조사 호응이 필요한 표현은 회전 금지.
+  {
+    // 앞 문맥 패턴별로 안전한 서술어만 배정
+    const SAFE_ROTATE = [
+      // "~것이 X" — 주격 뒤 안전형
+      [/것이\s*참고가\s*됩니다/g,        ["것이 좋습니다", "것이 권장됩니다", "것이 도움 되는 준비입니다"]],
+      [/것이\s*확인해\s*볼\s*수\s*있습니다/g, ["것이 좋습니다", "것이 권장됩니다"]],
+      [/것이\s*유용합니다/g,              ["것이 좋습니다", "것이 권장됩니다"]],
+      [/것이\s*판단\s*기준으로\s*쓰입니다/g, ["것이 좋습니다", "것이 권장됩니다"]],
+      [/것이\s*기준이\s*됩니다/g,        ["것이 좋습니다", "것이 권장됩니다"]],
+      [/것이\s*진료\s*시\s*살펴봅니다/g, ["것이 좋습니다", "것이 권장됩니다"]],
+      [/것이\s*함께\s*확인하게\s*됩니다/g, ["것이 좋습니다", "것이 권장됩니다"]],
+      [/것이\s*확인\s*대상입니다/g,      ["것이 좋습니다", "것이 권장됩니다"]],
+      // "~데 X" — 의존명사 뒤 안전형
+      [/데\s*참고가\s*될\s*수\s*있습니다/g, ["데 활용됩니다", "데 쓰입니다", "데 반영됩니다"]],
+      [/데\s*판단\s*기준으로\s*쓰입니다/g, ["데 활용됩니다", "데 쓰입니다"]],
+      [/데\s*참고가\s*됩니다/g,          ["데 활용됩니다", "데 쓰입니다"]],
+      [/데\s*확인해\s*두면\s*좋습니다/g, ["데 활용됩니다", "데 쓰입니다"]],
+      [/데\s*확인\s*대상입니다/g,        ["데 활용됩니다", "데 쓰입니다"]],
+      [/데\s*진료\s*시\s*함께\s*살펴봅니다/g, ["데 활용됩니다", "데 쓰입니다"]],
+    ];
+    SAFE_ROTATE.forEach(([re, pool]) => {
+      let n = 0;
+      r = r.replace(re, () => pool[n++ % pool.length]);
+    });
+
+    // 독립 문장 종결형만 회전 (앞이 조사/의존명사가 아닌 경우)
+    // [축B-3] 룩비하인드 확장 — 앞이 주격/목적격 조사면 회전 금지.
+    //   "접근이 함께 확인하게 됩니다" / "상담이 진료 시 살펴봅니다" 비문 차단.
+    //   기존 (?<![것데]) 는 의존명사만 배제 → 조사(이가은는을를) 뒤 파손이 누출됨.
+    const INDEP = [
+      [/(?<![것데이가은는을를])\s참고가\s*됩니다/g, [" 참고가 됩니다", " 확인해 두면 좋습니다", " 진료 시 함께 살펴봅니다"]],
+      [/(?<![것데이가은는을를])\s확인\s*대상입니다/g, [" 확인 대상입니다", " 함께 확인하게 됩니다", " 진료 시 살펴봅니다"]],
+    ];
+    INDEP.forEach(([re, pool]) => {
+      let n = 0;
+      r = r.replace(re, () => pool[n++ % pool.length]);
+    });
+  }
+
+  // ⑥ 공백·부호 정리 — ⚠️ 반드시 최후단
+  r = r
+    .replace(/\s+([.,!?])/g, "$1")
+    .replace(/([가-힣])\s*\.\s*\n/g, "$1.\n")
+    .replace(/(^|\n)\s*[.,!?]\s*/g, "$1")
+    // ⚠️ [축A2·진범] 조사 중첩 제거 규칙 수정.
+    //    기존: /([은는이가을를의에])\s+\1(?=[\s가-힣])/ → "$1"
+    //    파손: "상담이 이루어질" → 조사"이"+공백+"이"루어 로 오인 → "상담이루어질"
+    //          "진료가 가능할" → "진료가능할"
+    //    수정: 뒤 글자가 조사 단독(공백/부호로 끝남)일 때만 중첩으로 판정.
+    .replace(/([은는가을를의에])\s+\1(?=[\s.,!?)]|$)/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n");
+
+  return r;
+}
+
+// ============================================================
 // 5. 본문 정제 (mode 분기) — clinic v3.4 후처리 로직 완전 이식
 // ============================================================
 function cleanOrientalText(text, treatmentName, region, mode = "personal") {
@@ -342,95 +571,27 @@ function cleanOrientalText(text, treatmentName, region, mode = "personal") {
   // [v1.2 톤 패치] prompts v1.2 + 잔존 표현 후처리
   //   사유: prompts에서 차단해도 GPT가 변형으로 출력 → cleanText 재차 차단
   // ─────────────────────────────────────────────────────
-  result = result
-    // "변화를 느끼실 수 있을" / "효과를 보실 수 있을" 권유형 효과 단정
-    .replace(/변화를?\s*느끼실?\s*수\s*있을?\s*거?예요/g, "보통 5~7회 정도 다닌다고 해요")
-    .replace(/변화를?\s*느끼실?\s*수\s*있을?\s*겁니다/g, "보통 5~7회 정도 다닌다고 해요")
-    .replace(/효과를?\s*보실?\s*수\s*있을?\s*거?예요/g, "보통 5~7회 정도 다닌다고 해요")
-    .replace(/효과를?\s*보실?\s*수\s*있을?\s*겁니다/g, "보통 5~7회 정도 다닌다고 해요")
-    // 치료 원리/효과 설명문 — 광고형
-    .replace(/혈액\s*순환을?\s*도와주는?(\s*방법)?/g, "")
-    .replace(/혈액\s*순환을?\s*돕는?(\s*방법)?/g, "")
-    .replace(/혈액\s*순환에?\s*도움이?\s*된다?(고|는)?/g, "")
-    .replace(/특정\s*부위에?\s*집중해서?\s*자극을?\s*줄?\s*수\s*있/g, "부위별로 안내받")
-    .replace(/직접적으로?\s*특정\s*부위/g, "필요한 부위")
-    .replace(/근본\s*치료/g, "")
-    .replace(/근본적으로?\s*개선/g, "")
-    .replace(/피부\s*상태를?\s*개선/g, "피부 관리를 이어")
-    // "도움이 될 수 있어요" / "도움이 됩니다" 권유 잔존
-    .replace(/도움이?\s*될\s*수\s*있어요/g, "")
-    .replace(/도움이?\s*됩니다/g, "")
-    .replace(/도움\s*됩니다/g, "")
-    .replace(/도움이?\s*되[실길]\s*거?예요/g, "")
-    // "체감 변화" / "안정되길 기대" 잔존
-    .replace(/체감\s*변화/g, "변화")
-    .replace(/안정되길?\s*기대/g, "지켜보고 있어")
-    .replace(/회복되길?\s*기대/g, "지켜보고 있어")
-    // "비슷한 고민이라면 ~" CTA 자동삽입 잔존
-    .replace(/비슷한\s*고민이라면\s*한의원\s*상담[^.!?]*도움이?\s*됩니다\.?/g, "")
-    .replace(/비슷한\s*상황이라면\s*참고가?\s*될\s*수\s*있어요\.?/g, "")
-    // "이런 분들께 추천" 헤더 + 그 아래 항목 (폴백 — 외부 코드 제거됐지만 안전망)
-    .replace(/\*\*이런\s*분들께\s*추천\*\*[\s\S]*?(?=\n\n|$)/g, "")
-    .replace(/이런\s*분들께\s*추천\s*\n[\s\S]*?(?=\n\n|$)/g, "");
+  // ═════════════════════════════════════════════════════
+  // [축A2] 후처리 3단 분리 — 치환 → 삭제 → 복구
+  //   원칙: 서술어·어간형은 절대 ""로 삭제하지 않는다(문장 파손).
+  //         삭제는 완전 토큰만. 문맥 보존이 필요하면 SafeReplace.
+  //   ⚠️ 순서 변경 금지. 삭제 후에는 치환 대상이 이미 소실됨.
+  // ═════════════════════════════════════════════════════
 
-  // ─────────────────────────────────────────────────────
-  // [v1.1 톤 패치] 추천형·광고형·단정형 표현 — 모드 무관 강제 차단
-  //   사유: oriental은 한의원 광고 톤이 강해 personal 모드에서도 제거 필요
-  //   원칙: 후기형 단어로 약화. 의료광고법 민감 표현 우선 차단.
-  // ─────────────────────────────────────────────────────
-  result = result
-    // 추천·권유 표현 — 후기형으로 약화
-    .replace(/추천드려요|추천드립니다|추천해요|추천합니다/g, "참고가 됐어요")
-    .replace(/추천드리고\s*싶어요|추천하고\s*싶어요/g, "참고가 됐어요")
-    .replace(/고려해\s*보시는\s*것도\s*([^.!?\n]{0,20}?)(좋|괜찮|도움)([^.!?\n]*)/g, "저는 알아보길 잘했다 싶었어요")
-    .replace(/고려해\s*보시는\s*것도/g, "저처럼 알아보셔도")
-    .replace(/도움이\s*될\s*거예요|도움이\s*될\s*것\s*같아요|도움이\s*되실\s*거예요/g, "참고가 되실 것 같아요")
-    .replace(/도움이\s*됩니다|도움\s*됩니다/g, "참고가 됩니다")
-    .replace(/꼭\s*받아보세요|꼭\s*한\s*번\s*받아보세요/g, "")
-    .replace(/상담\s*받아보세요|상담받아보세요/g, "")
-    // 광고형 형용사 — 약화 또는 삭제
-    .replace(/합리적인\s*비용/g, "비용 부담은 덜한 편")
-    .replace(/합리적인\s*가격/g, "비용 부담은 덜한 편")
-    .replace(/친절한\s*상담/g, "차분한 상담")
-    .replace(/친절하고\s*전문적/g, "차분하게 안내")
-    .replace(/친절하셨어요|친절하셨고|친절하셨습니다/g, "차근차근 안내해주셨어요")
-    .replace(/원장님이\s*친절하/g, "원장님이 차근차근 안내해주")
-    .replace(/세심한\s*설명|세심하게\s*설명/g, "차근차근 설명")
-    .replace(/자연스러운\s*방법/g, "비수술적 방법")
-    .replace(/자연\s*치유의?\s*힘/g, "")
-    // "체질 개선" 빈도 제어 — 2회 초과 시 일부 축약
-    ;
+  // ── STEP 1. 안전 치환 (문맥 보존) ──────────────────────
+  result = runOrientalSafeReplace(result, treatmentName);
+
+  // ── STEP 2. 삭제 (완전 토큰 전용) ─────────────────────
   {
-    const ce = /체질\s*개선/g;
-    const ceMatches = result.match(ce) || [];
-    if (ceMatches.length > 2) {
-      let cnt = 0;
-      result = result.replace(ce, (m) => {
-        cnt++;
-        // 1, 2, 마지막은 유지 — 중간만 축약
-        if (cnt <= 2) return m;
-        return cnt % 2 === 0 ? "관리" : m;
-      });
-    }
+    const removeList = [...ORIENTAL_FORBIDDEN_BASE, ...ORIENTAL_FORBIDDEN_AI, ...ORIENTAL_CROSS_BLOCK];
+    if (mode === "commercial") removeList.push(...ORIENTAL_FORBIDDEN_COMMERCIAL);
+    removeList.forEach(w => {
+      result = result.replace(new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "");
+    });
   }
-  // 단정·과장형 약화
-  result = result
-    .replace(/(\d+)%\s*는?\s*좋아진?\s*것\s*같아요/g, "전보다 한결 편해진 것 같아요")
-    .replace(/(\d+)%\s*는?\s*나아진?\s*것\s*같아요/g, "전보다 한결 편해진 것 같아요")
-    .replace(/확실히\s*좋아|확실히\s*효과|확실히\s*잘/g, "전보다 편해")
-    .replace(/분명히\s*좋아/g, "전보다 편해")
-    .replace(/마음이\s*놓였(어요|습니다|다)/g, "걱정이 줄었$1")
-    // "호르몬제 없이 체질 개선" 비교 우위형 → 정보형
-    .replace(/호르몬제?\s*없이\s*체질\s*개선/g, "비호르몬 방식으로 관리")
-    .replace(/호르몬제?\s*없이도\s*체질\s*개선/g, "비호르몬 방식으로도 관리");
 
-  // 공통: 기본 + AI 냄새 금지어
-  const removeList = [...ORIENTAL_FORBIDDEN_BASE, ...ORIENTAL_FORBIDDEN_AI, ...ORIENTAL_CROSS_BLOCK];
-  if (mode === "commercial") removeList.push(...ORIENTAL_FORBIDDEN_COMMERCIAL);
-
-  removeList.forEach(w => {
-    result = result.replace(new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "");
-  });
+  // ── STEP 3. 복구 가드 (파손 흔적 정리) ─────────────────
+  result = repairOrientalText(result);
 
   // 조사 오류 교정 (한의원 치료명 + 잘못된 조사)
   result = result
@@ -580,6 +741,124 @@ function cleanOrientalText(text, treatmentName, region, mode = "personal") {
     // [4] 후기형 어미 → 안내형 어미
     result = result.replace(/받았다\b/g, "진행된다");
     result = result.replace(/받았습니다\b/g, "진행됩니다");
+
+    // ───────────────────────────────────────────────────
+    // [V2-I] 정보형 후처리 — 조사/종결/placeholder/키워드조사 (commercial 전용)
+    //   원인: 후기형(personal) 문법보정([W]~[Z])이 정보형 종결("~것이")·
+    //         받침 있는 치료명 조사("침치료은")를 못 잡음. V2 전용 보정 신설.
+    // ───────────────────────────────────────────────────
+    {
+      // 받침 판정 (한글 종성 유무) — 조사 자동 선택
+      const _lastCh = treatmentName.trim().slice(-1);
+      const _code = _lastCh.charCodeAt(0);
+      const _hasJong = _code >= 0xAC00 && _code <= 0xD7A3 && ((_code - 0xAC00) % 28) !== 0;
+      const J = {
+        eun: _hasJong ? "은" : "는",
+        i:   _hasJong ? "이" : "가",
+        eul: _hasJong ? "을" : "를",
+      };
+      const tnE = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      // ① 받침 조사 오류 — "침치료은/이 외에도" 등
+      result = result
+        .replace(new RegExp(`${tnE}은(?=[\\s,.])`, "g"), `${treatmentName}${J.eun}`)
+        .replace(new RegExp(`${tnE}는(?=[\\s,.])`, "g"), `${treatmentName}${J.eun}`)
+        .replace(new RegExp(`${tnE}이\\s*외(에도|에|\\b)`, "g"), `${treatmentName} 외$1`)
+        .replace(new RegExp(`${tnE}가\\s*외(에도|에|\\b)`, "g"), `${treatmentName} 외$1`)
+        .replace(new RegExp(`${tnE}이(?=\\s)`, "g"), `${treatmentName}${J.i}`)
+        .replace(new RegExp(`${tnE}가(?=\\s)`, "g"), `${treatmentName}${J.i}`)
+        .replace(new RegExp(`${tnE}을(?=\\s)`, "g"), `${treatmentName}${J.eul}`)
+        .replace(new RegExp(`${tnE}를(?=\\s)`, "g"), `${treatmentName}${J.eul}`);
+
+      // ② 키워드+속격 부자연 — "침치료의 단계/과정" → 문맥 자연 치환
+      //   [v3.9.3] 속격("의")이 명시된 경우만 치환. "체외충격파치료 과정"처럼
+      //   조사 없는 정상 표현은 키워드 소실 방지 위해 유지 (의? → 의 로 축소).
+      result = result
+        .replace(new RegExp(`${tnE}의\\s*단계에서는`, "g"), "초진 상담 단계에서는")
+        .replace(new RegExp(`${tnE}의\\s*단계`, "g"), "이 단계")
+        .replace(new RegExp(`${tnE}의\\s*과정에서는`, "g"), "진료 과정에서는")
+        .replace(new RegExp(`${tnE}의\\s*과정`, "g"), "진료 과정");
+
+      // ③ Placeholder 정리 — "해당 치료" → "이 치료" 통일
+      result = result.replace(/해당\s*치료/g, "이 치료");
+
+      // ③-b "이 치료" placeholder 자체의 잘못된 조사 (GPT가 직접 부착)
+      //   "이 치료" = 받침 없음(료) → 이/가·을/를이 아니라 가·를. 잘못된 이/을 보정.
+      result = result
+        // "이 치료이 요소/정도/수준/상태" 관형 오결합 먼저 → "이런 요소"
+        .replace(/이\s*치료이\s*(요소|정도|수준|상태)/g, "이런 $1")
+        .replace(/이\s*치료을(?=\s)/g, "이 치료를")
+        // 나머지 "이 치료이 [명사]" → "이 치료가 [명사]"
+        .replace(/이\s*치료이(?=\s)/g, "이 치료가");
+
+      // ⑤ "보다" 오치환 제거 — kwDensityGuide 잔여 "이 치료보다/한약처방보다"
+      //   비교 의미 아님(밀도치환 부산물) → "보다" 삭제, 자연 연결
+      //   [v3.9.3] 접미어=치료 키워드는 키워드 자체 소실 방지: "보다"만 제거하고
+      //            키워드는 보존 (예: "체외충격파치료보다 효과적" → "체외충격파치료로 효과적"
+      //            이 아니라, 밀도 부산물이 아닐 수 있으므로 "보다"만 떼어 자연 연결).
+      //   [v3.9.3] 접미어=치료 키워드는 이 라인 건너뜀 — 완전 키워드를 밀도
+      //            부산물로 오인해 통째 삭제하는 것 방지 (원문 "{kw}보다" 보존).
+      //            placeholder "이 치료보다"만 공통 처리(밀도 부산물 확정).
+      //   [축A2-4] ⚠️ 위 /치료$/ 가드가 "면역한방치료보다" 를 통째로 스킵 →
+      //            GPT 직생성 오부착("건강 상태를 면역한방치료보다 정확히")이 그대로 누출.
+      //   [축A2-6] 화이트리스트(정확|원활|…) 방식은 어휘 누락에 취약
+      //            ("소화기한방치료보다 건강한/알맞은" 재발) → 형태 판정으로 전환.
+      //            정보형 글에서 키워드 비교급은 성립하지 않음 → "{kw}보다" 뒤가
+      //            관형형/부사형이면 전량 비교부사 "보다"로 복구.
+      //   뒤 형태: ~한/~은/~ㄴ/~운/~적인/~게/~히/~이 + 공백 (수식어 자리)
+      const CMP_TAIL = "(?:[가-힣]{1,6}(?:한|은|는|운|던|적인|스러운)|[가-힣]{1,6}(?:하게|스럽게|게|히|이))\\s";
+      result = result
+        .replace(new RegExp(`${tnE}보다\\s+(?=${CMP_TAIL})`, "g"), "보다 ")
+        .replace(new RegExp(`이\\s*(?:치료|요법|진료)보다\\s+(?=${CMP_TAIL})`, "g"), "보다 ");
+
+      if (!/치료$/.test(treatmentName)) {
+        result = result
+          .replace(new RegExp(`${tnE}보다\\s*(효과적|나은|정확한|구체적)`, "g"), "$1")
+          .replace(new RegExp(`${tnE}보다\\s+`, "g"), "");
+      }
+      result = result
+        .replace(/이\s*치료보다\s*(효과적|나은|정확한|구체적)/g, "$1")
+        .replace(/이\s*치료보다\s+/g, "");
+
+      // ⑥ 쉼표 오류 — "됩니다.," / "습니다.," (종결 뒤 쉼표) 정리
+      result = result
+        .replace(/(습니다|됩니다|합니다|입니다)\s*\.\s*,/g, "$1.")
+        .replace(/([다요])\s*\.\s*,\s*/g, "$1. ");
+
+      // ④ 종결어미 복구 — 정보형 "~것이." 계열 미완성 종결 보정
+      result = result
+        .replace(/(는|하는|이해하는|확인하는|점검하는|기록하는|준비하는|결정하는|찾는|세우는)\s*것이\s*\.(?=\s|$)/g, "$1 것이 좋습니다.")
+        .replace(/(는|하는)\s*것이\s*\.(?=\s|$)/g, "$1 것이 좋습니다.")
+        .replace(/것이\s*\.(?=\s|$)/g, "것이 좋습니다.")
+        .replace(/상담이\s*\.(?=\s|$)/g, "상담이 필요합니다.")
+        // "줄이는 데." / "하는 데." 종결 누락 → "데 도움이 됩니다."
+        //   [v3.9.3] 화이트리스트 확장: 세우는/잡는/짜는/만드는/찾는
+        .replace(/(줄이는|늘리는|하는|받는|세우는|잡는|짜는|만드는|찾는)\s*데\s*\.(?=\s|$)/g, "$1 데 도움이 됩니다.")
+        // [v3.9.3] "데 큰." — 형용사(큰/작은/많은) 뒤 명사 유실 종결 복구
+        //   예: "계획하는 데 큰." → "계획하는 데 큰 도움이 됩니다."
+        .replace(/\s*데\s+(큰|많은|적지\s*않은)\s*\.(?=\s|$)/g, " 데 $1 도움이 됩니다.")
+        // [v3.9.3+] "수립에 큰." — 명사+조사(에/의) 뒤 형용사만 남고 명사 유실
+        //   예: "치료 계획 수립에 큰." → "…수립에 큰 도움이 됩니다."
+        //   (선행 "데 X." 미매치분 포착 — 668 "~에." 일반 종결보다 먼저 실행)
+        .replace(/([가-힣]{2,}[에의])\s+(큰|많은|적지\s*않은)\s*\.(?=\s|$)/g, "$1 $2 도움이 됩니다.")
+        // "수립에." / "계획에." 명사+에 종결 누락
+        .replace(/([가-힣]{2,})에\s*\.(?=\s|$)/g, "$1에 도움이 됩니다.")
+        .replace(/([가-힣])이\s*\.(?=\s|$)/g, "$1이 필요합니다.")
+        // [v3.9.3] 콜론 앞 미완성 종결 — "확인하는 것이 :" → "확인하는 것이 좋습니다:"
+        //   불릿/목록 도입부에서 서술어 유실 후 콜론만 남은 경우
+        .replace(/(것이|것은|사항이|항목이)\s*:(?=\s|$)/g, "$1 좋습니다:")
+        // 콜론 앞 잉여 공백 정리 (도입부 외 일반)
+        .replace(/([가-힣])\s+:(?=\s|$)/g, "$1:");
+
+      // ⑧ 치료명+치료 중복 — "산후한방치료가 치료를 제공" → "치료를 제공"
+      result = result
+        .replace(new RegExp(`${tnE}(이|가)\\s*치료(를|을)\\s*(제공|진행|안내)`, "g"), "치료$2 $3")
+        .replace(new RegExp(`${tnE}\\s*치료(를|을|가|이|는|은)(?=\\s)`, "g"), `${treatmentName}$1`);
+
+      // ⑨ 주체 오류 — "이 치료는 ~판단하여 진행" (치료가 판단 주체) → 의료진 주체
+      result = result
+        .replace(/이\s*치료는\s*(개인의\s*)?[가-힣\s·]*?(종합적으로\s*)?판단하여\s*진행됩니다/g, "$1건강 상태를 바탕으로 의료진이 판단하여 진행됩니다");
+    }
   }
 
   // ─────────────────────────────────────────────────────
@@ -630,26 +909,35 @@ function cleanOrientalText(text, treatmentName, region, mode = "personal") {
   //   원칙: 4회까지 그대로 유지 후 최대 6회 "이 치료"로 축약
   {
     const kwRegex = new RegExp(tnEsc, "g");
-    const MAX_REPLACEMENTS = 6;
+    // [V2] commercial(정보형)은 프롬프트가 밀도 제어 → placeholder 남발 방지 위해 완화
+    //   personal: 4회 유지 후 최대 6회 치환 (기존)
+    //   commercial: 6회 유지 후 최대 3회만 치환
+    const KEEP = mode === "commercial" ? 6 : 4;
+    const MAX_REPLACEMENTS = mode === "commercial" ? 3 : 6;
     let count = 0;
     let replaced = 0;
     result = result.replace(kwRegex, (m) => {
       count++;
-      if (count <= 4) return m;
+      if (count <= KEEP) return m;
       if (replaced >= MAX_REPLACEMENTS) return m;
       replaced++;
       return "이 치료";
     });
   }
 
-  // [X-Min] 치료명 노출 최소 보장 — 5회 미만이면 "이 치료" 일부 → 치료명 역치환
-  {
+  // [X-Min] 치료명 노출 최소 보장 — 임계 미만이면 "이 치료" 일부 → 치료명 역치환
+  //   ⚠️ [축A2-3] commercial 비활성화 — 후단 [X-Fix]가 이미 전량 역치환을 담당.
+  //      중복 실행 시 문장 앞에 치료명이 덧붙는 파손 발생
+  //      ("한방피부질환치료가 지역의 이 치료는 …").
+  //      personal(후기형)만 유지.
+  if (mode !== "commercial") {
+    const MIN_KW = 5;
     const tnCount = (result.match(new RegExp(tnEsc, "g")) || []).length;
-    if (tnCount < 5) {
-      const need = 5 - tnCount;
+    if (tnCount < MIN_KW) {
+      const need = MIN_KW - tnCount;
       let restored = 0;
       const candEsc = "이\\s*치료";
-      const re = new RegExp(`([.!?]\\s+|^|\\n)${candEsc}(\\s+[가-힣])`, "g");
+      const re = new RegExp(`([.!?]\\s+|^|\\n)${candEsc}(\\s+[가-힣]|의\\s+[가-힣]|를\\s+[가-힣])`, "g");
       result = result.replace(re, (m, p1, p2) => {
         if (restored >= need) return m;
         restored++;
@@ -678,7 +966,8 @@ function cleanOrientalText(text, treatmentName, region, mode = "personal") {
     // ⑥ "이 치료가 + 형용사" 비문
     .replace(/이\s*치료가\s+(만족|적절|중요|필요|좋[으았은])/g, "이 치료는 $1")
     // ⑦ "{치료명}이 + 명사" 비문 직접 처리
-    .replace(new RegExp(`${tnEsc}이\\s+(부분|두\\s*가지|세\\s*가지|덕분|때문)`, "g"), `${treatmentName} $1`)
+    //   [v3.9.3] "정보/자료/내용" 추가 — "한약처방이 정보를" → "한약처방 정보를"
+    .replace(new RegExp(`${tnEsc}이\\s+(부분|두\\s*가지|세\\s*가지|덕분|때문|정보|자료|내용)`, "g"), `${treatmentName} $1`)
     .replace(new RegExp(`${tnEsc}이\\s+(고민들?|장면|모습|결과|문제|이유|효과|방법|상황|경험|선택|순간|이야기|설명|안내|결정|느낌|생각)`, "g"), `${treatmentName}의 $1`)
     // ⑧ 연속 "이 치료 X 이 치료" 정리
     .replace(/(이\s*치료[을를이가은는의로]?\s+){2,}/g, "이 치료 ");
@@ -782,8 +1071,9 @@ function cleanOrientalText(text, treatmentName, region, mode = "personal") {
     result = result.replace(/고려해보세요\.?/g, "");
     result = result.replace(/고려해\s*보세요\.?/g, "");
     result = result.replace(/고려해보시면\s*좋[을습][것니다까요]+\.?/g, "");
-    result = result.replace(/도움이 되길 바랍니다\.?/g, "");
-    result = result.replace(/도움이 됩니다\.?/g, "");
+    // ⚠️ [축A2-3] 서술어 삭제 금지 — "" 치환 시 문장 파손("참고하면 .").
+    //    runOrientalSafeReplace(1-B)에서 이미 문맥 보존 치환 완료 → 여기서는 무처리.
+    result = result.replace(/도움이 되길 바랍니다\.?/g, "참고 바랍니다.");
     result = result.replace(/정말 만족스럽습니다/g, "체감 변화가 있었습니다");
     result = result.replace(/정말 만족했습니다/g, "체감 변화가 있었습니다");
     result = result.replace(/결과가\s*만족스러웠어요\.?/g, "체감 변화가 있었어요.");
@@ -811,6 +1101,120 @@ function cleanOrientalText(text, treatmentName, region, mode = "personal") {
     .replace(/^(\s*-?\s*\d+일차):\s*$/gm, "$1: 자연스러워짐")
     .replace(/^(\s*-?\s*\d+~\d+일차):\s*$/gm, "$1: 자연스러워짐")
     .replace(/^\s*(정말|특히|무엇보다)\s*$/gm, "");
+
+  // ─────────────────────────────────────────────────────
+  // [X-Fix / v3.9] commercial 잔존 "이 치료" placeholder 강제 역치환
+  //   사유: X-Min 역치환(위)이 문장 경계(.!?/\n)만 포착 → 문장 중간
+  //         "이 치료 관련해" / "이 치료에 영향" / "이 치료을 결정" 미포착
+  //   원칙: commercial(정보형)은 placeholder 노출 자체가 부적합 →
+  //         남은 "이 치료 + 조사" 전량 subKw로 환원 (조사 받침 정합 포함)
+  //   ⚠️ personal(후기형)은 placeholder 톤이 자연스러워 유지 (기존 동작)
+  if (mode === "commercial") {
+    const tn = treatmentName;
+    const lastCh = tn.charCodeAt(tn.length - 1);
+    const hasJong = lastCh >= 0xac00 && lastCh <= 0xd7a3
+      ? (lastCh - 0xac00) % 28 !== 0
+      : false;
+    const josaEun = hasJong ? "은" : "는";
+    const josaEul = hasJong ? "을" : "를";
+    const josaI   = hasJong ? "이" : "가";
+    const josaGwaX = hasJong ? "과" : "와";
+    // ⚠️ [축A2] 전량 역치환 금지 — "이 치료가 [명사]"를 치료명으로 되돌리면
+    //    "갱년기한약치료가 시기에" / "~가 요법에서" 같은 비문 발생.
+    //    → 주격/단독 placeholder 뒤에 명사가 직결되면 치환 제외.
+    //    → 남은 "이 치료" placeholder는 정보형에서도 자연스러워 일부 유지.
+    const NOUN_AFTER = "시기|요법|진료|치료|과정|단계|방법|정보|내용|사항|부분|경우|결과|기준|상태|시점|방향";
+    result = result
+      .replace(/이\s*치료(?:은|는)(?=\s|[,.])/g, `${tn}${josaEun}`)
+      .replace(/이\s*치료(?:을|를)(?=\s|[,.])/g, `${tn}${josaEul}`)
+      .replace(new RegExp(`이\\s*치료(?:이|가)(?=\\s+(?!(?:${NOUN_AFTER})))`, "g"), `${tn}${josaI}`)
+      .replace(/이\s*치료의(?=\s)/g, `${tn}의`)
+      .replace(/이\s*치료에(?=\s|[,.])/g, `${tn}에`)
+      .replace(/이\s*치료(?:으로|로)(?=\s|[,.])/g, `${tn}으로`)
+      .replace(/이\s*치료(?:와|과)(?=\s|[,.])/g, `${tn}${josaGwaX}`)
+      .replace(new RegExp(`이\\s*치료(?=\\s+(?!(?:${NOUN_AFTER})))`, "g"), tn);
+  }
+
+  // [X-Fix] "부착해 치료입니다" 동사구 파손 복구
+  //   원인: "부착해 [어혈 제거하는] 치료입니다"의 중간 절 소실 → 비문
+  result = result
+    .replace(/부착해\s*치료입니다/g, "부착하는 방식입니다")
+    .replace(/([가-힣]+)해\s*치료입니다/g, "$1하는 방식입니다")
+    .replace(/([가-힣]+)여\s*치료입니다/g, "$1하는 방식입니다");
+
+  // [X-Fix] 키워드 인접 중복 제거 — "한약처방은 한약처방의 핵심 요소" 계열
+  //   원인: GPT가 subKw를 한 문장에 인접 반복 (은/는 + 의 구조)
+  //   처리: "{kw}은/는 {kw}의" → "{kw}은/는 그" 로 지시어 대체
+  {
+    const tnEsc2 = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    result = result
+      .replace(new RegExp(`(${tnEsc2})(은|는)\\s+${tnEsc2}의`, "g"), "$1$2 그")
+      .replace(new RegExp(`(${tnEsc2})\\s+${tnEsc2}(을|를|은|는|이|가|의)`, "g"), "$1$2");
+  }
+
+  // [X-Fix2 / v3.9.1] subKw 직결 조사 정합 + 문장복구 + 반복완화 + 띄어쓰기
+  {
+    const tn = treatmentName;
+    const tnE = tn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const lastCh = tn.charCodeAt(tn.length - 1);
+    const hasJong = lastCh >= 0xac00 && lastCh <= 0xd7a3
+      ? (lastCh - 0xac00) % 28 !== 0
+      : false;
+    const josaGwa = hasJong ? "과" : "와";   // 과/와
+
+    // ① 조사 오류 — 받침 정합 안 맞는 과/와, 은/는, 을/를, 이/가
+    //    "부항치료과 관련" → "부항치료 관련" (조사 제거가 가장 안전)
+    result = result
+      .replace(new RegExp(`${tnE}과\\s+관련`, "g"), `${tn} 관련`)
+      .replace(new RegExp(`${tnE}와\\s+관련`, "g"), `${tn} 관련`)
+      // 그 외 위치의 과/와 오결합만 정합 교정 (관련 외 명사 앞)
+      .replace(new RegExp(`${tnE}(과|와)(?=\\s)`, "g"), `${tn}${josaGwa}`);
+
+    // ①-b [축A2-5] 주격 오결합 — GPT 직생성 "{kw}이/가 + [비호응 명사]"
+    //     예: "이후 침치료가 정보를 바탕으로" / "추나요법이 흐름의 균형이"
+    //     → 키워드가 주어일 수 없는 자리(뒤 명사가 목적/속격을 이끔). 조사 통째 제거.
+    //     grammarGuide 완화(축A2-4) 이후 GPT가 키워드+조사를 직결하며 발생.
+    //     [축B-3] 시간명사(시기|시점|단계|무렵)는 조사구만 지우면 문두 고립("시기에는 ~") →
+    //     지시어 "이"를 부여해 복원("이 시기에는 ~"). 나머지 BAD_SUBJ는 통째 제거.
+    const BAD_SUBJ = "정보|흐름|자료|내용|균형|결과|과정|기준|요소|방향|계획|상태";
+    const BAD_TIME = "시기|시점|단계|무렵";
+    result = result
+      .replace(new RegExp(`${tnE}(?:이|가|은|는)\\s+(?=(?:${BAD_TIME})(?:에는|에서|에|의|이|가)\\s*)`, "g"), "이 ")
+      .replace(new RegExp(`${tnE}(?:이|가)\\s+(?=(?:${BAD_SUBJ})(?:를|을|의|이|가)\\s)`, "g"), "")
+      .replace(new RegExp(`${tnE}(?:은|는)\\s+(?=(?:${BAD_SUBJ})(?:를|을|의)\\s)`, "g"), "");
+
+    // ①-c [축B-2] altPhrase 오결합 — prompts의 _altPhrase("이 요법/해당 진료")가
+    //     GPT 출력에서 키워드와 붙어 나오는 케이스 ("한방피부질환치료가 요법은 ~").
+    //     → 키워드가 주어. 중복 지시명사(요법/진료/치료)를 제거하되, 문장이 요구하는
+    //       조사는 키워드 받침(hasJong)으로 재계산한다.
+    const _J = { "은": hasJong ? "은" : "는", "는": hasJong ? "은" : "는",
+                 "이": hasJong ? "이" : "가", "가": hasJong ? "이" : "가",
+                 "을": hasJong ? "을" : "를", "를": hasJong ? "을" : "를", "의": "의" };
+    result = result
+      .replace(new RegExp(`(${tnE})(?:이|가|은|는)\\s+(?:요법|진료|치료)(은|는|이|가)\\s`, "g"), (m, k, j) => `${k}${_J[j]} `)
+      .replace(new RegExp(`(${tnE})\\s+(?:이|해당)\\s*(?:요법|진료|치료)(은|는|이|가|을|를|의)\\s`, "g"), (m, k, j) => `${k}${_J[j]} `);
+
+    // ② 문장 깨짐 — "{kw}가 지역의 한의원에서는" (주어 도치 붕괴)
+    //    → "지역의 한의원에서는 {kw}가" 어순 복구
+    result = result
+      .replace(new RegExp(`${tnE}가\\s+(지역의\\s+한의원에서는)`, "g"), "$1 " + tn + "가")
+      .replace(new RegExp(`${tnE}가\\s+(이\\s*지역의\\s+한의원에서는)`, "g"), "$1 " + tn + "가");
+
+    // ③ 동일 키워드 연속 반복 완화 — 한 문장(구두점 사이)에 subKw 2회 이상 시
+    //    2번째부터 "이 치료"로 축약 (문장 내 국소, 전역 밀도는 기존 [X]가 관리)
+    result = result.replace(/[^.!?\n]*[.!?]/g, (sent) => {
+      let n = 0;
+      return sent.replace(new RegExp(tnE, "g"), (m) => {
+        n++;
+        return n >= 2 ? "이 치료" : m;
+      });
+    });
+
+    // ④ 띄어쓰기 — 의존명사 "데" (세우는데 → 세우는 데)
+    result = result
+      .replace(/([가-힣]+)는데(?=\s+(유용|도움|중요|필요|좋))/g, "$1는 데")
+      .replace(/세우는데/g, "세우는 데");
+  }
 
   // ─────────────────────────────────────────────────────
   // [B] 문장 종결 검증 — 잘린 문장 재작성
@@ -983,6 +1387,11 @@ function runQC(text, treatmentName, mode) {
 // ============================================================
 function stripMarkdownForNaver(text) {
   let t = text;
+  // [v3.9.3+] 프롬프트 잔재 섹션 마커 제거 — GPT가 [섹션 N — 라벨] 지시문을
+  //   본문에 그대로 출력한 경우 삭제. "▶ [섹션…" / "[섹션…" / "### 섹션 N" 모두 포착.
+  //   정상 소제목(### 제목)은 건드리지 않음 — "섹션" 리터럴이 붙은 라인만 제거.
+  t = t.replace(/^\s*(?:▶\s*)?#{0,3}\s*\[?\s*섹션\s*\d+\s*[—\-–].*$/gm, "");
+  t = t.replace(/\n{3,}/g, "\n\n");
   t = t.replace(/^#\s+(.+)$/gm, "$1");
   t = t.replace(/^##\s+(.+)$/gm, "\n$1\n");
   t = t.replace(/^###\s+(.+)$/gm, "▶ $1");
@@ -1001,17 +1410,24 @@ export default async function handleOriental(req, res) {
   const {
     target, program, blogType,
     userRegion, userMemo, overrideTitle,
-    mode = "personal",
+    mode = "personal", storeId,
+    // [PATCH-07] 위치 5필드 — 발행코치에서만 값 존재. 일반글쓰기는 빈값 → 부작용 0
+    address, map_guide, transit, building_desc, parking_info,
   } = req.body;
+  const _locStore = { address, map_guide, transit, building_desc, parking_info };
 
+  // ── VISIT-01: 방문정보 (store_profiles.visit_info JSONB) ──
+  const { visit_info } = req.body;
+  const _visitStore = (visit_info && typeof visit_info === "object") ? visit_info : null;
   const subKw      = program.name || "";
   const region     = (userRegion || "강남").trim();
   const memo       = (userMemo || "").trim();
   const targetId   = target?.id   || "consult";
   const blogTypeId = blogType?.id || "review";
   const industry   = "oriental";
-  const validMode  = (mode === "commercial") ? "commercial" : "personal";
-  console.log(`[oriental] mode: ${validMode}`);
+  // [V2] 정보형 단일모드 통일 — personal(후기형) 제거. 입력 mode 무관 commercial 강제.
+  const validMode  = "commercial";
+  console.log(`[oriental] mode: ${validMode} (V2 정보형 단일)`);
 
   // ── oriental 치료 검증 ─────────────────────────────────
   // [v3.7] manual_therapy / "도수치료" 제거 — ortho/pain 영역으로 분리
@@ -1042,6 +1458,23 @@ export default async function handleOriental(req, res) {
   if (seoData.keywords)      seoData.keywords      = seoData.keywords.map(k => k.replace(/\{region\}/g, region));
   if (seoData.titlePatterns) seoData.titlePatterns = seoData.titlePatterns.map(t => t.replace(/\{region\}/g, region));
 
+  // ── [축1 / v3.9.3] 접미어=치료 키워드 가드 ──────────
+  //   사유: subKw가 "…치료"로 끝나면(체외충격파치료·도수치료·재활치료 등)
+  //         "${subKw} 치료 금지(이중표현)" 규칙이 역효과 → 모델이 접두부를
+  //         떼고 "치료"만 출력하는 축약 발생. 이 경우 완전표기 지시로 대체.
+  const _kwEndsChiryo = /치료$/.test(subKw);
+  const _kwFullRule = _kwEndsChiryo
+    ? `※ 치료명 "${subKw}"는 반드시 전체 단어 그대로만 표기하십시오.
+  ✅ "${subKw}" / "${subKw}"+조사(을·를·은·는·이·가·의·에·로)
+  ❌ "${subKw}"를 "치료"로 줄여 쓰기 절대 금지 (접두부 생략 금지)
+  ❌ "${subKw} 치료"처럼 뒤에 "치료" 덧붙이기 금지 (이중 표현)
+  ✅ 반복이 부담되면 대체어 "이 치료" / "해당 치료" 사용 (단, 축약형 "치료" 단독은 금지)`
+    : `※ 치료명 "${subKw}"는 다음 패턴 외 사용 금지:
+  ✅ "${subKw}" (그대로) / "${subKw}을" / "${subKw}를" / "${subKw}은" / "${subKw}는" / "${subKw}이" (주격) / "${subKw}로" / "${subKw}에"
+  ✅ 대체어: "이 치료" / "해당 치료"
+  ❌ "${subKw} 치료" 금지 (이중 표현)
+  ❌ "${subKw}이 치료" 금지 (어순 붕괴)`;
+
   // ── 시스템 프롬프트 (mode 분기) ────────────────────
   const systemPrompt = validMode === "commercial"
     ? `당신은 ${region} 지역 ${subKw} 진료 정보를 정리하는 정보형 블로그 작가입니다.
@@ -1060,12 +1493,8 @@ export default async function handleOriental(req, res) {
 
 3인칭 정보형. 자연스러운 안내 톤. 표·불릿 사용 가능.
 
-[어법 절대 규칙 — v3.4 핵심]
-※ 치료명 "${subKw}"는 다음 패턴 외 사용 금지:
-  ✅ "${subKw}" (그대로) / "${subKw}을" / "${subKw}를" / "${subKw}은" / "${subKw}는" / "${subKw}이" (주격) / "${subKw}로" / "${subKw}에"
-  ✅ 대체어: "이 치료" / "해당 치료"
-  ❌ "${subKw} 치료" 금지 (이중 표현)
-  ❌ "${subKw}이 치료" 금지 (어순 붕괴)
+[어법 절대 규칙 — v3.4 핵심 / v3.9.3 접미어가드]
+${_kwFullRule}
   ❌ "이 치료가 치료" 금지
   ❌ "이 치료가 [명사]" 금지`
     : `당신은 ${region} 거주 일반인입니다. ${subKw} 진료를 받아본 1인칭 블로그 후기를 작성합니다.
@@ -1080,11 +1509,8 @@ export default async function handleOriental(req, res) {
 - 실생활 맥락: 직장/집/가족 등 일상에서 불편했던 상황 1개 이상
 - 원장님 말 직접 인용 1회: "원장님이 '~' 라고 하시더라고요" 형태
 
-[어법 절대 규칙 — v3.4 핵심]
-※ 치료명 "${subKw}"는 다음 패턴 외 사용 금지:
-  ✅ "${subKw}" (그대로) / "${subKw}을" / "${subKw}를" / "${subKw}은" / "${subKw}는" / "${subKw}이" (주격) / "${subKw}로" / "${subKw}에"
-  ✅ 대체어: "이 치료" (조사 자연스럽게)
-  ❌ "${subKw} 치료" 금지 (이중 표현)
+[어법 절대 규칙 — v3.4 핵심 / v3.9.3 접미어가드]
+${_kwFullRule}
   ❌ "이 치료가 [명사]" 금지 — "이 치료의 [명사]" 또는 "이 치료는 [형용사]"
 
 [문장 종결 절대 규칙]
@@ -1107,7 +1533,7 @@ ${prevBlock}
 ---
 [현재 섹션: ${sec.label} (${sec.key})]
 ⚠️ 이 섹션만 작성. 성형외과·피부과 표현 금지. 200자 이상.
-${richPrompt}`;
+${_kwEndsChiryo ? `\n${_kwFullRule}\n` : ""}${richPrompt}`;
 
     let secText = await generateSection({ systemPrompt, userPrompt });
     secText = cleanOrientalText(secText, subKw, region, validMode);
@@ -1137,14 +1563,13 @@ ${richPrompt}`;
   //   풀: 상담 / 침치료 / 한약 / 부항 / 일상
   const ORIENTAL_ALT_POOL = ["상담 사진", "침치료 사진", "한약 사진", "부항 사진", "일상 사진"];
   const _ORIENTAL_ALT_BY_KEY = {
-    concern:  "일상 사진",
-    search:   "상담 사진",
-    consult:  "상담 사진",
-    decision: "상담 사진",
-    reason:   "상담 사진",
-    progress: "침치료 사진",
-    result:   "한약 사진",
-    closing:  "일상 사진",
+    concern:     "일상 사진",
+    examination: "상담 사진",
+    diagnosis:   "상담 사진",
+    treatment:   "침치료 사진",
+    visitInfo:   "상담 사진",
+    checkPoint:  "한약 사진",
+    closing:     "일상 사진",
   };
   const altList = SECTIONS.slice(0, 5).map(sec => {
     const label = _ORIENTAL_ALT_BY_KEY[sec.key] || "상담 사진";
@@ -1155,14 +1580,10 @@ ${richPrompt}`;
   let title = overrideTitle || buildOrientalTitle(subKw, region, seoData, blogTypeId, validMode);
   const ORIENTAL_TITLE_BLOCK = /쌍꺼풀|눈매|리프팅|울쎄라|써마지|필러|보톡스|피코레이저|성형외과|임플란트|치아|스케일링|사랑니|비염|축농증|편도|이명|난청|전립선|포경/;
   if (ORIENTAL_TITLE_BLOCK.test(title)) {
-    title = validMode === "commercial"
-      ? `${region} ${subKw} 진료 안내｜치료 과정과 일반 정보`
-      : `${region} ${subKw} 후기｜망설이다가 결국 결정한 이유`;
+    title = `${region} ${subKw} 진료 안내｜치료 과정과 일반 정보`;
   }
   if (!title.includes(subKw)) {
-    title = validMode === "commercial"
-      ? `${region} ${subKw} 진료 안내｜치료 과정과 일반 정보`
-      : `${region} ${subKw} 후기｜상담부터 치료까지 솔직하게 정리했습니다`;
+    title = `${region} ${subKw} 진료 안내｜치료 과정과 일반 정보`;
   }
 
   // ── 조립 ────────────────────────────────────────────
@@ -1171,16 +1592,13 @@ ${richPrompt}`;
   // ── INFO_BLOCKS 삽입 (결정 섹션 아래) ─────────────
   const infoBlock = getInfoBlock(treatmentId);
   const infoBlockText = renderInfoBlock(infoBlock);
-  if (sectionTexts["reason"]) {
-    sectionTexts["reason"] = sectionTexts["reason"].trimEnd() + infoBlockText;
-  } else if (sectionTexts["result"]) {
-    sectionTexts["result"] = infoBlockText + "\n\n" + sectionTexts["result"];
+  if (sectionTexts["diagnosis"]) {
+    sectionTexts["diagnosis"] = sectionTexts["diagnosis"].trimEnd() + infoBlockText;
+  } else if (sectionTexts["treatment"]) {
+    sectionTexts["treatment"] = infoBlockText + "\n\n" + sectionTexts["treatment"];
   }
 
-  // ── 회복 타임라인 (personal만) ────────────────────
-  if (sectionTexts["result"]) {
-    sectionTexts["result"] = insertOrientalTimeline(sectionTexts["result"], subKw, validMode);
-  }
+  // ── [V2] 회복 타임라인 제거 — 정보형은 개인 1회/1주/1개월/3개월 타임라인 없음 ──
 
   // ── 마무리 섹션 (mode 분기) ─────────────────────
   const lastKey = secKeys[secKeys.length - 1];
@@ -1246,7 +1664,14 @@ ${richPrompt}`;
   const _altOk  = _altAll.filter(a => /\[이미지:\s*(상담|침치료|한약|부항|일상)\s*사진\]/.test(a));
   console.log(`[QC] alt 총 ${_altAll.length}개 / 정상 ${_altOk.length}개 / 비정상 ${_altAll.length - _altOk.length}개`);
 
-  // ── QC ──────────────────────────────────────────
+  // ── 📍 [PATCH-07] 위치블록 후단 삽입 (해시태그 직전) ──
+  //   발행코치: 위치 5필드 존재 → 「📍 찾아오시는 길」 삽입
+  //   일반글쓰기: 빈값 → 원문 그대로(부작용 0)
+  // ── VISIT-01: visitBlock 후단 1줄 (locationBlock 앞 → 🏥 → 📍 → #) ──
+  assembled = insertVisitBeforeHashtags(assembled, _visitStore);
+  assembled = insertLocationBeforeHashtags(assembled, _locStore);
+
+  // ── QC ──────────────────────────────────────────  (카운트는 삽입 이후 산출)
   const qc = runQC(assembled, subKw, validMode);
   const charCount = qc.charCount;
   const seoScore  = diagnosePost(assembled, subKw);
@@ -1257,7 +1682,7 @@ ${richPrompt}`;
     if (qc.priceCount > 0)       console.warn(`[oriental] ⚠️ commercial 모드 가격 ${qc.priceCount}건 잔존`);
   }
 
-  await autoSave({ assembled, charCount, subKw, region, seoScore, industry });
+  await autoSave({ assembled, charCount, subKw, region, seoScore, industry, storeId });
 
   // ── 이미지 메타 ─────────────────────────────────
   const imageRegex = /\[이미지:\s*([^\]]+)\]/g;
@@ -1290,6 +1715,6 @@ ${richPrompt}`;
       recommendCount: qc.recommendCount,
       reviewFlowCount: qc.reviewFlowCount,
     },
-    validation: { passed: charCountPlain >= 2000, charCount: charCountPlain },
+    validation: { passed: charCountPlain >= 1500, charCount: charCountPlain },  // [축B] 분량 축소 반영
   });
 }

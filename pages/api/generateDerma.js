@@ -7,6 +7,7 @@
 import { DERMA_TREATMENTS }                       from "../../lib/derma-data";
 import { buildDermaPrompt, DERMA_SYSTEM_PROMPT, getDermaImageAlts } from "../../lib/derma-prompts";
 import { DERMA_FLOW_ENGINE }                        from "../../lib/derma-playConfig";
+import { insertLocationBeforeHashtags }            from "../../lib/locationBlock.js";
 
 // ============================================================
 // 기본 금지어 (호환용)
@@ -489,6 +490,7 @@ const DERMA_EXAM_VALUES = {
 function calcDermaCharCount(text) {
   if (!text) return 0;
   return text
+    .replace(/━{5,}[\s\S]*?━{5,}/g, "")        // 🆕 v3.14: 점선 박스 제거
     .replace(/\[이미지:[^\]]*\]/g, "")
     .replace(/^HASHTAGS:.+$/gm, "")
     .replace(/^##\s*/gm, "")
@@ -875,6 +877,64 @@ function fixDermaParticles(text) {
 }
 
 // ============================================================
+// ★ 시술 keyword 반복 분산 (7회 초과 시 변형으로 교체)
+// — 보호 영역: 첫 3회·마지막 1회·해시태그·인용구
+// ============================================================
+function spreadDermaKeyword(text, keyword) {
+  if (!keyword) return text;
+  const escKw = String(keyword).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const kwReg = new RegExp(escKw, "g");
+  const matches = text.match(kwReg) || [];
+  if (matches.length <= 7) return text;
+
+  const quotedRanges = [];
+  const quoteReg = /'[^']*'|"[^"]*"|「[^」]*」|『[^』]*』/g;
+  let qm;
+  while ((qm = quoteReg.exec(text)) !== null) {
+    quotedRanges.push([qm.index, qm.index + qm[0].length]);
+  }
+  const isInQuote = (i) => quotedRanges.some(([s, e]) => i >= s && i < e);
+
+  const variants = ["이 치료", "해당 시술", "이 시술", "해당 치료", "이번 시술"];
+  let count = 0;
+  let vIdx = 0;
+  const limit = matches.length - 1;
+  return text.replace(kwReg, (m, offset) => {
+    count++;
+    if (offset > 0 && text[offset - 1] === "#") return m;
+    if (isInQuote(offset)) return m;
+    if (count <= 3) return m;
+    if (count > limit) return m;
+    const v = variants[vIdx % variants.length];
+    vIdx++;
+    return v;
+  });
+}
+
+// ============================================================
+// ★ 변형 후 조사 자동 교정
+// ============================================================
+function fixDermaVariantParticles(text) {
+  let t = text;
+  const fixes = [
+    // "치료" — 받침 없음
+    [/(이 치료|해당 치료)은(?![가-힣])/g, "$1는"],
+    [/(이 치료|해당 치료)이(?![가-힣])/g, "$1가"],
+    [/(이 치료|해당 치료)을(?![가-힣])/g, "$1를"],
+    [/(이 치료|해당 치료)과(?![가-힣])/g, "$1와"],
+    [/(이 치료|해당 치료)으로(?![가-힣])/g, "$1로"],
+    // "시술" — 받침 ㄹ
+    [/(이 시술|해당 시술|이번 시술)는(?![가-힣])/g, "$1은"],
+    [/(이 시술|해당 시술|이번 시술)가(?![가-힣])/g, "$1이"],
+    [/(이 시술|해당 시술|이번 시술)를(?![가-힣])/g, "$1을"],
+    [/(이 시술|해당 시술|이번 시술)와(?![가-힣])/g, "$1과"],
+    [/(이 시술|해당 시술|이번 시술)으로(?![가-힣])/g, "$1로"],
+  ];
+  fixes.forEach(([pat, rep]) => { t = t.replace(pat, rep); });
+  return t;
+}
+
+// ============================================================
 // ★ 지역 키워드 반복 분산 (4회 초과 시 변형으로 교체)
 // ============================================================
 function spreadDermaRegionKw(text, region) {
@@ -1005,8 +1065,67 @@ function spreadDermaObservation(text) {
 // 위치: cleanDermaText / spreadDermaObservation / 강제정화패스 모두 끝난 뒤
 // 원칙: 안전한 단순 replace만 사용. 새 문장 생성 금지.
 // ============================================================
-function finalDermaClean(text) {
+function finalDermaClean(text, treatmentName) {
   let t = text;
+  // ★ v3.18: 시술명 컨텍스트 — "이 치료" fossil을 시술명 직접 치환 대체
+  const tname = (treatmentName && typeof treatmentName === "string") ? treatmentName.trim() : "";
+
+  // ─── BB. v3.15: 키워드 깨짐 fix (토큰 절단 흔적) ─────────────
+  //   GPT가 "피코레이저" → "피코레이" 절단, "기미 치료" → "기미 이 치료" 삽입 등
+  //   다른 패턴이 처리하기 전 최우선 정리
+  // 1) "피코레이" 단독(저 누락) → "피코레이저"
+  t = t.replace(/피코레이(?![저가는는을를도와과의에서])/g, "피코레이저");
+  // 2) "기미 이 치료" / "X 이 치료" / "X 해당 치료" 중간 부유 토큰 정리
+  t = t.replace(/(기미|잡티|색소|모공|여드름)\s+이\s+치료/g, "$1 치료");
+  t = t.replace(/(기미|잡티|색소|모공|여드름)\s+해당\s+치료/g, "$1 치료");
+  t = t.replace(/(기미|잡티|색소|모공|여드름)\s+해당\s+시술/g, "해당 시술");
+  // 3) "해당 시술 시술" 중복 정리
+  t = t.replace(/해당\s+시술\s+시술/g, "해당 시술");
+  t = t.replace(/이번\s+시술\s+시술/g, "이번 시술");
+  t = t.replace(/이\s+치료\s+시술/g, "해당 시술");
+  // ★ v4.3: "이 시술 시술" 주격 제네릭 뒤 시술 중복 정리 (실측 placeholder 파생, 1/3)
+  t = t.replace(/이\s+시술\s+시술/g, "이 시술");
+  // 4) "X 피코레이 Y" 중간 부유 토큰 정리 (목적격/주격 누락)
+  t = t.replace(/피코레이저?\s+기미와?\s+색소를?/g, "피코레이저로 기미와 색소를");
+  t = t.replace(/피코레이저?\s+기미\s+분해/g, "피코레이저로 기미 분해");
+  t = t.replace(/피코레이저?\s+병행/g, "피코레이저 병행");
+  t = t.replace(/피코레이저?\s+짧은/g, "피코레이저는 짧은");
+  t = t.replace(/피코레이저?\s+작용/g, "피코레이저 작용");
+  t = t.replace(/피코레이저?\s+초기\s+효과/g, "피코레이저의 초기 효과");
+  // 5) "지역명 키워드" 중복 (강남 기미 + 강남 기미 피코레이저) 분산
+  //    같은 문장 안 "{region} 기미" 2회 이상 → 두번째는 "이 부위" 등으로
+  t = t.replace(
+    /(강남|서울|분당|수원|인천|대구|부산|광주|대전|경기|판교|성수|홍대|건대|잠실|역삼|논현|압구정|청담|신사|선릉|삼성|문정|송파)\s+(기미|잡티|색소|모공|여드름)([^.\n]{0,40})\1\s+\2/g,
+    "$1 $2$3이 부위"
+  );
+
+  // ★ v3.17: 6) 토큰 절단 fix (GPT가 어간만 출력하고 어미 누락)
+  t = t.replace(/(?<![가-힣])나타\s+체감/g, "나타나 체감");
+  t = t.replace(/(?<![가-힣])나타\s+(체감|관찰|확인|보임|보이는)/g, "나타나 $1");
+  t = t.replace(/한\s+번에\s+드러\s+것이?\s+아니라/g, "한 번에 드러나는 것이 아니라");
+  t = t.replace(/한\s+번에\s+드러\s+것은?/g, "한 번에 드러나는 것은");
+  t = t.replace(/(?<![가-힣])드러\s+것이?\s+아니라/g, "드러나는 것이 아니라");
+  t = t.replace(/명확히\s+드러\s+곳을?/g, "명확히 드러나는 곳을");
+  t = t.replace(/(?<![가-힣])드러\s+곳을?/g, "드러나는 곳을");
+  t = t.replace(/(가라앉|줄어들|옅어지|매끄러워지)\s+것이?\s+아니/g, "$1는 것이 아니");
+  // ★ v3.17.1: 추가 토큰 절단
+  t = t.replace(/(?<![가-힣])나타\s+(건조함|붉은|밝은|어두운|따가운|가려운|매끄러운)/g, "나타나는 $1");
+  t = t.replace(/(?<![가-힣])가까이\s+다가\s+(붉|기미|잡티|색소|모공|피부|얼굴|결)/g, "가까이 다가가 $1");
+  t = t.replace(/(?<![가-힣])다가\s+(붉은\s*기|기미|잡티|색소|결)/g, "다가가 $1");
+
+  // ★ v3.17.1: 7) "기미/잡티/색소 + 이 + 치료/시술" 부유 '이' 제거
+  t = t.replace(/(기미|잡티|색소|모공|여드름|주근깨)\s+이\s+(치료|시술|관리|케어)/g, "$1 $2");
+
+  // ★ v3.17.1: 8) "상태가이 / 변화가이 / 양상이이" 같은 조사 중첩
+  t = t.replace(/(상태|변화|양상|개수|크기|범위|모습)\s*가이(?=\s|$|[^가-힣])/g, "$1가");
+  t = t.replace(/(상태|변화|양상|개수|크기|범위|모습)\s*은이(?=\s|$|[^가-힣])/g, "$1이");
+
+  // 7) "수 있음.을 시사 / 보여준다" 마침표+조사 충돌
+  t = t.replace(/수\s*있음\.\s*을\s*시사한다\.?/g, "수 있음을 보여준다.");
+  t = t.replace(/수\s*있음\.\s*을\s*보여준다\.?/g, "수 있음을 보여준다.");
+  t = t.replace(/수\s*있음\.\s*을\s*나타낸다\.?/g, "수 있음을 보여준다.");
+  t = t.replace(/(있음|확인됨|관찰됨|나타남|정리됨)\.\s*을\s*시사한다\.?/g, "$1.");
+  t = t.replace(/(있음|확인됨|관찰됨|나타남|정리됨)\.\s*을\s*보여준다\.?/g, "$1.");
 
   // ─── A. 조사 충돌 패턴 (재발 빈도 1순위) ───────────────────────
   // "변화가 흐름이 나타남" 단독
@@ -1290,6 +1409,262 @@ function finalDermaClean(text) {
     return v;
   });
 
+  // ─── Z. 잔존 깨짐 패턴 마지막 정리 (v3.11) ────────────────────
+  // "양상이이" — spreadObservation이 '양상이' 추가한 뒤 GPT 원본 '이'와 충돌
+  t = t.replace(/양상이이(?=\s|$|[^가-힣])/g, "양상이");
+  t = t.replace(/흐름이이(?=\s|$|[^가-힣])/g, "흐름이");
+  t = t.replace(/경향이이(?=\s|$|[^가-힣])/g, "경향이");
+  t = t.replace(/모습이이(?=\s|$|[^가-힣])/g, "모습이");
+
+  // "사례도 있음.을 제시할 수 있다" — GPT 출력 자체가 깨진 케이스
+  t = t.replace(/사례도?\s*있음\.\s*을\s*제시할?\s*수\s*있다\.?/g, "사례도 확인된다.");
+  t = t.replace(/(있음|확인됨|관찰됨|나타남|정리됨)\.\s*을\s*제시할?\s*수\s*있다\.?/g, "$1.");
+  // 일반화: "(어미). + 을 + ~ + 다" 패턴 (마침표 + 조사 충돌)
+  t = t.replace(/(있음|확인됨|관찰됨|나타남|정리됨)\.\s*을\s+([가-힣]{2,8})\s*수\s*있다\.?/g, "$1.");
+
+  // ─── EE. v3.14: 감성 ending 문장 단위 제거 (피부과 광고톤 차단) ───
+  //   요청 검증 포인트: "맑아졌어요/좋아졌어요" 반복 + 레이저 후기 톤 과장 차단
+  //   문장 단위(마침표/줄바꿈 기준)로 통째 제거 — 부분 치환 X
+  const EMOTIONAL_DERMA_PATTERNS = [
+    /[^.!?\n]*(피부가?\s*확\s*달라|확\s*달라진\s*피부|완전\s*변신|완전\s*달라진|새로워진\s*피부|새로 태어난)[^.!?\n]*[.!?]?/g,
+    /[^.!?\n]*(피부가?\s*맑아졌|피부\s*톤이?\s*확\s*맑|환해진\s*피부|투명해진\s*피부|광이?\s*나는?\s*피부)[^.!?\n]*[.!?]?/g,
+    /[^.!?\n]*(효과가?\s*끝내|효과가?\s*대박|효과가?\s*확실히\s*좋|진짜\s*효과\s*좋|효과\s*만점|효과가?\s*확실)[^.!?\n]*[.!?]?/g,
+    /[^.!?\n]*(미소를?\s*되찾|자신감을?\s*되찾|자신감이?\s*생겼|새로운\s*일상|삶의\s*질이?\s*(달라|좋아|높아))[^.!?\n]*[.!?]?/g,
+    /[^.!?\n]*(고민이?\s*완전\s*해결|모든\s*고민이?\s*사라|드디어\s*결심|결국\s*선택)[^.!?\n]*[.!?]?/g,
+    /[^.!?\n]*(꼭\s*추천|강력\s*추천|진짜\s*추천드려|후회\s*없는\s*선택|잘했다는?\s*생각)[^.!?\n]*[.!?]?/g,
+    // ★ v3.16: 광고톤·감정 단정 추가 차단
+    /[^.!?\n]*(더\s*밝아졌|더\s*환해졌|훨씬\s*밝아|훨씬\s*환해|크게\s*개선)[^.!?\n]*[.!?]?/g,
+    /[^.!?\n]*(더\s*큰\s*변화를?\s*체감|더\s*큰\s*변화가?\s*있)[^.!?\n]*[.!?]?/g,
+  ];
+  for (const pat of EMOTIONAL_DERMA_PATTERNS) {
+    t = t.replace(pat, "");
+  }
+  // 제거 후 빈 줄/연속 공백 정리
+  t = t.replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ");
+
+  // ─── FF. v3.15: 논문형 어미 분산 (설명문 과밀 차단) ─────────
+  //   "확인된다 / 관찰된다 / 진행된다" 글 전체 4회 초과 시 일부 변형
+  //   "자리 잡고 있으며 / 경향이 있다 / 기대된다" 약화
+  const PAPER_END_VARIANTS = {
+    "확인된다": ["보이는 편이다", "체감되는 편이다", "확인된다"],
+    "관찰된다": ["보이는 편이다", "체감되는 편이다", "관찰된다"],
+    "진행된다": ["이어진다", "이어지는 편이다", "진행된다"],
+  };
+  for (const word of Object.keys(PAPER_END_VARIANTS)) {
+    const variants = PAPER_END_VARIANTS[word];
+    let count = 0;
+    const reg = new RegExp(word + "(?=[.\\s,]|$)", "g");
+    t = t.replace(reg, (m) => {
+      count++;
+      if (count <= 2) return m; // 2회까지는 유지
+      const v = variants[(count - 3) % variants.length];
+      return v;
+    });
+  }
+  // "자리 잡고 있으며 / 자리 잡고 있다" 약화
+  t = t.replace(/자리\s+잡고\s+있으며/g, "흔히 나타나며");
+  t = t.replace(/자리\s+잡고\s+있다(?=[.\s,]|$)/g, "흔히 나타난다");
+  t = t.replace(/자리\s+잡고\s+있음(?=[.\s,]|$)/g, "흔히 나타남");
+  // "경향이 있다" — 연속 등장 시 약화
+  let trendCount = 0;
+  t = t.replace(/경향이?\s+있다(?=[.\s,]|$)/g, (m) => {
+    trendCount++;
+    if (trendCount <= 2) return m;
+    return ["편이다", "모습이다"][(trendCount - 3) % 2];
+  });
+  // "기대된다" 연속 등장 시 약화
+  let expectCount = 0;
+  t = t.replace(/기대된다(?=[.\s,]|$)/g, (m) => {
+    expectCount++;
+    if (expectCount <= 1) return m;
+    return ["체감되는 편이다", "보이는 편이다"][(expectCount - 2) % 2];
+  });
+  // 논문형 도입어 "이러한 / 이는 / 이를 통해" 같은 문장 연속 → 첫 케이스 유지, 추가는 약화
+  let docCount = 0;
+  t = t.replace(/(?<=[.\n]\s*)이러한\s+(?=[가-힣])/g, (m) => {
+    docCount++;
+    return docCount <= 2 ? m : "";
+  });
+
+  // ─── GG. v3.16: fossil 회피어 차단 (medical-report 잔재) ─────
+  //   "해당 시술 / 이번 시술 / 이 시술" → "이 치료"로 대체 (시술명 직접 매핑은 후처리에서 위험 — 시술명 모름)
+  //   같은 문장 내 "이 치료" 2회 이상 시 두번째는 "치료"로 축약
+  t = t.replace(/해당\s+시술/g, "이 치료");
+  t = t.replace(/이번\s+시술/g, "이 치료");
+  t = t.replace(/(?<![가-힣])이\s+시술(?![명진])/g, "이 치료");
+  // ★ v3.17: "해당 치료" 추가 정규화 (GG-1 확장)
+  t = t.replace(/해당\s+치료/g, "이 치료");
+  // ★ v3.17: "이 치료은/을/이" 받침 fix (치료=받침 없음 → 은/을/이 → 는/를/가)
+  t = t.replace(/이\s*치료은(?=\s|$|[^가-힣])/g, "이 치료는");
+  t = t.replace(/이\s*치료을(?=\s|$|[^가-힣])/g, "이 치료를");
+  t = t.replace(/이\s*치료이(?=\s|$|[^가-힣A-Za-z])/g, "이 치료가");
+  // 한 문장에 "이 치료" 2회 → 두번째는 "치료"
+  t = t.replace(/이\s*치료([^.!?\n]{0,40})이\s*치료/g, "이 치료$1치료");
+
+  // ─── GG-2. "~로 작용함 / 작용할 가능성 / 영향을 줌" 행동 시점 표현으로 ─────
+  t = t.replace(/(중요한\s*)?요소로?\s*작용함을?\s*확인하게?\s*됨\.?/g, "체감되는 부분이었음.");
+  t = t.replace(/요소로?\s*작용함\.?/g, "체감되는 부분이었음.");
+  t = t.replace(/작용함을?\s*확인하게?\s*됨\.?/g, "체감되는 부분이었음.");
+  t = t.replace(/선택으로?\s*작용할?\s*가능성이?\s*있다\.?/g, "선택지로 검토되는 편이다.");
+  t = t.replace(/선택으로?\s*작용할?\s*가능성이?\s*있음\.?/g, "선택지로 검토되는 편이었음.");
+  t = t.replace(/작용할?\s*가능성이?\s*있다\.?/g, "검토되는 편이다.");
+  t = t.replace(/작용할?\s*가능성이?\s*있음\.?/g, "검토되는 편이었음.");
+  t = t.replace(/영향을?\s*(줌|미침|미친다)\.?/g, "체감되는 부분이었음.");
+  t = t.replace(/도움을?\s*(줌|줄\s*수\s*있음)\.?/g, "체감되는 부분이었음.");
+
+  // ─── GG-3. "확인되는 사례 / 알려진 사례 / 보고된 사례" 약화 ─────
+  t = t.replace(/실제\s*변화가?\s*확인되는?\s*사례도?\s*있(다|음)\.?/g, "변화가 느껴진 부분이 있었음.");
+  t = t.replace(/확인되는?\s*사례도?\s*있(다|음)\.?/g, "확인되는 부분도 있었음.");
+  t = t.replace(/알려진\s*사례도?\s*있(다|음)\.?/g, "알려진 부분도 있었음.");
+  t = t.replace(/보고된\s*사례도?\s*있(다|음)\.?/g, "보고된 부분도 있었음.");
+
+  // ─── GG-4. "관찰됨 / 체감됨" 행동 어미로 분산 (★ v3.17: 상한 미세 조정) ─────
+  const ACTION_VARIANTS = ["보이는 편이었음", "느껴진 부분이었음", "눈에 들어왔음", "체크되는 부분이었음"];
+  let obsCount = 0;
+  let avIdx = 0;
+  t = t.replace(/(?<![가-힣])관찰됨(?=[.\s,]|$)/g, (m) => {
+    obsCount++;
+    if (obsCount <= 3) return m;  // ★ v3.17: 2회 → 3회 상한 (4회부터 분산)
+    return ACTION_VARIANTS[avIdx++ % ACTION_VARIANTS.length];
+  });
+  let chmCount = 0;
+  let cvIdx = 0;
+  t = t.replace(/(?<![가-힣])체감됨(?=[.\s,]|$)/g, (m) => {
+    chmCount++;
+    if (chmCount <= 2) return m;  // ★ v3.17: 1회 → 2회 상한
+    return ACTION_VARIANTS[cvIdx++ % ACTION_VARIANTS.length];
+  });
+
+  // ─── GG-5. ★ v3.17: "시사한다 / 해석된다" soft 제거 (정보 추론어 잔재) ─────
+  //   문장 단위 통째 제거가 아닌 어미 약화 (narrative 깨짐 방지)
+  t = t.replace(/시사한다\.?/g, "보이는 부분이었음.");
+  t = t.replace(/시사함\.?/g, "보이는 부분이었음.");
+  t = t.replace(/(?<![가-힣])해석된다\.?/g, "느껴진 부분이었음.");
+  t = t.replace(/(?<![가-힣])해석됨\.?/g, "느껴진 부분이었음.");
+  t = t.replace(/(?<![가-힣])해석되는?\s*변화\.?/g, "느껴진 변화");
+
+  // ─── GG-6. ★ v3.18: fossil dictionary (설명체 fossil 제거 — 행동체는 보존) ─────
+  //   방향: "이 치료" 증식 차단 — 시술명 직접 치환 우선, 불가 시 soft generic 분산
+
+  // [1] "지역명 + 이 치료" → "이 치료" (지역명 중복 제거)
+  t = t.replace(
+    /(강남|서울|분당|수원|인천|대구|부산|광주|대전|경기|판교|성수|홍대|건대|잠실|역삼|논현|압구정|청담|신사|선릉|삼성|문정|송파)\s+이\s+치료/g,
+    "이 치료"
+  );
+
+  // [2] "이 치료" → 시술명 직접 치환 (컨텍스트 가능 시)
+  //     같은 문장에 시술명이 이미 있으면 soft generic으로 분산
+  if (tname && tname.length >= 2 && tname.length <= 12) {
+    // 안전 이스케이프
+    const tnameEsc = tname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // "이 치료" → "{tname}"으로 분산 치환 (글 전체 균등)
+    const softGenerics = ["이 시술", "해당 시술", "이 시술", "해당 시술", "이 시술"];
+    let icCount = 0;
+    let sgIdx = 0;
+    t = t.replace(/이\s*치료(?![어가과는을를도와의에서로])/g, (m) => {
+      icCount++;
+      // 같은 문장에 시술명이 이미 있는지 검사 — 너무 복잡 → 간단히 회전
+      // 1, 3, 5번째 → 시술명 / 2, 4, 6번째 → soft generic
+      if (icCount % 2 === 1) return tname;
+      const sg = softGenerics[sgIdx++ % softGenerics.length];
+      return sg;
+    });
+    // "이 치료는/를/가/와/도/의/에/에서/로" 조사 패턴도 동일 분산
+    let icjCount = 0;
+    let sgjIdx = 0;
+    t = t.replace(/이\s*치료(는|를|가|와|도|의|에|에서|로)/g, (m, josa) => {
+      icjCount++;
+      if (icjCount % 2 === 1) return tname + josa;
+      const sg = softGenerics[sgjIdx++ % softGenerics.length];
+      // soft generic + 조사 자연 결합
+      const noBatchim = ["과정", "방향"].some(w => sg.endsWith(w)); // 받침 없음
+      // "치료 방향" 받침 없음, "시술 과정" 받침 없음 → 모두 와/는/가/를/의/에/에서/로
+      const josaMap = {
+        "는": "은", "를": "을", "가": "이", "와": "과",
+        "도": "도", "의": "의", "에": "에", "에서": "에서", "로": "으로",
+      };
+      // 받침 처리
+      const lastChar = sg.charAt(sg.length - 1);
+      const lastCode = lastChar.charCodeAt(0);
+      const hasBatchim = (lastCode - 0xAC00) % 28 !== 0;
+      let finalJosa = josa;
+      if (hasBatchim) {
+        finalJosa = josaMap[josa] || josa;
+      }
+      return sg + finalJosa;
+    });
+  } else {
+    // 시술명 없을 때 — soft generic만 분산
+    const softGenerics = ["이 시술", "해당 시술", "이 시술"];
+    let icCount = 0;
+    let sgIdx = 0;
+    t = t.replace(/이\s*치료(?=[은는을를과와도의에서로\s])/g, (m) => {
+      icCount++;
+      if (icCount <= 2) return m; // 2회까지 유지
+      return softGenerics[sgIdx++ % softGenerics.length];
+    });
+  }
+
+  // [3] "이 치료과" 조사 깨짐 (와/과: 치료=받침X → 와)
+  t = t.replace(/이\s*치료과(?=\s|$|[^가-힣])/g, "이 치료와");
+
+  // [4] 설명체 fossil 사전 (행동체는 보존)
+  t = t.replace(/긍정적인\s*평가가?\s*가능하?다\.?/g, "긍정적으로 느껴짐.");
+  t = t.replace(/긍정적인\s*평가가?\s*가능함?\.?/g, "긍정적으로 느껴짐.");
+  t = t.replace(/긍정적인\s*평가\s*가능\.?/g, "긍정적으로 느껴짐.");
+  // ★ v3.18 fix: "변화 폭이 더 클 수 있다는고" 같은 깨짐 우선 처리 ([5]보다 먼저)
+  t = t.replace(/변화\s*폭이?\s*더?\s*클?\s*수\s*있다는고/g, "변화가 더 잘 느껴질 수 있다고");
+  t = t.replace(/변화\s*폭이?\s*더?\s*클?\s*수\s*있다\.?/g, "변화가 더 잘 느껴질 수 있다.");
+  t = t.replace(/변화\s*폭이?\s*더?\s*클?\s*수\s*있음\.?/g, "변화가 더 잘 느껴질 수 있음.");
+  // "변화 폭" 단독 치환 — 조사 자동 결합 (받침 없음 → 가/는/를)
+  t = t.replace(/(?<![가-힣])변화\s*폭이(?=\s|[^가-힣])/g, "변화가");
+  t = t.replace(/(?<![가-힣])변화\s*폭은(?=\s|[^가-힣])/g, "변화는");
+  t = t.replace(/(?<![가-힣])변화\s*폭을(?=\s|[^가-힣])/g, "변화를");
+  t = t.replace(/(?<![가-힣])변화\s*폭에(?=\s|[^가-힣])/g, "변화에");
+  t = t.replace(/(?<![가-힣])변화\s*폭(?=\s|[^가-힣은는을를이가에])/g, "변화");
+  t = t.replace(/단계적으로\s*정리되며/g, "단계적으로 나타나며");
+  t = t.replace(/단계적으로\s*정리됨\.?/g, "단계적으로 나타남.");
+  t = t.replace(/중요한\s*요소로?\s*작용하는?\s*것이?\s*확인되었다\.?/g, "중요한 편으로 느껴졌음.");
+  t = t.replace(/중요한\s*요소로?\s*작용하는?\s*것이?\s*확인됨\.?/g, "중요한 편으로 느껴졌음.");
+  t = t.replace(/중요한\s*요소로?\s*작용함\.?/g, "중요한 편으로 느껴졌음.");
+  t = t.replace(/작용하는?\s*것이?\s*확인되었다\.?/g, "체감되는 부분이었음.");
+  t = t.replace(/작용하는?\s*것이?\s*확인됨\.?/g, "체감되는 부분이었음.");
+  t = t.replace(/(?<![가-힣])작용한다\.?/g, "체감되는 부분이었다.");
+  t = t.replace(/(?<![가-힣])작용함을?\s*보여준다\.?/g, "체감되는 부분이었다.");
+  t = t.replace(/관찰할\s*수\s*있었다\.?/g, "눈에 들어왔다.");
+  t = t.replace(/관찰할\s*수\s*있음\.?/g, "눈에 들어왔음.");
+  t = t.replace(/확인할\s*수\s*있었다\.?/g, "체크하게 됐다.");
+  t = t.replace(/확인할\s*수\s*있음\.?/g, "체크하게 됨.");
+  t = t.replace(/변화가?\s*나타났다\.?/g, "변화가 보였다.");
+  t = t.replace(/도움이\s*될\s*수\s*있다\.?/g, "체감되는 부분이 있다.");
+  t = t.replace(/도움이\s*될\s*수\s*있음\.?/g, "체감되는 부분이 있음.");
+  t = t.replace(/변화\s*가능성이?\s*있다\.?/g, "변화가 느껴지는 부분이 있다.");
+  t = t.replace(/변화\s*가능성이?\s*있음\.?/g, "변화가 느껴지는 부분이 있음.");
+  t = t.replace(/확인되었다\.?/g, "확인된 부분이었음.");
+  // ★ v3.18 fix: "보다 체계적이고 심층적인 접근" → 앞의 "보다" 중복 방지
+  t = t.replace(/보다\s+체계적이고?\s*심층적인?\s*접근/g, "보다 깊은 접근");
+  t = t.replace(/체계적이고?\s*심층적인?\s*접근/g, "보다 깊은 접근");
+  t = t.replace(/보다\s+심층적인?\s*접근/g, "보다 깊은 접근");
+  t = t.replace(/심층적인?\s*접근/g, "깊은 접근");
+  t = t.replace(/기여하게?\s*된다\.?/g, "이어졌음.");
+  t = t.replace(/기여하게?\s*됨\.?/g, "이어졌음.");
+
+  // [5] 어미 깨짐 fix
+  t = t.replace(/([가-힣])다는고(?=\s|$|[^가-힣])/g, "$1다고");
+  t = t.replace(/([가-힣])라는고(?=\s|$|[^가-힣])/g, "$1라고");
+  // "모공 문" (조사 누락) → "모공 문제"
+  t = t.replace(/모공\s+문(?=\s|$|[이가은는을를도])/g, "모공 문제");
+  t = t.replace(/모공\s+문(?=\s*눈에)/g, "모공 문제가");
+
+  // [6] ★ v3.17.1: soft generic 중복 정리
+  //   "시술 과정 시술 후" / "관리 과정 관리 후" 같은 인접 중복
+  t = t.replace(/(시술|관리|케어|치료)\s*(과정|방향)\s+(시술|관리|케어|치료)\s+(후|전|중)/g, "$1 $2 $4");
+  t = t.replace(/(시술|관리|케어|치료)\s*(과정|방향)\s+\1\s*\2/g, "$1 $2");
+
+  // ★ v4.3: softGenerics 재삽입(위 [2])이 "이 시술/해당 시술 + 시술명" 인접 중복을 재생성 → 반환 직전 최종 소거 (실측 2/5)
+  //   앞단 정리(L1083~1087)는 재삽입 前이라 무력화됨. 순서상 여기가 유효 지점.
+  t = t.replace(/(이|해당|이번)\s+시술\s+시술/g, "$1 시술");
+
   return t;
 }
 
@@ -1301,14 +1676,15 @@ function cleanCommercialDerma(text) {
   let t = text;
 
   // ① 1인칭 → 3인칭
+  //   [V2 fix] "레이저(는/를/의/도)"의 "저" 오염 방지 — "레이" 직후 "저"는 치환 제외 (부정 후방탐색)
   t = t
-    .replace(/저는/g, "환자는")
+    .replace(/(?<!레이)저는/g, "환자는")
     .replace(/제가/g, "방문자가")
-    .replace(/저도/g, "사례에서도")
-    .replace(/저를/g, "환자를")
-    .replace(/저의/g, "환자의")
+    .replace(/(?<!레이)저도/g, "사례에서도")
+    .replace(/(?<!레이)저를/g, "환자를")
+    .replace(/(?<!레이)저의/g, "환자의")
     .replace(/저희/g, "병원에서")
-    .replace(/내가/g, "환자가")
+    .replace(/(?<![가-힣])내가/g, "환자가")
     .replace(/나는/g, "환자는")
     .replace(/우리/g, "병원")
     .replace(/제\s*케이스/g, "해당 사례")
@@ -1431,24 +1807,43 @@ function cleanCommercialDerma(text) {
 
   // ⑧ 정리
   t = t.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+([.,!?])/g, "$1");
+
+  // ⑨ [V2 정보형] 주관·광고성 잔여 표현 → 객관형 (생성 단계 프롬프트 차단의 후처리 안전망)
+  t = t
+    .replace(/(으로|로)\s*체감되는\s*부분이었다/g, "$1 살펴보게 된다")
+    .replace(/체감되는\s*부분이었다/g, "살펴보게 되는 부분이다")
+    .replace(/변화가\s*관찰될\s*수\s*있는\s*(옵션|방법|시술)/g, "진료 시 안내되는 $1")
+    .replace(/변화를?\s*기대할\s*수\s*있는\s*(방법|시술|관리)/g, "상담 시 안내되는 $1")
+    .replace(/최적의\s*시술\s*계획이?\s*수립된다/g, "개인 상태에 따른 시술 계획이 안내된다")
+    .replace(/최적의\s*/g, "")
+    .replace(/맞춤형\s*접근이?\s*이루어질\s*수\s*있다/g, "개인 상태에 따른 접근이 안내될 수 있다")
+    .replace(/피부의?\s*매끄러움을?\s*개선하려는\s*시도로\s*진행된다/g, "피부결에 대해 살피는 진료로 진행된다")
+    .replace(/개선하려는\s*목적을?\s*가지고\s*있다/g, "살피는 것을 목적으로 한다")
+    // ⑩ [V2] 중복 시술명 정리 (예: "시술 과정 시술은" — altPhrase 치환 충돌 잔재)
+    .replace(/시술\s*과정\s*시술(은|이|을|의|은)/g, "이 시술$1")
+    .replace(/([가-힣]{2,})\s*과정\s*\1(은|이|을|는|의)/g, "$1$2")
+    .replace(/(이|해당)\s*시술\s*시술/g, "$1 시술");
+
   return t;
 }
 
 // ============================================================
-// ★ cleanPersonalDerma — personal 광고 톤 다운 (1인칭 보존되지 않음 - 1인칭도 제거)
+// ★ cleanPersonalDerma — personal 광고 톤 다운 (1인칭도 제거)
+//   [V2] mode=commercial 고정으로 실제 도달하지 않음(dead). 정합·회귀방지용 보존.
 // ============================================================
 function cleanPersonalDerma(text) {
   let t = text;
 
   // ① 1인칭 제거 (personal도 1인칭 금지 — handoff v3 핵심 원칙)
+  //   [V2 fix] "레이저(는/를/의/도)" 오염 방지 — "레이" 직후 "저" 제외
   t = t
-    .replace(/저는/g, "")
+    .replace(/(?<!레이)저는/g, "")
     .replace(/제가/g, "")
-    .replace(/저도/g, "")
-    .replace(/저를/g, "")
-    .replace(/저의/g, "")
+    .replace(/(?<!레이)저도/g, "")
+    .replace(/(?<!레이)저를/g, "")
+    .replace(/(?<!레이)저의/g, "")
     .replace(/저희/g, "")
-    .replace(/내가/g, "")
+    .replace(/(?<![가-힣])내가/g, "")
     .replace(/나는/g, "")
     .replace(/우리/g, "")
     .replace(/제\s*케이스/g, "해당 케이스")
@@ -1592,6 +1987,13 @@ function cleanDermaText(text, keyword, mode) {
     [/을를/g, "을"], [/이가/g, "이"], [/은는/g, "은"], [/와과/g, "와"],
     [/으로로/g, "으로"], [/에서서/g, "에서"], [/부터터/g, "부터"], [/까지지/g, "까지"],
     [/에게게/g, "에게"], [/하고고/g, "하고"],
+    // 중복 조사 (동일 조사 2회 연속)
+    [/([가-힣])이이(?![가-힣])/g, "$1이"],
+    [/([가-힣])은은(?![가-힣])/g, "$1은"],
+    [/([가-힣])을을(?![가-힣])/g, "$1을"],
+    [/([가-힣])가가(?![가-힣])/g, "$1가"],
+    [/([가-힣])는는(?![가-힣])/g, "$1는"],
+    [/([가-힣])를를(?![가-힣])/g, "$1를"],
     [/([가-힣])\1{2,}/g, "$1"],
     [/\.{4,}/g, "..."], [/!{2,}/g, "!"], [/\?{2,}/g, "?"],
   ];
@@ -1696,9 +2098,13 @@ function insertDermaTimeline(text, name, mode) {
 // ============================================================
 // runDermaQC — BLOCK_MAP 기반 카테고리 카운트
 // ============================================================
-function runDermaQC(text, keyword, fullKeyword, mode) {
+function runDermaQC(text, keyword, fullKeyword, mode, treatmentId) {
   const validMode = (mode === "commercial") ? "commercial" : "personal";
-  const hasInfoBlock = text.includes("비교") && text.includes("vs");
+  // INFO_BLOCK 실제 삽입 여부로 판정 — title 매칭(정확) + 일반 비교 패턴 폴백
+  const _block = treatmentId ? DERMA_INFO_BLOCKS[treatmentId] : null;
+  const _titleHit = _block ? text.includes(_block.title) : false;
+  const _genericHit = text.includes("비교") && (text.includes("vs") || text.includes("VS"));
+  const hasInfoBlock = _titleHit || _genericHit;
   const hasExamValue = /\d+회|\d+샷|\d+ml|\d+유닛|\d+포인트|\d+가닥/.test(text);
   const kwCount      = (text.match(new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).length;
   const fullKwCount  = (text.match(new RegExp(fullKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).length;
@@ -1825,13 +2231,124 @@ function buildDermaHashtags(activeKeyword, region, mode) {
 }
 
 // ============================================================
+// ★ v3.15 패치: DERMA_PHOTO_POOL — 평문 복붙 UX (피부과 맥락)
+//   "거울·자연광·진정팩·자외선차단제·결 변화" 중심 / 광고 톤 차단
+//   5종(검사/상담/시술/경과/일상) × {photos, captions} 다양화
+// ============================================================
+const DERMA_PHOTO_POOL = {
+  "접수 사진": {
+    photos: [
+      "피부과 입구 · 접수 데스크",
+      "대기 공간 · 안내 표지",
+      "진료 안내 리플릿 · 시술 목록",
+    ],
+    captions: [
+      "피부과 접수 데스크",
+      "대기실 안내 공간",
+      "시술 안내 자료",
+    ],
+  },
+  "상담실 사진": {
+    photos: [
+      "상담실 내부 · 상담 데스크",
+      "시술 옵션 비교 차트 화면",
+      "상담용 피부 안내 자료",
+    ],
+    captions: [
+      "상담실 내부",
+      "시술 옵션 비교 화면",
+      "상담 안내 자료",
+    ],
+  },
+  "진단장비 사진": {
+    photos: [
+      "피부 분석 · 진단 기기",
+      "모공·색소 측정 모니터 화면",
+      "피부 상태 진단 장비",
+    ],
+    captions: [
+      "피부 진단 장비",
+      "피부 분석 화면",
+      "측정 기기",
+    ],
+  },
+  "시술장비 사진": {
+    photos: [
+      "레이저 시술 장비",
+      "시술 기기 핸드피스 · 팁",
+      "시술 장비 세팅 화면",
+    ],
+    captions: [
+      "시술 장비",
+      "레이저 기기",
+      "장비 세팅 화면",
+    ],
+  },
+  "진료실 사진": {
+    photos: [
+      "진료실 내부 · 시술 베드",
+      "진료 안내 · 준비 공간",
+      "시술 준비 물품 정리대",
+    ],
+    captions: [
+      "진료실 내부",
+      "시술 준비 공간",
+      "진료실 물품",
+    ],
+  },
+  "케어 사진": {
+    photos: [
+      "진정 · 재생 케어 제품",
+      "자외선 차단제 · 홈케어 안내",
+      "시술 후 관리 안내 자료",
+    ],
+    captions: [
+      "케어 제품 안내",
+      "자외선 차단 안내",
+      "시술 후 관리 자료",
+    ],
+  },
+};
+
+function buildDermaPhotoPlaceholder(altRaw) {
+  const alt = String(altRaw || "").trim();
+  const pool = DERMA_PHOTO_POOL[alt] || DERMA_PHOTO_POOL["상담실 사진"];
+  const photos = pool.photos.map((p) => "• " + p).join("\n");
+  const captions = pool.captions.map((c) => "• " + c).join("\n");
+  return (
+    "━━━━━━━━━━━━━━━━━━━\n" +
+    "📷 " + alt + " 첨부 위치\n" +
+    "(업로드 후 이 안내문 삭제)\n\n" +
+    "추천 사진\n" + photos + "\n\n" +
+    "사진 설명 예시\n" + captions + "\n" +
+    "━━━━━━━━━━━━━━━━━━━"
+  );
+}
+
+// ============================================================
 // ★ v2 패치: stripMarkdownForNaver — 네이버 블로그 복사용 평문 변환
 // 목적: 사용자가 글 복사 후 #/##/### 마크다운 기호를 수동 제거하지 않도록
 // 네이버는 마크다운 렌더링 안 함 → 평문으로 변환 필요
 // 위치: 모든 후처리 끝난 뒤 마지막 단계 (응답 직전)
+// 🆕 v3.14: [이미지: X] → 점선 박스 placeholder 변환 (사용자 복붙 UX)
 // ============================================================
 function stripMarkdownForNaver(text) {
   let t = text;
+
+  // ⓪-1 🆕 v3.15: alt 정규화 — GPT가 [이미지: 시술전/시술중/검사후/회복중/결과] 변형 생성 시 5종으로 강제 통일
+  t = t.replace(/\[이미지:\s*([^\]]+)\]/g, (_m, inner) => {
+    const s = String(inner).trim();
+    if (/^(검사|상담|시술|경과|일상)\s*사진$/.test(s)) return `[이미지: ${s}]`;
+    if (/검사|분석|진단|측정|모니터/.test(s))            return "[이미지: 검사 사진]";
+    if (/상담|진료|설명|차트|데스크|문진|원장|의사/.test(s)) return "[이미지: 상담 사진]";
+    if (/시술전|시술중|시술후|시술|레이저|시술실/.test(s))  return "[이미지: 시술 사진]";
+    if (/경과|회복|진정|재생|after|결과|변화|관리|케어|붉/.test(s)) return "[이미지: 경과 사진]";
+    if (/일상|복귀|평소|생활|마무리|외출|셀카|자연광|메이크업|카페/.test(s)) return "[이미지: 일상 사진]";
+    return "[이미지: 상담 사진]";
+  });
+
+  // ⓪ 🆕 v3.14: [이미지: X] → 점선 박스 placeholder (복붙 UX)
+  t = t.replace(/\[이미지:\s*([^\]]+)\]/g, (_m, alt) => buildDermaPhotoPlaceholder(alt));
 
   // ① 줄 시작 헤더 변환 (제목·섹션·하위섹션)
   t = t.replace(/^#\s+(.+)$/gm, "$1");                    // # 제목 → 평문
@@ -1860,8 +2377,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { program, userRegion, userMemo, subSite, mode } = req.body;
-  const validMode = (mode === "commercial") ? "commercial" : "personal";
+  const { program, userRegion, userMemo, subSite, mode, photoContext,
+          address, map_guide, transit, building_desc, parking_info } = req.body;
+  // [V2] 정보형 단일. personal(후기형) 경로 폐지 — 항상 commercial 고정.
+  const validMode = "commercial";
+  const _locStore = { address, map_guide, transit, building_desc, parking_info };
 
   const region   = (userRegion || "강남").trim();
   const memo     = (userMemo || "").trim();
@@ -1998,6 +2518,33 @@ export default async function handler(req, res) {
     "- 모든 섹션이 위 방향성으로 일관되게 작성되어야 합니다.\n"
   ) : "";
 
+  // ─────────────────────────────────────────────
+  // [PHOTO_BLOCK] photoContext 주입 — scene 강화 (PHILOSOPHY 5원칙 #4)
+  // 사용자가 사진 업로드 → analyze.js에서 추출한 현장 디테일
+  // systemPrompt 끝에 합쳐서 6섹션 전체에 자연 분산되도록 함
+  // ─────────────────────────────────────────────
+  const _photoCtx = (photoContext || "").trim();
+  const PHOTO_BLOCK = (_photoCtx.length > 30)
+    ? "\n[현장 디테일 참고 — 사진에서 추출된 단서]\n" +
+      _photoCtx + "\n" +
+      "[반영 규칙]\n" +
+      "- 위 내용을 별도 단락으로 설명하지 말 것. 직접 인용·나열 금지.\n" +
+      "- '사진을 보면', '이미지에서' 같은 메타 표현 금지.\n" +
+      "- scene으로 녹일 것 — 정보 나열 ❌, 행동·상황 묘사 ⭕.\n" +
+      "- ⭐ 최소 2~3개 단락에서 실제 공간 안에 있는 듯한 장면 묘사를 분산 배치할 것 (필수).\n" +
+      "  ▸ 단락마다 다른 디테일 선택: 상담실 / 시술실 / 대기실 / 기기 / 조명 / 동선 중 골고루\n" +
+      "  ▸ 예: 상담 섹션 → \"창가 진료실에서 차트를 함께 본다\"\n" +
+      "  ▸ 예: 시술 섹션 → \"기기가 천천히 피부 위를 지나간다\"\n" +
+      "  ▸ 예: 결정/경과 섹션 → \"대기실 조명이 따뜻한 톤으로 깔려 있다\"\n" +
+      "- 한 섹션에 scene 몰빵 금지 — 글 전체에 골고루 흩어 놓을 것.\n" +
+      "- 단, 모든 글에서 동일 패턴 반복 금지 — 사진마다 다른 디테일 선택.\n" +
+      "- 추상 표현 금지: '체계적인', '전문적인' 같은 평가어 ❌ / '창가 자리의 부드러운 조명' 같은 구체 묘사 ⭕.\n"
+    : "";
+
+  if (_photoCtx.length > 30) {
+    console.log(`[derma] photoContext 주입: ${_photoCtx.length}자`);
+  }
+
   let systemPrompt;
 
   if (validMode === "commercial") {
@@ -2007,26 +2554,36 @@ export default async function handler(req, res) {
       "광고·후기 톤이 아닌 \"정보 안내\" 형식으로 작성합니다.\n\n" +
       "[톤 — 정보형 안내 (가장 중요)]\n" +
       "  - 1인칭 시점 절대 금지: \"저는/제가/내가/저도/저희/제 케이스\" 사용 금지\n" +
-      "  - 어미는 정보형: ~됩니다 / ~로 안내됩니다 / ~경우가 있습니다 / ~로 진행됩니다\n" +
+      "  - 어미는 정보형 — 단, 다양하게 섞어 쓸 것:\n" +
+      "    ▸ ~됩니다 / ~로 안내됩니다 / ~경우가 있습니다 / ~로 진행됩니다 (일부만 사용)\n" +
+      "    ▸ 동일 어미 2회 이상 연속 금지\n" +
+      "    ▸ 행동·상황형 문장 비율 30% 이상 (예: \"진료실에서 차트를 보며 설명이 이어진다\", \"기기를 피부 위로 천천히 움직인다\")\n" +
       "  - 후기 어미 금지: \"~했어요/~더라고요/~거든요\"\n" +
       "  - 추천·CTA 금지: \"추천합니다/방문해보세요/꼭 받으세요/권해드립니다\" 일체 금지\n" +
       "  - 효과 단정 금지: \"확실히/100%/완치/사라짐/완벽\" → \"변화가 관찰될 수 있습니다\"\n" +
       "  - 가격 직접 표기 금지: \"비용은 상담 시 안내됩니다\"\n" +
       "  - 병원·의료진 평가 금지: \"친절/전문/최고/믿음\" 어휘 사용 금지\n\n" +
       focusBlock +
-      "\n[글 구조 — 순서 절대 유지]\n" +
-      "## 고민·증상 안내 (최소 220자)\n" +
-      "## 정보 탐색 안내 (최소 200자)\n" +
-      "## 상담 안내 (최소 250자)\n" +
-      "## 선택 시 일반 고려사항 (최소 200자)\n" +
-      "## 시간 흐름별 일반 경과 (최소 280자) — ### 1일 / ### 1주 / ### 2주 / ### 1개월\n" +
-      "## 종합 안내 (최소 180자)\n\n" +
-      "[필수 수치]\n" +
-      "- 시술 횟수 / 간격 / 통증(10점 기준) / 비용은 상담 시 안내\n" +
-      "- 변화: 1일·1주·2주·1개월\n" +
+      "\n[글 구조 — 순서 절대 유지 (정보형 7섹션)]\n" +
+      "## 증상·상황 (최소 200자)\n" +
+      "## 시술 전 확인사항 (최소 200자)\n" +
+      "## 피부과적 판단 요소 (최소 250자)\n" +
+      "## 시술 방법 안내 (최소 250자)\n" +
+      "## 진료 안내 (최소 200자)\n" +
+      "## 확인 포인트 (최소 200자)\n" +
+      "## 마무리 (최소 150자)\n\n" +
+      "[정보형 원칙 — 개인 타임라인·회복일지 금지]\n" +
+      "- ### 1일 / 1주 / 2주 / 1개월 등 개인 경과 타임라인 절대 금지\n" +
+      "- 시술 횟수·간격·비용 단정 금지 — \"개인 상태에 따라 상담 시 안내\" 수준\n" +
       "- 본문 내 가격 직접 표기 절대 금지\n\n" +
       "[필수 비교]\n" +
       activeKeyword + " vs " + compare + " 일반 비교 1회 필수 (사실 기술 형식)\n\n" +
+      "[narrative 강제 — scene 확보용 (PHILOSOPHY 핵심)]\n" +
+      "- 설명문보다 행동·상황·반응 중심 문장 비율 30% 이상 유지\n" +
+      "- 최소 1개 단락에서는 실제 공간 안에 있는 듯한 장면 묘사 포함 (예: \"진료실에 앉아 모니터 속 본인 피부 사진을 보며 설명을 듣는다\")\n" +
+      "- 시간·공간 단서 자연 삽입 (창밖, 조명, 대기실 분위기, 기기 소리 등)\n" +
+      "- 설명형 어미만 4문장 이상 연속 금지 — 중간에 행동·장면 문장 1개 끼울 것\n" +
+      "- \"진행된다 / 작용한다 / 확인된다 / 설명한다\" 동일 패턴 3회 이상 연속 금지\n\n" +
       "[출력 형식]\n" +
       "마크다운 / 제목(# 시작) / 섹션(## 유지) / 마지막 해시태그\n\n" +
       "[금지]\n" +
@@ -2041,7 +2598,11 @@ export default async function handler(req, res) {
       "광고·후기 톤이 아닌 \"과정 기록\" 형식으로 작성합니다.\n\n" +
       "[톤 — 과정 기록형 (가장 중요)]\n" +
       "  - 1인칭 시점 절대 금지: \"저는/제가/내가/저도/저희/제 케이스\" 사용 금지\n" +
-      "  - 어미는 중립 기록형: ~됨 / ~된다 / ~되는 경우 / ~확인됨 / ~나타남 / ~로 진행됨\n" +
+      "  - 어미는 중립 기록형 — 단, 다양하게 섞어 쓸 것:\n" +
+      "    ▸ ~됨 / ~된다 / ~되는 경우 / ~확인됨 / ~나타남 / ~로 진행됨 (일부만 사용)\n" +
+      "    ▸ 동일 어미 2회 이상 연속 금지\n" +
+      "    ▸ \"~됨\" 계열은 전체 문장의 30% 이하로 제한\n" +
+      "    ▸ 행동·상황형 평어 문장 비율 40% 이상 (예: \"창가 자리에 앉아 상담을 시작한다\", \"기기가 천천히 피부 위를 지나간다\")\n" +
       "  - 후기 어미 금지: \"~했어요/~더라고요/~거든요\"\n" +
       "  - 광고 어휘 금지: \"솔직/추천/꼭/만족/후회 없음/다행\"\n" +
       "  - CTA 금지: \"상담 받아보세요/방문해보세요/권해드려요\"\n" +
@@ -2067,6 +2628,12 @@ export default async function handler(req, res) {
       "- 핵심 시술명(" + activeKeyword + ") 5회 이상 자연 분산\n" +
       "- \"" + region + " 피부과\" 3회 이상 포함\n" +
       "- 완전체 키워드(" + fullKeyword + ") 본문에 2~3회\n\n" +
+      "[narrative 강제 — scene 확보용 (PHILOSOPHY 핵심)]\n" +
+      "- 설명문보다 행동·상황·반응 중심 문장 비율 40% 이상 유지\n" +
+      "- 최소 1개 단락에서는 실제 공간 안에 있는 듯한 장면 묘사 포함 (예: \"진료실에 앉아 모니터 속 본인 피부 사진을 보며 설명을 듣는다\", \"기기가 천천히 피부 위를 지나간다\", \"창밖이 어두워질 무렵 시술이 시작된다\")\n" +
+      "- 시간·공간 단서 자연 삽입 (창밖, 조명, 대기실 분위기, 기기 소리, 보호장구 착용 순간 등)\n" +
+      "- 설명형 어미만 4문장 이상 연속 금지 — 중간에 행동·장면 문장 1개 끼울 것\n" +
+      "- \"진행된다 / 작용한다 / 확인된다 / 설명한다 / 정리된다\" 동일 패턴 3회 이상 연속 금지\n\n" +
       "[금지]\n" +
       "❌ 같은 문단·구조 반복\n" +
       "❌ 시술 효과 방향 혼용\n" +
@@ -2075,6 +2642,9 @@ export default async function handler(req, res) {
       "❌ \"인생이 바뀌\" / \"새로운 삶\" / \"미소를 되찾\"\n" +
       "❌ 줄바꿈은 반드시 실제 개행만 — 본문에 \"\\n\" 같은 백슬래시 출력 금지\n";
   }
+
+  // photoContext 주입 (있을 때만)
+  systemPrompt += PHOTO_BLOCK;
 
   // 섹션별 이미지 ALT (mode 전달)
   const _rawImgAlts = getDermaImageAlts(treatment, region, activeKeyword, validMode);
@@ -2086,13 +2656,13 @@ export default async function handler(req, res) {
   const DERMA_ALT_POOL = ["상담 사진", "시술전 사진", "시술중 사진", "경과 사진", "일상 사진"];
   const _alt = (label) => `[이미지: ${label}]`;
   const imgAlts = {
-    concern: _alt("일상 사진"),
-    search:  _alt("상담 사진"),
-    consult: _alt("시술전 사진"),
-    result1: _alt("시술중 사진"),
-    result2: _alt("경과 사진"),
-    result3: _alt("경과 사진"),
-    closing: _alt("일상 사진"),
+    concern:     _alt("접수 사진"),
+    examination: _alt("상담실 사진"),
+    diagnosis:   _alt("진단장비 사진"),
+    treatment:   _alt("시술장비 사진"),
+    visitInfo:   _alt("진료실 사진"),
+    checkPoint:  _alt("케어 사진"),
+    closing:     _alt("접수 사진"),
   };
 
   // ----------------------------------------------------------
@@ -2101,13 +2671,13 @@ export default async function handler(req, res) {
   const writtenSections = new Set();
 
   const DERMA_SECTION_CAP = {
-    concern:  { min: 220, max: 320 },
-    search:   { min: 200, max: 300 },
-    consult:  { min: 250, max: 350 },
-    decision: { min: 200, max: 300 },
-    reason:   { min: 200, max: 300 },
-    result:   { min: 280, max: 380 },
-    closing:  { min: 180, max: 280 },
+    concern:     { min: 200, max: 300 },
+    examination: { min: 200, max: 300 },
+    diagnosis:   { min: 250, max: 350 },
+    treatment:   { min: 250, max: 350 },
+    visitInfo:   { min: 200, max: 300 },
+    checkPoint:  { min: 200, max: 300 },
+    closing:     { min: 150, max: 220 },
   };
 
   for (const sec of DERMA_FLOW_ENGINE.sections) {
@@ -2177,15 +2747,12 @@ export default async function handler(req, res) {
     result += content + "\n\n";
 
     // 섹션 뒤 이미지 플레이스홀더
-    if (sec.key === "concern")  result += imgAlts.concern  + "\n\n";
-    if (sec.key === "search")   result += imgAlts.search   + "\n\n";
-    if (sec.key === "consult")  result += imgAlts.consult  + "\n\n";
-    if (sec.key === "result") {
-      result = result
-        .replace(/(### 1주[\s\S]*?)(### 2주)/,   "$1" + imgAlts.result1 + "\n\n$2")
-        .replace(/(### 2주[\s\S]*?)(### 1개월)/, "$1" + imgAlts.result2 + "\n\n$2");
-      result += imgAlts.result3 + "\n\n";
-    }
+    if (sec.key === "concern")     result += imgAlts.concern     + "\n\n";
+    if (sec.key === "examination") result += imgAlts.examination + "\n\n";
+    if (sec.key === "diagnosis")   result += imgAlts.diagnosis   + "\n\n";
+    if (sec.key === "treatment")   result += imgAlts.treatment   + "\n\n";
+    if (sec.key === "visitInfo")   result += imgAlts.visitInfo   + "\n\n";
+    if (sec.key === "checkPoint")  result += imgAlts.checkPoint  + "\n\n";
   }
 
   // ----------------------------------------------------------
@@ -2233,6 +2800,11 @@ export default async function handler(req, res) {
   // ★ 지역 키워드 반복 분산 (4회 초과 시 변형)
   result = spreadDermaRegionKw(result, region);
 
+  // ★ 시술 keyword 반복 분산 (7회 초과 시 변형) — region 분산 직후 적용
+  result = spreadDermaKeyword(result, keyword);
+  // ★ 변형 후 조사 자동 교정
+  result = fixDermaVariantParticles(result);
+
   // ★ "관찰됨/확인됨" 반복 분산 (각 4회 초과 시 변형)
   result = spreadDermaObservation(result);
 
@@ -2252,12 +2824,74 @@ export default async function handler(req, res) {
 
   // ★★★ v3.7: FINAL PASS — 모든 후처리 끝난 뒤 마지막 강제 정리 ★★★
   // 이전 단계에서 다시 깨졌거나 끼어든 잔존 패턴을 무조건 잡는다.
-  result = finalDermaClean(result);
+  // ★ v3.18: 시술명 전달 — "이 치료" fossil을 시술명 직접 치환에 사용
+  result = finalDermaClean(result, keyword);
+
+  // [V2 정보형 최종 안전망] cleanCommercialDerma ⑨ 이후 spread/final 단계에서
+  //   재생성될 수 있는 주관·광고성 표현을 최종 1회 정리 (commercial 전용)
+  if (validMode === "commercial") {
+    result = result
+      .replace(/집중적으로\s*체감되는\s*부분이었다/g, "집중적으로 적용되는 방식이다")
+      .replace(/체감되는\s*부분이었다/g, "살펴보게 되는 부분이다")
+      .replace(/변화를?\s*기대할\s*수\s*있(지만|으며|고)/g, "변화 여부는 상태에 따라 다를 수 있$1")
+      .replace(/변화를?\s*기대할\s*수\s*있는\s*(계획|방법|시술|관리)/g, "상담 시 안내되는 $1")
+      .replace(/맞춤형\s*접근으?로/g, "개인 상태에 따른 접근으로")
+      .replace(/맞춤형\s*접근이?/g, "개인 상태에 따른 접근이")
+      // ★ v4.3: 위 치환이 원문 목적격("접근을/를")·"접근법"과 결합해 "접근이을/이를/이법" 파손 (실측 3/5). 정리.
+      .replace(/개인 상태에 따른 접근이(?:을|를)/g, "개인 상태에 따른 접근을")
+      .replace(/개인 상태에 따른 접근이법/g, "개인 상태에 따른 접근법")
+      .replace(/자신감이나\s*대인관계에도\s*영향을?\s*미칠\s*수\s*있지만/g, "일상에서 인식될 수 있으나")
+      .replace(/피부\s*표면을?\s*자극하여,?\s*모공과\s*흉터의?\s*변화를?\s*유도하는\s*방식이?다/g,
+               "피부 상태에 따라 적용되는 방식으로 안내됩니다");
+
+    // [FREEZE 잔여] 조사·중복·단어 오류 정리 (문체 무수정 — 조사/치환 수준)
+    // ① 시술명 조사 오류 (받침 판별) — activeKeyword 한정으로 과수정 없음
+    const _kw = activeKeyword || keyword;
+    if (_kw) {
+      const _last = _kw[_kw.length - 1];
+      const _code = _last ? _last.charCodeAt(0) : 0;
+      const _isHangul = _code >= 0xAC00 && _code <= 0xD7A3;
+      const _hasJong = _isHangul ? ((_code - 0xAC00) % 28 !== 0) : null;
+      const _esc = _kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (_hasJong === true) {
+        // 받침 있음: 는→은 / 를→을 / 가→이
+        result = result
+          .replace(new RegExp(_esc + "는(?![가-힣])", "g"), _kw + "은")
+          .replace(new RegExp(_esc + "를(?![가-힣])", "g"), _kw + "을")
+          .replace(new RegExp(_esc + "가(?![가-힣])", "g"), _kw + "이");
+      } else if (_hasJong === false) {
+        // 받침 없음: 은→는 / 을→를 / 이(주격)→가
+        result = result
+          .replace(new RegExp(_esc + "은(?![가-힣])", "g"), _kw + "는")
+          .replace(new RegExp(_esc + "을(?![가-힣])", "g"), _kw + "를");
+      }
+    }
+    // ② 중복 시술명/과정 (spread 이후 재발분 포함)
+    result = result
+      .replace(/시술\s*과정\s*시술(은|는|이|가|을|를|의)/g, "이 시술$1")
+      .replace(/관리\s*과정\s*관리(은|는|이|가|을|를|의)/g, "이 관리$1")
+      .replace(/([가-힣]{2,})\s*과정\s*\1(은|는|이|가|을|를|의)/g, "$1$2")
+      // ③ ⑨ 치환이 기존 "개인 상태에 따른" 뒤에 붙어 생긴 중복
+      .replace(/개인의?\s*피부\s*상태에\s*따른\s*개인\s*상태에\s*따른/g, "개인의 피부 상태에 따른")
+      .replace(/개인\s*상태에\s*따른\s*개인\s*상태에\s*따른/g, "개인 상태에 따른")
+      // ④ "레이저토닝 전환" 등 시술명+전환 오염 → 시술명+시술
+      .replace(new RegExp("(" + (_kw ? _kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "레이저토닝") + ")\\s*전환(에|이|은|을|의|에서)?", "g"), "$1 시술$2")
+      // ⑤ 조사 누락 — "평가 중요하다" → "평가가 중요하다" (명사+형용사 직결)
+      .replace(/([가-힣]{2,})\s+평가\s+중요(하다|한|합니다|하며|해)/g, "$1 평가가 중요$2")
+      .replace(/([가-힣]{2,})\s+판단\s+중요(하다|한|합니다|하며|해)/g, "$1 판단이 중요$2")
+      // ⑥ 후기형 잔존 문장 — "변화가 느껴진 부분이 있었음" 계열
+      .replace(/변화가?\s*느껴진\s*부분이?\s*있었음\.?/g, "권장됩니다.")
+      .replace(/([가-힣]+이?\s*)느껴진\s*부분이?\s*있었음\.?/g, "$1확인되는 경우가 있습니다.")
+      // ⑦ 문두 지시어 탈락 — "점들은/항목들은" 앞 "이런" 탈락 복원
+      .replace(/(^|[.!?]\s*)점들은/g, "$1이러한 점들은")
+      .replace(/(^|[.!?]\s*)항목들은/g, "$1이러한 항목들은")
+      .replace(/(^|[.!?]\s*)측면에서\s/g, "$1이러한 측면에서 ");
+  }
 
   // ----------------------------------------------------------
   // QC
   // ----------------------------------------------------------
-  const qc = runDermaQC(result, keyword, fullKeyword, validMode);
+  const qc = runDermaQC(result, keyword, fullKeyword, validMode, tid);
 
   // 완전체 키워드 부족 시 보충 (personal만)
   if (validMode === "personal" && qc.fullKwCount < 3) {
@@ -2280,6 +2914,9 @@ export default async function handler(req, res) {
   result = result.replace(/\n+(HASHTAGS:.+)?$/s, "").trimEnd();
   result += "\n\n" + imgAlts.closing + "\n\n" + tags;
 
+  // PATCH-07: 위치 공통화 후단 연결 (발행코치=「📍 찾아오시는 길」 삽입 / 일반글쓰기(빈값)=무해)
+  result = insertLocationBeforeHashtags(result, _locStore);
+
   // 최종 백슬래시 정리
   result = result
     .replace(/\\n\\n/g, "\n\n")
@@ -2297,6 +2934,27 @@ export default async function handler(req, res) {
   const resultMarkdown = result;                          // 마크다운 원본 보존
   result = stripMarkdownForNaver(result);                 // 네이버 복사용 평문
   const charCountPlain = calcDermaCharCount(result);
+
+  // 🆕 v3.14 QC: 박스 변환 카운트 + 감성 ending 잔존
+  const photoBoxCount = (result.match(/━{5,}\n📷/g) || []).length;
+  const emotionalDermaHits = (result.match(/(맑아졌|좋아졌|확\s*달라진?\s*피부|완전\s*변신|미소를?\s*되찾|자신감을?\s*되찾|더\s*밝아졌|더\s*환해졌)/g) || []).length;
+  // 🆕 v3.16 QC: fossil 회피어 잔존
+  const fossilHits = (result.match(/(해당\s*시술|이번\s*시술|해당\s*치료|작용함|작용할\s*가능성|확인되는\s*사례|영향을\s*(줌|미침))/g) || []).length;
+  // 🆕 v3.17 QC: 시사/해석 + 토큰 절단 잔존
+  const inferHits = (result.match(/(시사한다|시사함|해석된다|해석됨)/g) || []).length;
+  const brokenHits = (result.match(/(나타\s+체감|드러\s+것|드러\s+곳|이\s*치료은|이\s*치료을|모공\s+문(?!제)|나타\s+(건조|붉은|밝은|어두운|따가운|가려운|매끄러운)|가까이\s+다가\s+|상태가이|변화가이|양상이이)/g) || []).length;
+  const floatingYi = (result.match(/(기미|잡티|색소|모공|여드름|주근깨)\s+이\s+(치료|시술|관리|케어)/g) || []).length;
+  // 🆕 v3.18 QC: fossil dictionary 잔존
+  const dictHits = (result.match(/(이\s*치료과|긍정적인\s*평가|변화\s*폭|단계적으로\s*정리|작용한다|확인되었다|관찰할\s*수\s*있|확인할\s*수\s*있|도움이\s*될\s*수\s*있|변화\s*가능성|기여하게)/g) || []).length;
+  const ichiryoCount = (result.match(/이\s*치료/g) || []).length;
+  console.log(`[QC] 사진 placeholder 박스: ${photoBoxCount}개`);
+  console.log(`[QC] 감성ending 잔존: ${emotionalDermaHits} (목표 0)`);
+  console.log(`[QC] fossil 회피어 잔존: ${fossilHits} (목표 0)`);
+  console.log(`[QC] 추론어(시사/해석) 잔존: ${inferHits} (목표 0)`);
+  console.log(`[QC] 토큰 절단/조사 잔존: ${brokenHits} (목표 0)`);
+  console.log(`[QC] 부유 '이' 잔존: ${floatingYi} (목표 0)`);
+  console.log(`[QC] fossil dictionary 잔존: ${dictHits} (목표 0)`);
+  console.log(`[QC] "이 치료" 카운트: ${ichiryoCount} (목표 3 이하)`);
 
   return res.status(200).json({
     success: true,

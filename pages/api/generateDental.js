@@ -1,5 +1,65 @@
 // ============================================================
-// generateDental.js — 치과 블로그 생성기 v3.5
+// generateDental.js — 치과 블로그 생성기 v3.6.7
+//
+// 변경사항 (v3.6.7) — semi-migration (commonPhotoBox 최소 위임):
+//   ① stripMarkdownForNaver만 공통 모듈(_stripMarkdownForNaver)로 위임
+//   ② buildPhotoPlaceholder는 dental 전용 유지 (2단 구조 / UI identity 보존)
+//   ③ calcContentCharCount / qcPhotoBoxes 미적용 (관찰 데이터 연속성 보호)
+//   ④ DENTAL_PHOTO_POOL 무변경 / ABSORB·whitelist·cleanDental 무변경
+//   ⚠️ 박스 형식 변경 ❌ / 시각 regression ❌ / 발행 데이터 연속성 유지
+//
+// 변경사항 (v3.6.6) — placeholder 2단 구조:
+//   ① "추천 사진" (뭘 올릴지) + "사진 설명 예시" (어떻게 적을지) 분리
+//   ② DENTAL_PHOTO_POOL: alt 카테고리별 {photos, captions} 객체로 확장
+//   ⚠️ 사용자가 "사진 종류"와 "캡션"을 명확히 구분해서 인식하도록
+//
+// 변경사항 (v3.6.5) — 따옴표 + 키워드 중첩 비문 fix:
+//   ① AB-1d 신규: `"임플란트 비용"임플란트도` → `"임플란트 비용"도`
+//      GPT가 따옴표 닫은 직후 키워드를 또 붙여 출력하는 패턴 자동 정정
+//   ⚠️ 비문만 수정 — 감성/CTA softness는 일절 안 건드림 (인간미 보존)
+//
+// 변경사항 (v3.6.4) — 네이버 복붙 UX 개선:
+//   ① stripMarkdownForNaver: [이미지: ...] → 점선 박스형 placeholder
+//      "📷 사진 첨부 위치 / (업로드 후 이 안내문 삭제) / 추천 캡션 예시 3개"
+//   ② DENTAL_CAPTION_POOL: alt 카테고리별 후기체 캡션 (5종 × 3개)
+//      - "사진 설명" ❌ / "후기 캡션" ⭕
+//   ③ 변경 범위 최소화 — 생성 구조·UI·내부 [이미지:] 메타 일절 안 건드림
+//   ⚠️ 평문 변환 시에만 placeholder 박스 생성 (textMarkdown 원본은 그대로)
+//   ⚠️ index.js calcValidCharCount는 별도 패치 필요 (placeholder 박스 제외)
+//
+// 변경사항 (v3.6.3) — 사랑니 케이스 미세 보강:
+//   ① 감성 ending 4종 추가 (문장 단위 제거):
+//      "확신이 들었죠" / "받기를 잘했다는 생각" / "훨씬 편해졌답니다" / "큰 도움을 받을 수 있을 거예요"
+//   ② 문장 절단 패턴 제거 — "치료를 받고 나니 정말." 류
+//   ③ QC 잔존 카운트 동기화
+//   ⚠️ blacklist + 비문 보정만 — 구조/scene/density 동결
+//   ⚠️ "지하철역에서 걸어서 몇 분" / "야간진료" 같은 현실 판단 표현 보존
+//
+// 변경사항 (v3.6.2) — 두 번째 실발행 케이스 미세 보강 (강남 임플란트 2):
+//   ① 정리형 감정 마무리 3패턴 추가 — 문장 단위 제거
+//      "좋은 선택이었죠" / "모든 게 해결된 기분" / "더 이상 불편함을 느끼지 않아요"
+//   ② QC 잔존 카운트 동기화
+//   ⚠️ blacklist만 미세 보강 — 구조/scene/density 모두 동결
+//   ⚠️ "좋았어요"·"한결 수월" 류 약한 표현은 보존 (인간미 유지)
+//
+// 변경사항 (v3.6.1) — 실발행 첫 케이스 hotfix (강남 임플란트 1):
+//   ① 조사 깨짐 잔존 fix — "임플란트가 때문이죠" → "임플란트 때문이죠"
+//      (치료명 + 가 + 때문/덕분/이유/필요 비문 자동 교정)
+//   ② 감성 ending blacklist 확장 — "생활의 질이 높아진 기분", "믿음이 갔", "옳았다는 생각"
+//   ③ QC 잔존 카운트 패턴 동기화
+//   ⚠️ 구조·scene·density 동결 — 실발행 관찰 단계 진입
+//
+// 변경사항 (v3.6) — light scene engine 이식 (eye v2 패턴 + 옵션 A):
+//   ① photoContext req.body 추출 + PHOTO_BLOCK 분기
+//   ② SCENE_POOL_DENTAL (5카테고리 × 4 후보) — 시선·설명보조 위주
+//   ③ SECTION_SCENE_MAP_DENTAL — search/consult/result 3섹션 hard 주입
+//      - decision: 판단 중심 → scene 최소화 (주입 안함)
+//      - closing/reason/progress/concern: 설명 톤 유지 → scene 금지
+//   ④ systemPrompt(personal)에 scene 허용 + narrative 20~30% + 공포연출 금지 + 감성ending 금지
+//   ⑤ finalDentalClean 신규 — Z/AB-1(감성)/AB-1b(공포·기구)/AB-1c(AA합성)/~였어요/AA/AB-2/closing soft
+//   ⑥ QC 로그: scene engine mode + 감성ending 잔존 + 공포연출 잔존
+//   ⑦ dental 특화 금지: 드릴/마취바늘/날카로운기구/끔찍한통증 자동 차단
+//   ⚠️ 단일호출 변환 ❌ — dental 루프 구조 유지 (설명 안정성 + timeline + reason 연결 보존)
 //
 // 변경사항 (v3.5) — 실전 진단 3개 보정 (수원 임플란트 케이스):
 //   ① [T] "통해" 반복 분산 — 시술명/치료/시술/상담/이 치료 5계열 회전
@@ -30,8 +90,17 @@ import {
 } from "./generateUtils";
 // 🛡️ 과별 침투 차단 (v1.0) — 16개 업종 정체성 토큰 자동 차단
 import { getCrossBlocks } from "../../lib/industryBlocks";
+// [v-loc] 위치/주차 공통 후단 블록 — 전 업종 공유. 응답 직전 해시태그 위 삽입.
+import { insertLocationBeforeHashtags } from "../../lib/locationBlock";
 // 🛡️ 안전 제거 + 공백/조사 normalize (v1.0) — 강제 삽입 사고 방지
 import { safeRemoveWords, fixThisTreatmentParticles, fixParticles, normalizeWhitespace } from "../../lib/safeRemove";
+
+// ★ v3.6.7 — light scene 공통 모듈 (semi-migration: strip만 위임)
+//   DENTAL_PHOTO_POOL / buildPhotoPlaceholder는 dental 전용 유지 (2단 구조 UI identity)
+//   stripMarkdownForNaver 동작만 공통화 — 헤더 변환 로직 통일
+import {
+  stripMarkdownForNaver as _stripMarkdownForNaver,
+} from "../../lib/commonPhotoBox";
 
 // ============================================================
 // 0. 금지 키워드 (FORBIDDEN)
@@ -207,18 +276,25 @@ function getExamValues(treatmentId) {
 // ============================================================
 // 3. 제목 생성 (mode 분기)
 // ============================================================
-function buildDentalTitle(treatmentName, region, seoData, blogTypeId, mode) {
+function buildDentalTitle(treatmentName, region, seoData, blogTypeId, mode, fixedIdx = -1) {
   if (mode === "commercial") {
-    const defaults = [
-      `${region} ${treatmentName} 진료 안내｜치료 과정과 일반 정보 정리`,
-      `${region} ${treatmentName} 정보 가이드｜치과 검토 시 확인할 항목`,
-      `${region} ${treatmentName} 진료 정보｜일반 안내`,
+    const t = treatmentName, rg = region;
+    const judge = [
+      `${rg} ${t}, 바로 해야 할까? 고려하는 경우와 상담 전 확인할 5가지`,
+      `${rg} ${t} 상담 전 꼭 확인해야 할 5가지`,
+      `${t}, 이런 경우 고려합니다 — ${rg} 치과 전문 정보`,
+      `${rg} ${t} 결정 전 알아두면 좋은 기준`,
+      `${t} 상담 시 확인하는 항목 정리｜${rg}`,
     ];
-    return defaults[Math.floor(Math.random() * defaults.length)];
+    return judge[Math.floor(Math.random() * judge.length)];
   }
 
   if (seoData?.titlePatterns?.length) {
-    const raw = seoData.titlePatterns[Math.floor(Math.random() * seoData.titlePatterns.length)];
+    // [A-4] fixedIdx 지정 시 해당 family 제목 고정 (본문과 동기화), 아니면 기존 random
+    const idx = (fixedIdx >= 0 && fixedIdx < seoData.titlePatterns.length)
+      ? fixedIdx
+      : Math.floor(Math.random() * seoData.titlePatterns.length);
+    const raw = seoData.titlePatterns[idx];
     return raw.replace(/\{region\}/g, region);
   }
   if (blogTypeId === "compare") {
@@ -243,19 +319,26 @@ function buildDentalTitle(treatmentName, region, seoData, blogTypeId, mode) {
 // 4. 해시태그 (mode 분기)
 // ============================================================
 function buildDentalHashtags(treatmentName, region, mode) {
-  const kw = treatmentName.replace(/\s/g, "");
+  const kw = (treatmentName || "").replace(/\s/g, "");
+  const rg = (region || "").replace(/\s/g, "");
+  // 각 태그 내부 공백 제거 가드: "#분당 정자역임플란트" → "#분당정자역임플란트"
+  // (rg/kw가 미리 정리돼도, 결합 입력 경로에서 남는 공백을 출력 직전 차단)
+  const finalize = (arr, n) =>
+    arr.slice(0, n)
+       .map(t => t.replace(/\s+/g, ""))
+       .join(" ");
   if (mode === "commercial") {
-    return [
-      `#${region}${kw}`, `#${kw}정보`, `#${kw}안내`,
-      `#${kw}`, `#${region}치과`, `#치과정보`,
-      `#${region}진료안내`, `#치과진료`,
-    ].slice(0, 8).join(" ");
+    return finalize([
+      `#${rg}${kw}`, `#${kw}정보`, `#${kw}안내`,
+      `#${kw}`, `#${rg}치과`, `#치과정보`,
+      `#${rg}진료안내`, `#치과진료`,
+    ], 8);
   }
-  return [
-    `#${region}${kw}`, `#${kw}후기`, `#${kw}상담`,
-    `#${kw}`, `#${region}치과`, `#치과후기`,
-    `#${region}후기`, `#치아건강`, `#${region}치과추천`,
-  ].slice(0, 10).join(" ");
+  return finalize([
+    `#${rg}${kw}`, `#${kw}후기`, `#${kw}상담`,
+    `#${kw}`, `#${rg}치과`, `#치과후기`,
+    `#${rg}후기`, `#치아건강`, `#${rg}치과추천`,
+  ], 10);
 }
 
 // ============================================================
@@ -263,6 +346,21 @@ function buildDentalHashtags(treatmentName, region, mode) {
 // ============================================================
 function cleanDentalText(text, treatmentName, region, mode = "personal") {
   let result = text;
+
+  // [v103] 받침 판별 헬퍼 — 치료명 끝글자 받침에 따라 조사 자동 선택.
+  //   '라미네이트과'(❌)→'라미네이트와'(⭕), '라미네이트을'→'라미네이트를' 등.
+  const _lastCharHasJong = (w) => {
+    const s = String(w || "").trim();
+    if (!s) return false;
+    const c = s.charCodeAt(s.length - 1);
+    if (c < 0xAC00 || c > 0xD7A3) return false; // 한글 음절 아니면 받침 판정 보류
+    return (c - 0xAC00) % 28 !== 0;
+  };
+  const _tnHasJong = _lastCharHasJong(treatmentName);
+  const _josaGwa = _tnHasJong ? "과" : "와";   // 와/과
+  const _josaI   = _tnHasJong ? "이" : "가";   // 이/가
+  const _josaEul = _tnHasJong ? "을" : "를";   // 을/를
+  const _josaEun = _tnHasJong ? "은" : "는";   // 은/는
 
   // 공통: 기본 + AI 냄새 금지어
   const removeList = [...DENTAL_FORBIDDEN_BASE, ...DENTAL_FORBIDDEN_AI, ...DENTAL_CROSS_BLOCK];
@@ -289,22 +387,22 @@ function cleanDentalText(text, treatmentName, region, mode = "personal") {
   result = result.split("\n").map(line => {
     if (/^#{1,6}\s/.test(line)) {
       return line
-        .replace(/그\s*방법을/g, `${treatmentName}을`)
-        .replace(/그\s*방법이/g, `${treatmentName}이`)
-        .replace(/그\s*방법은/g, `${treatmentName}은`)
+        .replace(/그\s*방법을/g, `${treatmentName}${_josaEul}`)
+        .replace(/그\s*방법이/g, `${treatmentName}${_josaI}`)
+        .replace(/그\s*방법은/g, `${treatmentName}${_josaEun}`)
         .replace(/그\s*방법에/g, `${treatmentName}에`)
         .replace(/그\s*방법\s+/g, `${treatmentName} `)
-        .replace(/이\s*방법을/g, `${treatmentName}을`)
-        .replace(/이\s*방법이/g, `${treatmentName}이`)
-        .replace(/이\s*방법은/g, `${treatmentName}은`)
+        .replace(/이\s*방법을/g, `${treatmentName}${_josaEul}`)
+        .replace(/이\s*방법이/g, `${treatmentName}${_josaI}`)
+        .replace(/이\s*방법은/g, `${treatmentName}${_josaEun}`)
         .replace(/이\s*방법에/g, `${treatmentName}에`)
         .replace(/이\s*방법\s+/g, `${treatmentName} `)
-        .replace(/이\s*치료를/g, `${treatmentName}을`)
-        .replace(/이\s*치료가/g, `${treatmentName}이`)
-        .replace(/이\s*치료는/g, `${treatmentName}은`)
+        .replace(/이\s*치료를/g, `${treatmentName}${_josaEul}`)
+        .replace(/이\s*치료가/g, `${treatmentName}${_josaI}`)
+        .replace(/이\s*치료는/g, `${treatmentName}${_josaEun}`)
         .replace(/이\s*치료의/g, `${treatmentName}의`)
         .replace(/이\s*치료에/g, `${treatmentName}에`)
-        .replace(/이\s*치료과/g, `${treatmentName}과`)
+        .replace(/이\s*치료과/g, `${treatmentName}${_josaGwa}`)
         .replace(/이\s*치료\s+/g, `${treatmentName} `);
     }
     return line;
@@ -321,11 +419,12 @@ function cleanDentalText(text, treatmentName, region, mode = "personal") {
   result = fixThisTreatmentParticles(result);
   result = fixParticles(result, treatmentName);
 
-  // {치료명}이 과정/단계 보정 (치료명 의존 — 모듈에선 처리 못함)
+  // [v103] {치료명}+이/가 + 과정/단계/시점 보정 (치료명 의존 — 모듈에선 처리 못함)
+  //   받침없는 치료명은 '가'로 출력되므로 이/가 둘 다 잡는다. '시점' 추가.
   {
     const tnEscEarly = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     result = result
-      .replace(new RegExp(`${tnEscEarly}이\\s+(과정|단계|시간|결과|이후|이전)`, "g"), `${treatmentName}의 $1`);
+      .replace(new RegExp(`${tnEscEarly}(?:이|가)\\s+(과정|단계|시간|시점|결과|이후|이전)`, "g"), `${treatmentName}의 $1`);
   }
 
 
@@ -401,6 +500,10 @@ function cleanDentalText(text, treatmentName, region, mode = "personal") {
       [/결정했어요/g,        "진료를 검토하는 경우가 많습니다"],
       [/고민했어요/g,        "고민하는 경우가 많습니다"],
       [/고민하다가/g,        "고민하는 경우"],
+      // ── v2 보강: 결과 단정 / 우월성·추천 유도 ──
+      [/한꺼번에\s*해결(되었|됐|돼)?/g, "개선을 고려할 수 있습니다"],
+      [/문제가\s*(말끔히|깔끔히|한번에)?\s*해결(되었|됐|돼)\S*/g, "상태에 따라 경과가 다를 수 있습니다"],
+      [/(많은\s*분들이|후기\s*수가\s*많아서?|많은\s*사람들이)\s*\S{0,4}(추천|선택)\S*/g, "개인 상태에 따라 결정하는 것이 권장됩니다"],
     ];
     verbConversion.forEach(([from, to]) => {
       result = result.replace(from, to);
@@ -718,8 +821,19 @@ function cleanDentalText(text, treatmentName, region, mode = "personal") {
       return line + " 회복되었어요.";
     }
     if (/(을|를|이|가|의|에서|에게|으로)\s*$/.test(trimmed)) {
-      console.log(`[v3.4 문장종결] 미완성 문장 제거: "${trimmed}"`);
-      return "";
+      // [v103] 절단 완화 — 무조건 삭제 금지(과수정·문장 통삭제 사고 원인).
+      //   짧은 잔해(부사+조사 등 12자 미만)만 제거. 긴 정상 문장은 자연 종결을 붙여 보존.
+      const bare = trimmed.replace(/[^가-힣a-zA-Z0-9]/g, "");
+      if (bare.length < 8) {
+        console.log(`[v103 잔해제거] 짧은 조사잔해 제거: "${trimmed}"`);
+        return "";
+      }
+      console.log(`[v103 문장보존] 조사종결 긴문장 → 종결 보강: "${trimmed}"`);
+      // 의존명사+주격(것이/점이/부분이 등)은 '중요합니다'류, 그 외는 조사 제거 후 종결.
+      if (/(것|점|부분|면|경우)이\s*$/.test(trimmed)) {
+        return line.replace(/이\s*$/, "이 중요합니다.");
+      }
+      return line.replace(/(을|를|이|가|의|에서|에게|으로)\s*$/, ".");
     }
     if (/(고|며|면서|지만|는데|아서|어서|니까)\s*$/.test(trimmed)) {
       console.log(`[v3.4 잔해복구] 연결어미 → 종결: "${trimmed}"`);
@@ -731,8 +845,111 @@ function cleanDentalText(text, treatmentName, region, mode = "personal") {
   // ─────────────────────────────────────────────────────
   // [최종 정리]
   // ─────────────────────────────────────────────────────
+  // [v103] 치료명 직결 조사 전역 교정 — activeKeyword 강제주입이 조사 무시한 잔존 정리.
+  //   받침없는 치료명(라미네이트 등)에 '과/은/을/이'가 붙은 비문 → '와/는/를/가'.
+  {
+    const tnEsc = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (treatmentName && !_tnHasJong) {
+      result = result
+        .replace(new RegExp(`${tnEsc}과(?=[\\s,.])`, "g"), `${treatmentName}와`)
+        .replace(new RegExp(`${tnEsc}은(?=[\\s,.])`, "g"), `${treatmentName}는`)
+        .replace(new RegExp(`${tnEsc}을(?=[\\s,.])`, "g"), `${treatmentName}를`)
+        .replace(new RegExp(`${tnEsc}이(?=\\s)`, "g"), `${treatmentName}가`);
+    } else if (treatmentName && _tnHasJong) {
+      result = result
+        .replace(new RegExp(`${tnEsc}와(?=[\\s,.])`, "g"), `${treatmentName}과`)
+        .replace(new RegExp(`${tnEsc}를(?=[\\s,.])`, "g"), `${treatmentName}을`);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // [v104-1] 비문 종결 보정 — '~것이.' / '~것을.' 류
+  //   [B]는 마침표 없는 줄 끝 절단만 본다. GPT가 '확인하는 것이.'처럼
+  //   마침표를 붙여 끝맺은 비문은 [B] 미도달 + 한 문단(한 줄) 안에
+  //   여러 문장이 이어져 '것이.'가 줄 끝($)이 아닌 문단 중간에 위치 →
+  //   v104 최초 줄단위 매핑으로는 누락. 문장 단위 전역 치환으로 교정.
+  //   '용언(는/하시는/보는/찾는…) + 것이' + 문장경계(. ! ? 줄끝)
+  //   → '것이 중요합니다.' 보강. (뒤에 서술어가 오는 '것이 권장됩니다'는
+  //    문장경계가 아니므로 매칭 안 됨 = 정상 표현 보존)
+  // ─────────────────────────────────────────────────────
+  result = result
+    // '것이.' 또는 '것이' 뒤 문장경계(마침표+공백/줄끝/문단끝) → 보강
+    //   [v106] 앞을 '용언 어간 + 관형형 어미(는/은/을/ㄴ)'로 잡아 '세우는'처럼
+    //   2음절 이상 어간도 포착(기존 단일글자 캡처가 '세우는' 누락하던 버그 동반 수정).
+    //   [v109] {1,4}→{0,4} — 앞 글자 0개 허용. '하는 것이'처럼 어미가 단독으로
+    //   문장을 열 때 {1,4}가 어미 첫글자('하')를 먼저 소비해 매칭 실패하던 버그 수정.
+    .replace(/([가-힣]{0,4}(?:하시는|해보시는|아보는|어보는|보는|찾는|받는|세우는|두는|하는|되는|있는|없는|우는|기는|이는|리는))\s*것이\s*\.(\s|$)/g,
+      "$1 것이 중요합니다.$2")
+    .replace(/([가-힣]{0,4}(?:하시는|해보시는|아보는|어보는|보는|찾는|받는|세우는|두는|하는|되는|있는|없는|우는|기는|이는|리는))\s*것이(\s*\n|\s*$)/g,
+      "$1 것이 중요합니다.$2")
+    // [v106] '것도.' / '것도' 종결 비문 → '것도 좋습니다.' (업로드글 '살펴보는 것도.')
+    .replace(/([가-힣]{0,4}(?:하시는|해보시는|아보는|어보는|보는|찾는|받는|세우는|두는|하는|되는|있는|없는|우는|기는|이는|리는))\s*것도\s*\.(\s|$)/g,
+      "$1 것도 좋습니다.$2")
+    .replace(/([가-힣]{0,4}(?:하시는|해보시는|아보는|어보는|보는|찾는|받는|세우는|두는|하는|되는|있는|없는|우는|기는|이는|리는))\s*것도(\s*\n|\s*$)/g,
+      "$1 것도 좋습니다.$2")
+    // [v106] 명사+'확인이' 종결 비문 → '확인이 이루어집니다.' (업로드글 '경과 확인이.')
+    //   '확인이 중요한 이유' 등 뒤에 서술어 오는 정상표현은 문장경계 아니라 안 걸림.
+    .replace(/(경과|상태|진행|결과)\s*확인이\s*\.(\s|$)/g, "$1 확인이 이루어집니다.$2")
+    .replace(/(경과|상태|진행|결과)\s*확인이(\s*\n|\s*$)/g, "$1 확인이 이루어집니다.$2")
+    // [v109] 명사+'방문이' 종결 비문 → '방문이 권장됩니다.' (업로드글 '정기적인 치과 방문이.')
+    .replace(/(방문|점검|관리|내원)이\s*\.(\s|$)/g, "$1이 권장됩니다.$2")
+    .replace(/(방문|점검|관리|내원)이(\s*\n|\s*$)/g, "$1이 권장됩니다.$2")
+    // '것을.' 종결(드묾) → '것을 권장합니다.'
+    .replace(/([가-힣]{0,4}(?:하시는|해보시는|아보는|어보는|보는|찾는|받는|세우는|하는|우는))\s*것을\s*\.(\s|$)/g,
+      "$1 것을 권장합니다.$2");
+
+  // [v109] '~은/는' 술어 완전 누락 절단 — 주어부만 남고 문장이 끊긴 케이스.
+  //   업로드글 '이러한 과정은' (상담 섹션 끝). 줄/문단 끝에 '관형어+명사+은/는'만
+  //   덜렁 남으면 통째 제거(짧은 잔해라 살리기보다 제거가 안전).
+  //   ⚠️ 정상 본문은 '~은/는' 뒤에 반드시 서술이 이어지므로 줄끝 매칭 안 됨.
+  //   지시관형어(이러한/이런/그런/이/그)로 시작하는 짧은 절단만 한정 → 오제거 방지.
+  result = result
+    .replace(/(^|\n)\s*(?:이러한|이런|그런|이|그|위와\s*같은)\s*[가-힣]{1,6}[은는]\s*(?=\n|$)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n");
+
+  // ─────────────────────────────────────────────────────
+  // [v104-2] 명사+오결합 조사 정리 — activeKeyword 강제삽입 잔해
+  //   치료명 뒤에 주격(이/가)·목적격(을/를)이 붙었는데
+  //   후행어가 '명사'(시기/시점/단계/종류/선택…)이거나 '피동/형용'이라
+  //   조사가 의미상 틀린 케이스. 받침 직결 교정([v103])이 못 잡는
+  //   '명사 사이 오결합'을 문맥 패턴으로 교정.
+  //   예) 스케일링이 시점 → 스케일링 시점 / 스케일링을 개선될 → 스케일링으로 개선될
+  // ─────────────────────────────────────────────────────
+  {
+    const tnEsc3 = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const NOUN_AFTER = "(시기|시점|단계|종류|과정|방법|방식|효과|결과|선택|비용|기간|주기|상태|부위|영역|분야)";
+    result = result
+      // 치료명 + 이/가(주격 오결합) + 명사 → 치료명 + 공백 + 명사
+      //   ('의'는 정상 관형격이므로 제외 — '스케일링의 효과' 보존)
+      .replace(new RegExp(`${tnEsc3}(?:이|가)\\s+${NOUN_AFTER}`, "g"), `${treatmentName} $1`)
+      // 치료명 + 이/가 + 시간 의존명사(때/시/경우) → 치료명 + 공백
+      //   예) '신경치료가 때,' → '신경치료 때,' (GPT가 '받을 때' 의도를 오생성)
+      .replace(new RegExp(`${tnEsc3}(?:이|가)\\s+(때|시|경우)([,\\s])`, "g"), `${treatmentName} $1$2`)
+      // 치료명 + 을/를 + (개선|회복|예방|완화|호전|진행)될/되 → 치료명 + 으로/로 + …
+      .replace(new RegExp(`${tnEsc3}(?:을|를)\\s+(개선|회복|예방|완화|호전|진행|관리)(될|되|할|한)`, "g"),
+        (m, p1, p2) => `${treatmentName}${_tnHasJong ? "으로" : "로"} ${p1}${p2}`)
+      // 치료명 + 이/가 + '두 가지/여러 …의 선택은' 의미붕괴 → 치료명+와/과 비교 재구성
+      .replace(new RegExp(`${tnEsc3}(?:이|가)\\s+(두\\s*가지|여러|각각의|각|다양한)\\s*([^.\\n]{0,12}?)선택은`, "g"),
+        `${treatmentName} 관련 선택은`)
+      // [v104] 치료명 + 이/가 + '두 가지 방법' → 치료명 + 쉼표 (주격 오결합 제거)
+      //   '신경치료가 두 가지 방법은' → '신경치료, 두 가지 방법은'
+      .replace(new RegExp(`${tnEsc3}(?:이|가)\\s+(두\\s*가지\\s*방법)`, "g"), `${treatmentName}, $1`)
+      // [v104] 치료명 + 이/가 + '모든' → 치료명 + '의 모든' (관형격 복원)
+      .replace(new RegExp(`${tnEsc3}(?:이|가)\\s+(모든)`, "g"), `${treatmentName}의 $1`);
+    // [v104] 치료명 치료 이중표현 → 치료명 ('신경치료 치료'→'신경치료')
+    //   치료명이 '치료'로 끝나는 경우만 적용 (임플란트 치료 등 정상표현 보호).
+    if (/치료$/.test(treatmentName)) {
+      result = result.replace(
+        new RegExp(`${tnEsc3}\\s+치료(?=[을를은는이가의과와도\\s.,]|$)`, "g"),
+        `${treatmentName}`);
+    }
+  }
+
   result = result
     .replace(/\s+([.,!?])/g, "$1")
+    // [v104] 마침표+쉼표 중복 정리 — GPT 산출 '있습니다., 정확한' → '있습니다. 정확한'
+    .replace(/\.\s*,/g, ". ")
+    .replace(/,\s*\./g, ".")
     .replace(/^[ \t]+/gm, "")
     .replace(/[ \t]+$/gm, "")
     .replace(/[ \t]{3,}/g, " ")
@@ -749,6 +966,184 @@ function cleanDentalText(text, treatmentName, region, mode = "personal") {
     .trim();
 
   return result;
+}
+
+// ============================================================
+// 5-FINAL. finalDentalClean — v3.6 light scene engine 후처리
+//   eye v2 패턴 이식 + dental 특화 blacklist
+//   순서: Z → AB-1 → AB-1b → AB-1c → ~였어요 → AA → AB-2 → closing soft
+// ============================================================
+function finalDentalClean(text, treatmentName, region) {
+  let r = text;
+  let qcEndingResidual = 0;
+
+  // ── Z: photoContext 메타 표현 잔존 정리 ─────────────────
+  r = r
+    .replace(/사진을\s*(보면|보니|확인하면|살펴보면)[,.\s]*/g, "")
+    .replace(/이미지(에서|를\s*보면|를\s*확인하면)[,.\s]*/g, "")
+    .replace(/위\s*사진(을|에서|에)\s*/g, "")
+    .replace(/첨부(된|한)?\s*사진(을|에서|에)\s*/g, "");
+
+  // ── AB-1: 감성 ending 1차 차단 (dental 특화) ─────────
+  //   v3.6.1 안전 정책: 치환 후 뒤따르는 조사·어미와 충돌하지 않도록
+  //                    "문장 단위 통째 교체" 또는 "빈 문자열 제거" 사용
+  //                    (단순 단어 치환은 부조사 조사 깨짐 유발)
+
+  // (1) 문장 단위 통째 교체 — 감성 ending이 들어간 종결 문장은 통째로 정리 표현으로
+  const sentimentSentencePatterns = [
+    /[^.!?\n]*환한\s*미소를?\s*(되찾|찾)[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*자신감\s*있게\s*웃[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*자신감을?\s*(되찾|찾)[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*활짝\s*웃[^.!?\n]*있[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*새로운\s*(일상|삶|시작)[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*삶의\s*질이[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*생활(의|이)?\s*질이?\s*(높아|좋아)[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*믿음이?\s*갔[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*옳았다는?\s*생각[^.!?\n]*[.!?]/g,
+    // [v3.6.2] 정리형 감정 마무리 차단 — 효과 단정 회색지대
+    /[^.!?\n]*좋은\s*선택이었죠[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*좋은\s*선택이었어요[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*모든\s*게\s*해결[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*모든\s*것이?\s*해결[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*더\s*이상\s*불편함을?\s*(느끼지|받지)\s*않[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*더는\s*불편함을?\s*(느끼지|받지)\s*않[^.!?\n]*[.!?]/g,
+    // [v3.6.3] 사랑니 케이스 미세 보강
+    /[^.!?\n]*확신이\s*들었죠[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*확신이\s*생겼어요[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*받기를\s*잘했다는?\s*생각[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*잘했다는?\s*생각이?\s*들었[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*훨씬\s*편해졌답니다[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*훨씬\s*편해졌어요[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*큰\s*도움을?\s*받을\s*수\s*있(을|는)\s*거(예|에)요[^.!?\n]*[.!?]/g,
+    /[^.!?\n]*큰\s*도움이?\s*될\s*거(예|에)요[^.!?\n]*[.!?]/g,
+  ];
+  sentimentSentencePatterns.forEach(rx => {
+    const before = r.length;
+    r = r.replace(rx, "");
+    if (r.length !== before) qcEndingResidual++;
+  });
+
+  // ── AB-1a: 조사 깨짐 잔존 정리 (v3.6.1) ─────────────
+  // GPT 또는 safeRemove 후처리 단계에서 발생하는 비문 패턴
+  // 예: "임플란트가 때문이죠" → "임플란트 때문이죠"
+  {
+    const tnEsc = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    r = r
+      // 치료명이 + 때문/덕분 → 치료명 때문/덕분 (조사 제거)
+      .replace(new RegExp(`${tnEsc}가\\s+(때문|덕분)`, "g"), `${treatmentName} $1`)
+      // 치료명이 + 이유/필요 → 치료명의 이유/필요
+      .replace(new RegExp(`${tnEsc}가\\s+(이유|필요|문제|효과)`, "g"), `${treatmentName}의 $1`)
+      // 더 일반적인 "X가 때문이죠" 패턴 (치료명 외)
+      .replace(/([가-힣]{2,5})가\s+때문이(죠|에요|네요|었어요)/g, "$1 때문이$2")
+      .replace(/([가-힣]{2,5})가\s+덕분이(죠|에요|네요)/g, "$1 덕분이$2");
+  }
+
+  // ── AB-1b: dental 핵심 blacklist 확장 ────────────────
+  // 공포 연출 / 통증 강조 / 의료기구 fetish 차단
+  r = r
+    // 공포 anticipation
+    .replace(/끔찍한\s*통증/g, "불편한 느낌")
+    .replace(/참기\s*힘들\w*\s*통증/g, "불편함")
+    .replace(/너무\s*아\w*\s*소리\w*/g, "잠깐 불편했고")
+    .replace(/기구가?\s*다가\w*\s*때/g, "검사 자세를 잡을 때")
+    .replace(/소리만\s*들어도\s*무서\w*/g, "처음엔 어색했")
+    .replace(/입을?\s*벌\w*\s*있\w*\s*것\w*\s*힘들/g, "자세 유지는 익숙해지면 괜찮")
+    // 드릴/바늘 직접 묘사
+    .replace(/드릴(이|을|로)?\s*[^\s,.]+/g, "치료를")
+    .replace(/마취\s*바늘\w*/g, "마취 단계")
+    // 의료기구 fetish
+    .replace(/날카로운\s*기구\w*/g, "치료 기구")
+    // 효과 단정형
+    .replace(/명확해지기\s*시작\w*/g, "조금씩 안정되기 시작했어요")
+    .replace(/선명해지기\s*시작\w*/g, "조금씩 안정되기 시작했어요");
+
+  // ── AB-1c: AA 합성 깨짐 자동 복구 (명사 어간 + 라고) ─
+  // eye v2에서 발견된 패턴 — 명사 + ~라고 합성 시 문법 깨짐
+  r = r
+    .replace(/판단라고\s*(느꼈|했|봤)/g, "판단했")
+    .replace(/시작라고\s*(느꼈|했|봤)/g, "시작했")
+    .replace(/결정라고\s*(느꼈|했|봤)/g, "결정했")
+    .replace(/치료라고\s*(느꼈|했|봤)/g, "치료라는 결론을 내렸")
+    .replace(/선택라고\s*(느꼈|했|봤)/g, "선택했");
+
+  // ── AB-1d: 따옴표 + 키워드 중첩 비문 fix (v3.6.5) ─────
+  //   예: "임플란트 비용"임플란트도 검색 → "임플란트 비용"도 검색
+  //   GPT가 따옴표 닫은 직후 키워드를 또 붙여 출력하는 패턴
+  {
+    const tnEsc = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 패턴 1: "...키워드..."키워드 + 조사 → 두 번째 키워드 제거
+    r = r.replace(new RegExp(`(["“][^"”\\n]*${tnEsc}[^"”\\n]*["”])${tnEsc}(도|는|을|를|이|가|에|로|과|와|만|까지|부터|에서)`, "g"), "$1$2");
+    // 패턴 2: 그냥 "...키워드"키워드 (조사 없이) 형태도 (드물지만 안전망)
+    r = r.replace(new RegExp(`(["“][^"”\\n]*${tnEsc}[^"”\\n]*["”])${tnEsc}(?![가-힣])`, "g"), "$1");
+  }
+
+  // ── ~였어요 오타 복구: 받침 있는 글자 + 였어요 → 이었어요 ─
+  r = r.replace(/([가-힣])였어요/g, (m, ch) => {
+    const code = ch.charCodeAt(0) - 0xAC00;
+    if (code < 0 || code > 11171) return m;
+    const jong = code % 28;
+    if (jong !== 0) return `${ch}이었어요`;
+    return m;
+  });
+  r = r.replace(/([가-힣])였습니다/g, (m, ch) => {
+    const code = ch.charCodeAt(0) - 0xAC00;
+    if (code < 0 || code > 11171) return m;
+    const jong = code % 28;
+    if (jong !== 0) return `${ch}이었습니다`;
+    return m;
+  });
+
+  // ── AA: ~했어요 4연속만 1개 ~했습니다 격조 전환 (보수적) ──
+  {
+    const matches = [...r.matchAll(/했어요\./g)];
+    if (matches.length >= 4) {
+      let cnt = 0;
+      r = r.replace(/했어요\./g, (m) => {
+        cnt++;
+        return cnt === 4 ? "했습니다." : m;
+      });
+    }
+  }
+
+  // ── AB-2: timeline 어미 다양화 ───────────────────
+  r = r
+    .replace(/(1일|첫째 날|1일차)[^\n]*보였어요/g, m => m.replace("보였어요", "확인됐어요"))
+    .replace(/(1주|일주일|1주차)[^\n]*보였어요/g, m => m.replace("보였어요", "느껴졌어요"));
+
+  // ── closing soft: 1개만 보존 ─────────────────────
+  const closingSoftPatterns = [
+    /도움이\s*되었으면\s*\w*/g,
+    /기준이\s*되었으면\s*\w*/g,
+    /참고\s*되었으면\s*\w*/g,
+  ];
+  closingSoftPatterns.forEach(rx => {
+    const arr = [...r.matchAll(rx)];
+    if (arr.length > 1) {
+      let kept = false;
+      r = r.replace(rx, (m) => {
+        if (!kept) { kept = true; return m; }
+        return "";
+      });
+    }
+  });
+
+  // ── [v3.6.3] 문장 절단 패턴 제거 ─────────────────────
+  // GPT가 문장을 미완성으로 끊는 케이스: "치료를 받고 나니 정말." 류
+  // 패턴: 부사·접속사 + 종결부호 (의미 불완전)
+  r = r
+    .replace(/[^.!?\n]*(정말|진짜|너무|매우|아주|꽤|좀)\s*\.\s*/g, (m) => {
+      // "정말 좋아요." 같이 뒤에 다른 단어가 오면 보존, 부사 직후 마침표만 절단으로 간주
+      return /(정말|진짜|너무|매우|아주|꽤|좀)\s*\.\s*$/.test(m.trim()) ? "" : m;
+    })
+    // 더 일반화: "~나니 정말." / "~받고 정말." 같은 종결 직전 절단
+    .replace(/([가-힣]{2,})\s+(정말|진짜|너무|매우)\s*\.\s*\n/g, "$1.\n")
+    .replace(/([가-힣]{2,})\s+(정말|진짜|너무|매우)\s*\.\s*$/g, "$1.");
+
+  // 공백 정리
+  r = r.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+
+  finalDentalClean._lastEndingResidual = qcEndingResidual;
+  return r;
 }
 
 // ============================================================
@@ -965,23 +1360,120 @@ function runQC(text, treatmentName, mode, fullKeyword) {
 // 네이버는 마크다운 렌더링 안 함 → 평문으로 변환 필요
 // 위치: 모든 후처리 끝난 뒤 마지막 단계 (응답 직전)
 // ============================================================
+// ============================================================
+// [v3.6.6] 네이버 복붙용 사진 placeholder — 2단 구조
+//   - 추천 사진 (뭘 올릴지) + 사진 설명 예시 (어떻게 적을지) 분리
+//   - alt 카테고리별 3개씩 회전
+//   - "사진 설명" 아닌 "후기 캡션" 톤
+// ============================================================
+const DENTAL_PHOTO_POOL = {
+  "검사 사진": {
+    photos: [
+      "X-ray 결과 화면",
+      "파노라마 모니터 사진",
+      "검사실 안내 사진",
+    ],
+    // [v104] 정보형 중립 캡션 — 체험형 1인칭 시점 제거(정보형 화자 충돌 방지)
+    captions: [
+      "검사 장비 안내",
+      "결과 판독 화면 예시",
+      "X-ray 촬영실 안내",
+    ],
+  },
+  "상담 사진": {
+    photos: [
+      "상담실 내부 사진",
+      "치과 입구 / 대기실 사진",
+      "진료 데스크 풍경",
+    ],
+    // [v104] 정보형 중립 캡션
+    captions: [
+      "상담실 안내",
+      "진료 상담 공간",
+      "예약 / 접수 데스크 안내",
+    ],
+  },
+  "치료 사진": {
+    photos: [
+      "치료실 입장 전 사진",
+      "치료 직전 대기실 사진",
+      "치과 입구에서 찍은 사진",
+    ],
+    // [v104] 정보형 중립 캡션
+    captions: [
+      "진료실 안내",
+      "치료 공간 안내",
+      "원내 입구 안내",
+    ],
+  },
+  "보철 사진": {
+    photos: [
+      "회복 중 식사 사진",
+      "양치 / 가글 도구 사진",
+      "거울 셀카 (입 다문 모습)",
+    ],
+    // [v104] 정보형 중립 캡션
+    captions: [
+      "구강 위생 관리 안내",
+      "관리 도구 안내",
+      "관리 단계 안내",
+    ],
+  },
+  "일상 사진": {
+    photos: [
+      "외출 셀카",
+      "카페 / 일상 사진",
+      "평소 식사 사진",
+    ],
+    // [v104] 정보형 중립 캡션
+    captions: [
+      "원내 시설 안내",
+      "진료 안내 자료",
+      "병원 전경 안내",
+    ],
+  },
+};
+
+function buildPhotoPlaceholder(altRaw) {
+  const alt = String(altRaw || "").trim();
+  const entry = DENTAL_PHOTO_POOL[alt] || DENTAL_PHOTO_POOL["일상 사진"];
+  const photos   = entry.photos.slice(0, 3);
+  const captions = entry.captions.slice(0, 3);
+
+  return [
+    "",
+    "━━━━━━━━━━━━━━━━━━━",
+    "📷 사진 첨부 위치",
+    "(업로드 후 이 안내문 삭제)",
+    "",
+    "추천 사진",
+    `• ${photos[0]}`,
+    `• ${photos[1]}`,
+    `• ${photos[2]}`,
+    "",
+    "사진 설명 예시",
+    `• ${captions[0]}`,
+    `• ${captions[1]}`,
+    `• ${captions[2]}`,
+    "━━━━━━━━━━━━━━━━━━━",
+    "",
+  ].join("\n");
+}
+
+// ★ v3.6.7 — stripMarkdownForNaver semi-migration
+//   ① 헤더/마크다운 변환은 공통 모듈(_stripMarkdownForNaver)로 위임
+//      → photoPool 인자 미주입 (null) → 박스 변환 skip → [이미지: XX] 그대로 보존
+//   ② 박스 변환은 dental 전용 buildPhotoPlaceholder로 별도 수행 (2단 구조 UI 보존)
+//   ⚠️ 박스 형식 완전 동일 / 회귀 0 / 발행 데이터 연속성 유지
 function stripMarkdownForNaver(text) {
-  let t = text;
+  // ① 공통 모듈 위임 (photoPool 미주입 → 박스 변환 skip)
+  let t = _stripMarkdownForNaver(text, null);
 
-  // ① 줄 시작 헤더 변환 (제목·섹션·하위섹션)
-  t = t.replace(/^#\s+(.+)$/gm, "$1");                    // # 제목 → 평문
-  t = t.replace(/^##\s+(.+)$/gm, "\n$1\n");              // ## 섹션 → 빈줄+텍스트+빈줄
-  t = t.replace(/^###\s+(.+)$/gm, "▶ $1");                // ### 변화(1일/1주) → ▶ 마커
+  // ★ [OneClick] 이미지 마커 통일 — [이미지: alt] 표준 유지. 박스 변환 비활성.
+  //    QC의 boxCount=0 / plainNoBox==plain 은 정상(로그 전용, 차단 아님).
+  // (구) dental 전용 2단 ━ 박스 변환 — 비활성. buildPhotoPlaceholder는 롤백용 보존.
 
-  // ② 인라인에 끼어있는 헤더 (줄바꿈 없이 본문 중간에 박힌 경우)
-  t = t.replace(/\s+##\s+([가-힣A-Za-z0-9])/g, "\n\n$1"); // " ## 제목" → 줄바꿈
-  t = t.replace(/\s+###\s+([가-힣A-Za-z0-9])/g, "\n▶ $1"); // " ### 1일" → 줄바꿈+마커
-
-  // ③ 굵게/이탤릭 마크다운 제거 (혹시 GPT가 출력했을 경우)
-  t = t.replace(/\*\*([^*]+)\*\*/g, "$1");                 // **굵게** → 평문
-  t = t.replace(/\*([^*]+)\*/g, "$1");                     // *이탤릭* → 평문
-
-  // ④ 연속 빈 줄 압축 (3줄 이상 → 2줄)
+  // ③ 박스 변환 후 연속 빈 줄 재압축 (3줄 이상 → 2줄)
   t = t.replace(/\n{3,}/g, "\n\n");
 
   return t;
@@ -994,8 +1486,23 @@ export default async function handleDental(req, res) {
   const {
     target, program, blogType,
     userRegion, userMemo, overrideTitle,
-    mode = "personal",
+    mode = "personal", storeId,
+    storeName: bodyStoreName, repRegion: bodyRepRegion,
+    directorName: bodyDirectorName, specialty: bodySpecialty,
+    photoContext,
   } = req.body;
+
+  // [v-loc] 위치 공통화 — LocationBlock 후단 주입용 위치 필드 수신(index.js hubStore 출처).
+  const locStore = {
+    address:       req.body?.address,
+    map_guide:     req.body?.map_guide,
+    transit:       req.body?.transit,
+    building_desc: req.body?.building_desc,
+    parking_info:  req.body?.parking_info,
+  };
+
+  const photoCtx = (photoContext || "").trim();
+  if (photoCtx) console.log(`[dental] photoContext 주입: ${photoCtx.length}자`);
 
   const subKw      = program.name || "";
   const region     = (userRegion || "강남").trim();
@@ -1003,14 +1510,27 @@ export default async function handleDental(req, res) {
   const targetId   = target?.id   || "consult";
   const blogTypeId = blogType?.id || "review";
   const industry   = "dental";
-  const validMode  = (mode === "commercial") ? "commercial" : "personal";
-  console.log(`[dental] mode: ${validMode}`);
+  // ── 의료기관 화자용: req.body 주입(hubStore.store_name). DB 직접조회 안 함 ──
+  const storeName    = (bodyStoreName || "").trim();
+  const repRegion    = (bodyRepRegion || region).trim();
+  const directorName = (bodyDirectorName || "").trim();   // 원장명(선택)
+  const specialty    = (bodySpecialty || "").trim();      // 전문의 자격(선택, 예: "치주과 전문의")
+  const hospital     = storeName || "{병원명}";
+  // ── 화자 도입 문장: 신뢰 축. 원장명/전문의 있으면 주입, 없으면 병원명만 (graceful fallback) ──
+  //    상단 독식 패턴 = "○○치과 [전문의] 대표원장 ○○○입니다" 구조 반영
+  const speakerIntro = directorName
+    ? `안녕하세요. ${repRegion} ${hospital} 대표원장 ${directorName}입니다.${specialty ? ` ${specialty}로서 정확한 정보를 전해드리겠습니다.` : ""}`
+    : `안녕하세요. ${repRegion} ${hospital} 의료진입니다.`;
+  // ── 치과 = 의료법상 후기형 발행 STOP → 정보형(commercial) 고정 ──
+  //    personal 분기 코드는 보존하되 도달 불가. 롤백 시 아래 한 줄 원복.
+  const validMode  = "commercial";
+  console.log(`[dental] mode: ${validMode} (dental 정보형 고정) / 화자: ${speakerIntro}`);
 
   // ── dental 시술 검증 ─────────────────────────────────
   const DENTAL_IDS = ["implant","laminate","braces","rootcanal","scaling","wisdom","zirconia","whitening","tmj",
-                      "resin","inlay","ceramic_crown","metal_braces","lingual_braces","periodontal","gum_contour","pedo_caries","implant_redo"];
+                      "resin","inlay","ceramic_crown","metal_braces","lingual_braces","periodontal","gum_contour","pedo_caries","implant_redo","denture"];
   const DENTAL_NAMES = ["임플란트","라미네이트","투명교정","신경치료","스케일링","사랑니발치","지르코니아크라운","치아미백","턱관절치료",
-                        "레진치료","인레이·온레이","올세라믹크라운","일반교정","설측교정","잇몸치료","잇몸성형","소아충치치료","임플란트재수술"];
+                        "레진치료","인레이·온레이","올세라믹크라운","일반교정","설측교정","잇몸치료","잇몸성형","소아충치치료","임플란트재수술","틀니"];
   const isDental = DENTAL_IDS.includes(program.id) || DENTAL_NAMES.includes(subKw);
   if (!isDental) {
     console.error(`[dental] 잘못된 치료 진입 차단: ${subKw}`);
@@ -1028,21 +1548,31 @@ export default async function handleDental(req, res) {
 
   // ── 시스템 프롬프트 (mode 분기) ────────────────────
   const systemPrompt = validMode === "commercial"
-    ? `당신은 ${region} 지역 ${subKw} 진료 정보를 정리하는 정보형 블로그 작가입니다.
-업종: 치과 | 치료: ${subKw} | 지역: ${region}
+    ? `당신은 ${repRegion} ${hospital} 치과의 공식 블로그를 작성하는 의료기관 화자입니다.
+이 글은 환자 후기가 아니라, 치과가 직접 제공하는 전문 정보입니다.
+업종: 치과 | 치료: ${subKw} | 지역: ${repRegion}
 
-[의료광고법 준수]
-- ❌ 1인칭 환자 시점 금지 (저는/제가/받아봤어요)
+[화자 규칙 — 의료법 §56① 광고 주체 요건 / 상단 독식 패턴]
+- 도입 첫 문장 고정(글자 그대로 사용): "${speakerIntro}"
+- 1인칭은 '의료기관/대표원장'으로만 사용. 환자 1인칭(저는/제가/받아봤어요/고민했어요) 전면 금지.
+- 의료기관이 기준·정보를 제시하는 톤. 본인 치료경험담 절대 아님.
+- 화자 신뢰 축(병원명·원장명·전문의 자격)을 글 전체의 근거로 유지.
+
+[의료광고법 준수 — 절대 규칙]
+- ❌ 1인칭 환자 시점 / 치료경험담 / 효과·결과 단정(좋아졌어요/해결되었어요/만족)
+- ❌ 만족도·추천·내원 유도 / 우월성("후기 많은") 표현
 - ❌ 가격 직접 명시 금지 → "병원별 상이, 상담 시 확인"
-- ❌ 효과 단정 금지 (확실히/100%/완치)
-- ❌ 환자 유인 금지 (실비/할인)
-- ❌ 병원 직접 추천 금지
+- ✅ "이런 경우 고려합니다" 일반론. 결과 단정 없음.
 
-[권장 표현]
-- "일반적으로 ~ 안내됩니다" / "병원에 따라 차이가 있습니다"
-- "진료 시 의료진과 상담하여 결정하는 것이 권장됩니다"
+[구조 — 전문의 정보형 / N가지 기준]
+도입 질문 → 고려하는 경우 → 관찰하는 경우 → 상담 전 확인 N가지 → 주의사항 → Q&A → 병원정보
+소제목은 판단기준형으로: "이런 경우 고려합니다 / 바로 하지 않고 관찰하는 경우는? / 상담 전 확인할 N가지 / (검사) 확인이 중요한 이유 / 발치 후 주의사항"
 
-3인칭 정보형. 자연스러운 안내 톤. 표·불릿 사용 가능.
+[필수 전제 표현 — 글 내 1회 이상]
+- "개인 구강 상태에 따라 다를 수 있습니다"
+- "진단·치료를 대체하지 않습니다 / 정확한 사항은 치과 상담을 통해 확인"
+
+표·불릿 사용 가능. 정보형이지만 딱딱하지 않게.
 
 [어법 절대 규칙 — v3.4 핵심]
 ※ 치료명 "${subKw}"는 다음 패턴 외 사용 금지:
@@ -1057,6 +1587,14 @@ export default async function handleDental(req, res) {
 [절대 금지] 성형외과·피부과 관련 표현 일절 사용 금지
 [절대 금지] "첫째/둘째/셋째" 나열, "중요합니다", "살펴보겠습니다"
 [필수] ~했어요, ~더라고요 블로그 구어체 | 1인칭 "저는/제가" 포함
+
+[v3.6 light scene 규칙 — 치과 특화]
+- 설명 70~80% · scene(공간·시선·자세 묘사) 20~30% 비율 유지
+- scene은 "손 움직임"보다 "시선 이동/설명 보조" 위주
+  ✅ 권장: 조명 이동, 차트 확인, 엑스레이 화면, 거울 설명, 체어 각도, 턱 위치 안내
+  ❌ 금지: 드릴 묘사, 마취 바늘, 입안 세부 묘사, 의료기구 자체에 집중
+- 공포 연출 금지: "끔찍한 통증" / "참기 힘들" / "기구가 다가왔다" 류 일절 금지
+- 감성 회복 ending 금지: "환한 미소", "자신감 있게 웃을", "새로운 일상" 류 일절 금지
 
 [v3.5 표현 다양성 규칙]
 - "${subKw}을(를) 통해" / "치료를 통해" / "시술을 통해" 표현은 글 전체 1회 이내로만 사용
@@ -1081,10 +1619,121 @@ export default async function handleDental(req, res) {
   const sectionTexts = {};
   let prevTextRaw = "";
 
+  // ============================================================
+  // [A-4] family 1회 확정 (제목↔본문↔closing 동기화)
+  //   - implant + personal 일 때만 활성
+  //   - titleFamilyMap에서 random index 선택 → familyId 확정
+  //   - 확정된 index로 제목·본문 모두 같은 family 사용 (drift 제거)
+  //   - 그 외(다른 시술/commercial/overrideTitle): chosenFamilyId=null → fallback
+  // ============================================================
+  let chosenFamilyId = null;
+  let chosenTitleIdx = -1;
+  if (validMode === "personal" && treatmentId === "implant"
+      && Array.isArray(treatmentData.titleFamilyMap)
+      && treatmentData.titleFamilyMap.length
+      && !overrideTitle) {
+    chosenTitleIdx = Math.floor(Math.random() * treatmentData.titleFamilyMap.length);
+    chosenFamilyId = treatmentData.titleFamilyMap[chosenTitleIdx] || null;
+    console.log(`[dental][A-4] family 확정: ${chosenFamilyId} (titleIdx=${chosenTitleIdx})`);
+  } else {
+    console.log(`[dental][A-4] family 미적용 (fallback): mode=${validMode} id=${treatmentId}`);
+  }
+
+  // ============================================================
+  // [v3.6] LIGHT SCENE ENGINE — dental 특화 (eye v2 패턴 + 옵션 A)
+  //   - 단일호출 ❌ / 섹션 루프 안 hard scene 1개 주입 ⭕
+  //   - hard 섹션: search / consult / result (3개)
+  //   - decision/closing/reason/progress/concern: scene 금지 (설명 톤 유지)
+  //   - 손 움직임 ❌ → 시선·설명 보조 ⭕
+  //   - 공포 anticipation / 의료기구 fetish 금지
+  // ============================================================
+  const SCENE_POOL_DENTAL = {
+    "이동·자세": [
+      "체어에 등을 기대고",
+      "유닛체어가 천천히 뒤로 기울고",
+      "조명이 입가 쪽으로 살짝 옮겨졌고",
+      "턱 위치를 살짝 조정해달라고 안내받았고",
+    ],
+    "시선·설명보조": [
+      "거울로 치아 상태를 같이 보면서",
+      "차트 화면을 함께 보면서",
+      "엑스레이 사진을 가리키며 설명을 듣고",
+      "구강 모형으로 위치를 짚어주셨고",
+    ],
+    "검사·진단": [
+      "파노라마 영상이 모니터에 떴고",
+      "엑스레이 화면이 띄워졌고",
+      "구강 사진이 화면에 같이 보였고",
+      "측정 수치가 차트에 정리되어 있었고",
+    ],
+    "상담·결정": [
+      "치료 옵션을 화면으로 비교해주셨고",
+      "예상 일정을 달력에 표시해주셨고",
+      "회복 기간을 차트에 적어주셨고",
+      "치료 계획서를 출력해서 같이 보면서",
+    ],
+    "적응·일상": [
+      "구강세정제로 헹구고 나서",
+      "식사하면서 씹는 느낌을 살펴보고",
+      "거울로 잇몸 상태를 확인하면서",
+      "양치질 방법을 다시 점검해보고",
+    ],
+  };
+
+  const SECTION_SCENE_MAP_DENTAL = {
+    search:  ["이동·자세", "상담·결정"],
+    consult: ["검사·진단", "시선·설명보조"],
+    result:  ["적응·일상"],
+    // decision: 판단 중심 → scene 최소화 (주입 안함)
+    // closing/reason/progress/concern: 설명 톤 유지 → scene 금지
+  };
+
+  function _pickDental(cat) {
+    const pool = SCENE_POOL_DENTAL[cat] || [];
+    if (!pool.length) return "";
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  function buildDentalSceneBlock(secKey) {
+    const cats = SECTION_SCENE_MAP_DENTAL[secKey];
+    if (!cats || !cats.length) return "";
+    const scenes = cats.map(c => _pickDental(c)).filter(Boolean);
+    if (!scenes.length) return "";
+    return `
+[scene 자연 삽입 — 이 섹션 1~2회만, 그대로 복붙 금지]
+${scenes.map(s => `· ${s}`).join("\n")}
+⚠️ 손 움직임/드릴/통증/공포 묘사 금지. 시선·설명·자세 위주.
+`;
+  }
+
+  function buildDentalPhotoBlock(secKey, ctx) {
+    if (!ctx) return "";
+    return `
+[사용자 사진 컨텍스트 — 자연스러운 묘사 보조]
+${ctx.slice(0, 400)}
+⚠️ "사진을 보면", "이미지에서" 같은 메타 표현 금지. 본문에 자연 흡수.
+`;
+  }
+
+  // 콘솔 로그 (어떤 모드로 진입했는지 1회)
+  if (photoCtx) {
+    console.log(`[dental] LIGHT SCENE engine: PHOTO_BLOCK + scene fallback (3섹션 hard)`);
+  } else {
+    console.log(`[dental] LIGHT SCENE engine: SCENE_POOL fallback only (3섹션 hard: search/consult/result)`);
+  }
+
   for (const sec of SECTIONS) {
-    const richPrompt = buildDentalPrompt(sec.key, treatmentData, region, { mode: validMode });
+    // [D-4-5b] STORE_PROFILE promptBody View 전달 — 라우터(generate.js)가 주입한 req.storeProfileView.
+    //   미주입·빈 배열이면 prompts에서 "" 반환 → 기존 동작 100% 보존.
+    const _storeFacts = (req.storeProfileView && req.storeProfileView.promptBody) || [];
+    const richPrompt = buildDentalPrompt(sec.key, treatmentData, region, { mode: validMode, familyId: chosenFamilyId, storeFacts: _storeFacts });
     const prevBlock  = prevTextRaw
       ? `\n[지금까지 작성된 내용 — 표현 반복 금지]\n${prevTextRaw.slice(0, 1500)}\n[끝]\n`
+      : "";
+
+    // [v3.6] scene 주입 — personal 모드 + hard 섹션만
+    const sceneInject = (validMode === "personal" && SECTION_SCENE_MAP_DENTAL[sec.key])
+      ? (photoCtx ? buildDentalPhotoBlock(sec.key, photoCtx) : "") + buildDentalSceneBlock(sec.key)
       : "";
 
     const userPrompt = `업종: dental | 키워드: ${subKw} | 지역: ${region} | 모드: ${validMode}
@@ -1092,12 +1741,18 @@ ${prevBlock}
 ---
 [현재 섹션: ${sec.label} (${sec.key})]
 ⚠️ 이 섹션만 작성. 성형외과·피부과 표현 금지. 200자 이상.
-${richPrompt}`;
+${richPrompt}
+${sceneInject}`;
 
     let secText = await generateSection({ systemPrompt, userPrompt });
     secText = cleanDentalText(secText, subKw, region, validMode);
     secText = stripInlineImages(secText);
-    secText = restoreKeyword(secText, subKw);
+    // [v104] restoreKeyword 호출 제거 — 공통 모듈의 조사단독(이/가/은/는/보다…) 앞
+    //   치료명 무조건 삽입 로직이 받침·문맥·조사적합성 무판단으로 비문 양산
+    //   ('신경치료가 두 가지 방법은' / '신경치료보다 명확한 정보' 등 근원).
+    //   dental은 프롬프트 치료명 5회+ 강제 + injectKeywordDensity(문장단위)로
+    //   키워드 충분 → restoreKeyword 불필요. 모듈 무수정, dental 호출만 차단.
+    // secText = restoreKeyword(secText, subKw);  ← 의도적 비활성 (v104)
 
     if (calcCharCount(secText) < 100) {
       console.log(`[dental] ${sec.label}: 빈 섹션 → 재생성`);
@@ -1108,7 +1763,8 @@ ${richPrompt}`;
       });
       retry = cleanDentalText(retry, subKw, region, validMode);
       retry = stripInlineImages(retry);
-      retry = restoreKeyword(retry, subKw);
+      // [v104] restoreKeyword 호출 제거 (위 1차와 동일 사유)
+      // retry = restoreKeyword(retry, subKw);  ← 의도적 비활성 (v104)
       if (calcCharCount(retry) > calcCharCount(secText)) secText = retry;
     }
 
@@ -1137,16 +1793,16 @@ ${richPrompt}`;
   });
 
   // ── 제목 생성 (mode 분기) ─────────────────────────
-  let title = overrideTitle || buildDentalTitle(subKw, region, seoData, blogTypeId, validMode);
+  let title = overrideTitle || buildDentalTitle(subKw, region, seoData, blogTypeId, validMode, chosenTitleIdx);
   const DENTAL_TITLE_BLOCK = /쌍꺼풀|눈매|리프팅|울쎄라|써마지|필러|보톡스|피코레이저|성형외과/;
   if (DENTAL_TITLE_BLOCK.test(title)) {
     title = validMode === "commercial"
-      ? `${region} ${subKw} 진료 안내｜치료 과정과 일반 정보`
+      ? `${region} ${subKw} 상담 전 꼭 확인해야 할 5가지`
       : `${region} ${subKw} 후기｜두려워서 미루다가 결국 결정한 이야기`;
   }
   if (!title.includes(subKw)) {
     title = validMode === "commercial"
-      ? `${region} ${subKw} 진료 안내｜치료 과정과 일반 정보`
+      ? `${region} ${subKw} 상담 전 꼭 확인해야 할 5가지`
       : `${region} ${subKw} 후기｜상담부터 치료까지 솔직하게 정리했습니다`;
   }
 
@@ -1208,6 +1864,75 @@ ${richPrompt}`;
   assembled = assembled.replace(/\n{3,}/g, "\n\n").trim();
   assembled = removeDuplicateSentences(assembled);
 
+  // [v104] speakerIntro(인사말) 중복 제거 — GPT가 섹션마다 '도입 첫 문장 고정'
+  //   지시를 따라 매 섹션 앞에 인사말을 반복 삽입(5회+). 병원 블로그도
+  //   글당 1회면 충분. 첫 등장만 남기고 이후 전부 제거.
+  {
+    const introEsc = speakerIntro.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    let introSeen = 0;
+    assembled = assembled.replace(new RegExp(introEsc, "g"), (m) => {
+      introSeen++;
+      return introSeen === 1 ? m : "";
+    });
+    // 인사말이 제거되며 남은 줄 앞 공백·빈줄 정리
+    assembled = assembled.replace(/\n{3,}/g, "\n\n").replace(/^[ \t]+/gm, "");
+  }
+
+  // [v106] 면책문구(개인 구강 상태…) 반복 제거 — speakerIntro와 동일 패턴.
+  //   GPT가 섹션마다 "개인 (의) 구강 상태에 따라 다를/달라질 수 있습니다"를
+  //   5~8회 반복 삽입 → AI 흔적의 최대 원인. 첫 등장 1문장만 남기고 이후 제거.
+  //   변형(다를/달라질, 개인/개인의)을 단일 정규식으로 포착.
+  //   [v107] '따라'와 '다를' 사이 삽입어구 허용 — "따라 치료의 필요성과 방법은 다를",
+  //          "따라 적용은 달라질" 등. [^.!?\n]{0,24}? 로 같은 문장 내 삽입만 비탐욕 포착.
+  //   ⚠️ 마무리 면책 문구(closing)는 'subKw에 대한 정보는…' 형태로 표현이 달라
+  //      이 패턴에 안 걸림 → closing 면책은 보존됨(의도).
+  {
+    let disclaimerSeen = 0;
+    assembled = assembled.replace(
+      /\s*(?:하지만,?\s*)?개인(?:의)?\s*구강\s*상태에?\s*따라\s*[^.!?\n]{0,24}?(?:다를|달라질)\s*수\s*있(?:으며|으므로|습니다)[^.!?\n]*[.!?]/g,
+      (m) => {
+        disclaimerSeen++;
+        return disclaimerSeen === 1 ? m : "";
+      }
+    );
+    // 면책문구 제거 후 남은 공백·빈줄 정리
+    assembled = assembled.replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").replace(/^[ \t]+/gm, "");
+  }
+
+  // [v107] '이 정보는' 등 문장 미완결 절단 제거 — 섹션 끝 GPT 토큰 잘림.
+  //   '이 정보는'에서 끝나면 술어 없는 미완결 → 줄/문단 끝이면 통째 제거.
+  //   (closing 면책 문장은 '…정리한 내용입니다.'로 완결되므로 안 걸림)
+  {
+    assembled = assembled
+      // 줄 끝/문단 끝에 '이 정보는'(+공백)만 덜렁 남은 절단 → 제거
+      .replace(/(^|\n)\s*이\s*정보는\s*(?=\n|$)/g, "$1")
+      // 마침표 뒤 '이 정보는'으로 문장 시작했다 끊긴 경우(같은 줄 끝)
+      .replace(/([.!?])\s*이\s*정보는\s*$/gm, "$1")
+      .replace(/\n{3,}/g, "\n\n");
+  }
+
+  // [v108] 문장 충돌 — '…은/는 이 정보는 [진단/치료/일반]…' 접합 분리.
+  //   GPT가 앞 문장(미완결 주어 '~시간은')을 술어 없이 끊고 뒤 면책문장을
+  //   접합해버린 케이스. 앞 미완결 주어부를 닫고 '이 정보는…'을 정상 문장으로 분리.
+  //   예) "회복 과정과 시간은 이 정보는 진단 및 치료를 대체하지 않으며…"
+  //     → "회복 과정과 시간은 개인차가 있습니다. 정확한 사항은 …" (뒤 면책 보존)
+  assembled = assembled
+    .replace(
+      /([가-힣]{1,12}[은는])\s*이\s*정보는\s*(진단|치료|일반)[^.!?\n]*?(?:대체하지\s*않으며|대체하지\s*않습니다)[,\s]*/g,
+      "$1 개인차가 있습니다. "
+    )
+    // 위에서 안 걸린 잔여 '~은/는 이 정보는' 접합(뒤 표현 변형) → 앞 주어부 닫고 분리
+    .replace(
+      /([가-힣]{1,12}[은는])\s*이\s*정보는\s+/g,
+      "$1 개인차가 있습니다. 이 정보는 "
+    );
+
+  // [v108] '데 큰.' / '데 큰' 종결 절단 → '데 큰 도움이 됩니다.' 보강.
+  //   '높이는 데 큰.'처럼 관형어 '큰' 뒤 명사+술어 누락. (정상 '데 큰 도움이' 보존)
+  assembled = assembled
+    .replace(/(높이는|주는|되는|있는|하는)\s*데\s*큰\s*\.(\s|$)/g, "$1 데 큰 도움이 됩니다.$2")
+    .replace(/(높이는|주는|되는|있는|하는)\s*데\s*큰(\s*\n|\s*$)/g, "$1 데 큰 도움이 됩니다.$2");
+
   // ── v3.5: 키워드 밀도 보정 (해시태그 추가 전, cleanText 전) ──
   if (validMode === "personal") {
     const fullKeyword = `${region} ${subKw}`;
@@ -1221,6 +1946,11 @@ ${richPrompt}`;
   // commercial 모드는 2회 통과
   if (validMode === "commercial") {
     assembled = cleanDentalText(assembled, subKw, region, validMode);
+  }
+
+  // ── [v3.6] light scene engine 후처리 (personal만) ──
+  if (validMode === "personal") {
+    assembled = finalDentalClean(assembled, subKw, region);
   }
 
   // ★ 본문 인라인 볼드 제거 — 헤더형 **제목**(앞뒤 줄바꿈)은 보존, 문장 중간 **강조**만 제거
@@ -1252,6 +1982,49 @@ ${richPrompt}`;
   const seoScore  = diagnosePost(assembled, subKw);
   console.log(`[dental] 완료: ${charCount}자 / SEO ${seoScore}점 / mode=${validMode}`);
 
+  // [v3.6] light scene engine QC ────────────────────
+  if (validMode === "personal") {
+    const sceneEngineMode = photoCtx ? "PHOTO_BLOCK + SCENE_POOL" : "SCENE_POOL fallback";
+    console.log(`[QC] scene engine: ${sceneEngineMode}`);
+
+    // 감성 ending 잔존 카운트 (finalDentalClean 통과 후)
+    const sentimentResidualPatterns = [
+      /환한\s*미소/g, /자신감\s*있게\s*웃/g, /새로운\s*(일상|삶|시작)/g,
+      /삶의\s*질이/g, /활짝\s*웃\w*\s*있/g,
+      /생활(의|이)?\s*질이?\s*(높아|좋아)/g,
+      /믿음이?\s*갔/g, /옳았다는?\s*생각/g,
+      // v3.6.2
+      /좋은\s*선택이었/g, /모든\s*게\s*해결/g, /모든\s*것이?\s*해결/g,
+      /더\s*이상\s*불편함을?\s*(느끼지|받지)\s*않/g,
+      // v3.6.3
+      /확신이\s*들었죠/g, /확신이\s*생겼/g,
+      /받기를\s*잘했다는?\s*생각/g, /잘했다는?\s*생각이?\s*들었/g,
+      /훨씬\s*편해졌/g,
+      /큰\s*도움을?\s*받을\s*수\s*있(을|는)\s*거(예|에)요/g,
+      /큰\s*도움이?\s*될\s*거(예|에)요/g,
+    ];
+    let sentimentResidual = 0;
+    sentimentResidualPatterns.forEach(rx => {
+      const m = assembled.match(rx);
+      if (m) sentimentResidual += m.length;
+    });
+    console.log(`[QC] 감성ending 잔존: ${sentimentResidual}`);
+    if (sentimentResidual > 0) console.warn(`[dental] ⚠️ 감성ending ${sentimentResidual}건 잔존 — blacklist 보강 필요`);
+
+    // 공포 연출 잔존 카운트
+    const fearPatterns = [
+      /끔찍한\s*통증/g, /참기\s*힘들\w*\s*통증/g, /드릴/g, /마취\s*바늘/g,
+      /소리만\s*들어도\s*무서/g, /기구가?\s*다가\w*\s*때/g,
+    ];
+    let fearResidual = 0;
+    fearPatterns.forEach(rx => {
+      const m = assembled.match(rx);
+      if (m) fearResidual += m.length;
+    });
+    console.log(`[QC] 공포연출 잔존: ${fearResidual}`);
+    if (fearResidual > 0) console.warn(`[dental] ⚠️ 공포연출 ${fearResidual}건 잔존 — 즉시 점검 필요`);
+  }
+
   // v3.5 경고
   if (qc.tongheCount > 4) console.warn(`[dental] ⚠️ "통해" ${qc.tongheCount}회 — AI 패턴 위험`);
   if (validMode === "personal" && qc.fullKwCount < 2) console.warn(`[dental] ⚠️ "${fullKeywordForQC}" 노출 ${qc.fullKwCount}회 — 키워드 밀도 부족`);
@@ -1261,7 +2034,18 @@ ${richPrompt}`;
     if (qc.priceCount > 0)       console.warn(`[dental] ⚠️ commercial 모드 가격 ${qc.priceCount}건 잔존`);
   }
 
-  await autoSave({ assembled, charCount, subKw, region, seoScore, industry });
+  // [meta-relay] family/진단 메타를 저장 파이프라인에 흘려보냄 (narrative 무수정 — 측정 기반 확보용)
+  //   - familyId: 제목↔본문 동기화에 쓰인 family. 사후 분포·회귀율 조사용.
+  //   - diagResult: qc 세부 + family 메타. savePost가 qc_detail JSON에 보존(스키마 변경 없음).
+  const diagResult = {
+    seoScore,
+    qc,
+    familyId:    chosenFamilyId,
+    titleIdx:    chosenTitleIdx,
+    treatmentId,
+    mode:        validMode,
+  };
+  await autoSave({ assembled, charCount, subKw, region, seoScore, industry, storeId, familyId: chosenFamilyId, diagResult });
 
   // ── 이미지 메타 ─────────────────────────────────
   const imageRegex = /\[이미지:\s*([^\]]+)\]/g;
@@ -1271,6 +2055,10 @@ ${richPrompt}`;
 
   const lastLine    = assembled.trimEnd().split("\n").pop() || "";
   const hashtagsArr = lastLine.startsWith("#") ? lastLine.split(/\s+/).filter(t => t.startsWith("#")) : [];
+
+  // [v-loc] LocationBlock 후단 주입 — clean 완료 후라 주소 변형 0. 해시태그 위에 배치.
+  //   주소 없으면 원문 그대로. assembledMarkdown/Plain 둘 다 위치블록 포함.
+  assembled = insertLocationBeforeHashtags(assembled, locStore);
 
   // ★★★ v2 패치: 네이버 블로그 복사용 평문 변환 ★★★
   const assembledMarkdown = assembled;                         // 마크다운 원본 보존
@@ -1297,5 +2085,10 @@ ${richPrompt}`;
       fullKwCount: qc.fullKwCount,
     },
     validation: { passed: charCountPlain >= 2000, charCount: charCountPlain },
+    publishGate: (() => {
+      // 주체 불명 발행 차단(§56①). 생성은 {병원명} placeholder 허용, 발행은 publish/발행코치가 차단.
+      const ok = !!storeName && !/^(○+치과|\{병원명\})$/.test(storeName);
+      return { storeNameOk: ok, storeName, reason: ok ? null : "store_name 실값 필요(주체 불명 발행 차단)" };
+    })(),
   });
 }

@@ -1,5 +1,15 @@
 // pages/api/account/me.js
-// v0.4 — 76차 재작성 (A안: spine 통일 / dead code 복구 / quota 확장)
+// v0.5 — 80차 추가 (blog_accounts 응답 / publish_history GROUP BY)
+//
+// 변경 (v0.4 → v0.5):
+//   1) blog_accounts 응답 신규 추가 (8.5 블록)
+//      - publish_history GROUP BY blog_account (client-side 집계)
+//      - publish_status='published' 만 (test/baseline 제외)
+//      - 응답 형태: [{ blog_account, count, last_published_at }]
+//      - blog_accounts 테이블 부재 대응 (78·79차 carry over)
+//      - 실패해도 응답 보장 (빈 배열 fallback)
+//   2) 응답 키 추가: blog_accounts
+//   3) 79차 G3 가드 (account.js v0.6) 보호됨 — client data null 시 안전
 //
 // 변경 (v0.3 → v0.4):
 //   1) createServerSupabaseClient (dead code) 제거 → spine 패턴 통일
@@ -19,11 +29,12 @@
 //   - account 응답 형태 보존 (* 셀렉트)
 //   - subscription/plan null = free 사용자 (UI 분기 그대로)
 //
-// 호출처: pages/account.js v0.4 (75차 작성, 미배포)
+// 호출처: pages/account.js v0.6 (79차 G3 가드 추가)
 
 import { createClient } from '@supabase/supabase-js';
 import { getActiveSubscription } from '../../../lib/billing/subscription';
 import { countPublishedInPeriod } from '../../../lib/billing/usage';
+import { requireAuth } from '../../../lib/guards';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -61,31 +72,19 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: 'supabase_env_missing' });
   }
 
-  // 3) Bearer 토큰 추출 (deactivate.js / ensure.js 패턴)
-  const authHeader = req.headers.authorization || '';
-  const m = authHeader.match(/^Bearer\s+(.+)$/i);
-  if (!m) {
-    return res.status(401).json({ ok: false, error: 'missing_bearer_token' });
-  }
-  const token = m[1];
+  // 3) 인증 — requireAuth (guards.js 통합 / 85차 가드 단일화)
+  //    토큰 추출 + getUser 검증을 흡수. 실패 시 내부에서 401 전송 후 null.
+  //    인증키는 anon(supabaseAuth)이나 getUser는 토큰 자체검증이라 동치.
+  const user = await requireAuth(req, res);
+  if (!user) return; // res 이미 전송됨 (401)
+  const auth_user_id = user.id;
 
-  // 4) admin client (핸들러 내부 생성)
+  // 4) admin client (핸들러 내부 생성) — DB 조회용 service_role 유지 (RLS 우회)
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
   try {
-    // 5) token → auth user
-    const { data: userData, error: userErr } = await supabase.auth.getUser(token);
-    if (userErr || !userData?.user?.id) {
-      return res.status(401).json({
-        ok: false,
-        error: 'invalid_token',
-        detail: userErr?.message || null,
-      });
-    }
-    const auth_user_id = userData.user.id;
-
     // 6) accounts 조회
     const { data: account, error: accErr } = await supabase
       .from('accounts')
@@ -163,6 +162,47 @@ export default async function handler(req, res) {
       // quota null 유지 / 응답 보장
     }
 
+    // 8.5) blog_accounts 집계 (80차 추가 / 79차 결정: publish_history GROUP BY)
+    //      - blog_accounts 테이블 부재 → publish_history 단일 소스
+    //      - publish_status='published' 만 (test/baseline 제외)
+    //      - 카드3 UI 호환: { blog_account, count, last_published_at }
+    //      - 실패해도 응답 보장 (빈 배열 fallback)
+    let blog_accounts = [];
+    try {
+      const { data: rows, error: baErr } = await supabase
+        .from('publish_history')
+        .select('blog_account, published_at')
+        .eq('account_id', account.id)
+        .eq('publish_status', 'published')
+        .not('blog_account', 'is', null)
+        .order('published_at', { ascending: false });
+
+      if (baErr) {
+        console.error('[me.js] blog_accounts select failed:', baErr.message);
+      } else if (rows && rows.length > 0) {
+        // client-side GROUP BY (Postgres GROUP BY 없이 집계)
+        // ORDER BY published_at DESC 이므로 첫 등장이 최신 → last_published_at 갱신 불필요
+        const map = new Map();
+        for (const r of rows) {
+          if (!r.blog_account) continue;
+          const cur = map.get(r.blog_account);
+          if (!cur) {
+            map.set(r.blog_account, {
+              blog_account: r.blog_account,
+              count: 1,
+              last_published_at: r.published_at,
+            });
+          } else {
+            cur.count += 1;
+          }
+        }
+        blog_accounts = Array.from(map.values());
+      }
+    } catch (baErr) {
+      console.error('[me.js] blog_accounts calc failed:', baErr.message);
+      // blog_accounts = [] 유지
+    }
+
     // 9) 응답
     return res.status(200).json({
       ok: true,
@@ -170,6 +210,7 @@ export default async function handler(req, res) {
       subscription, // null = free
       plan,         // null = free
       quota,        // null = 계산 실패 (응답은 보장)
+      blog_accounts, // [] = 발행 이력 없음 또는 계산 실패
     });
   } catch (err) {
     console.error('[me.js] error:', err);

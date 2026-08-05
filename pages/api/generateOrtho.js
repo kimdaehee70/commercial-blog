@@ -1,7 +1,76 @@
 // ============================================================
-// generateOrtho.js — 정형외과 전용 블로그 생성기 v3.6 (네이버 평문 패치)
+// generateOrtho.js — 정형외과 전용 블로그 생성기 v3.7.5 (동적 whitelist + 부위 흡수 + fallback)
 // ⚠️ clinic / dental / ent / urology / oriental 절대 참조 금지
 // ⚠️ 한방·성형·치과·이비인후과·비뇨기과 표현 절대 사용 금지
+//
+// ★ v3.7.5 변경사항 — 2026-05-13 (카드 누락 반복 해결 — 근본 대응)
+//   ① ORTHO_IDS / ORTHO_NAMES → ORTHO_TREATMENTS 동적 참조
+//      ortho-data.js 카드 추가 시 generateOrtho 수정 불필요
+//   ② 부위 키워드 기반 ABSORB_RULES (정규식 매칭)
+//      어깨/회전근개/오십견    → 어깨통증치료
+//      무릎/연골/반월/십자인대  → 무릎관절염치료
+//      경추협착/척추관          → 척추관협착증치료
+//      허리디스크/요추          → 허리디스크치료
+//      목디스크/경추디스크      → 목디스크치료
+//      무지외반/족부/발         → 도수치료
+//   ③ CORE_NAMES Set — 17개 핵심 카드는 변환 없이 직접 narrative 사용
+//   ④ Fallback — 미매칭 항목은 도수치료 narrative로 안전 처리
+//      (bodyPartMap의 "해당 부위" 안전망 활용)
+//   ※ ortho freeze 유지 — 별도 narrative 로직 추가 없음
+//
+// ★ v3.7.4 변경사항 — 2026-05-13 (router rotator_cuff/frozen_shoulder/hip 진입 차단 해결)
+//   ① ORTHO_IDS / ORTHO_NAMES whitelist에 3종 추가
+//      rotator_cuff(회전근개파열치료) / frozen_shoulder(오십견치료) / hip(고관절치료)
+//   ② 흡수 변환 (ABSORB_MAP / ABSORB_NAME_MAP)
+//      회전근개·오십견 → 어깨통증치료 narrative
+//      고관절 → 도수치료 narrative
+//      ※ subKw/program.id/program.name 모두 변환 → treatmentData/bodyPartMap 정상 조회
+//   ③ subKw: const → let (재할당 허용)
+//   ※ ortho freeze 유지 — 별도 narrative 로직 추가 없음
+//
+// ★ v3.7.3 변경사항 — 2026.05.13 (실생성 3회차 — 90점 안정권 진입)
+//   ① 패치 ②-3 신규 — 관형사·복합명사 충돌형
+//      "무릎관절염치료 비수술적 접근" → "무릎관절염치료는 비수술적 접근"
+//      대상: 비수술·수술적·보존적·약물적·재활적 (대비/주제 표현 → 는/은)
+//   ② 패치 ②-4 신규 — "이 치료 + 명사" placeholder 후속 조사 보정
+//      "이 치료 무릎 통증" → "이 치료는 무릎 통증"
+//      ※ 조사·동사어간 회피 (받·진행·후·전·중 등 스킵)
+//   ※ ortho 90점 안정권 진입 — freeze 유지 / 과수정 금지 구간
+//
+// ★ v3.7.2 변경사항 — 2026.05.13 (실생성 2회차 피드백)
+//   ① 패치 ② 명사 확장 — "환자" 추가
+//      "어깨통증치료 환자의" → "어깨통증치료가 환자의"
+//   ② 패치 ②-2 신규 — 연결조사형 (region + subKw + 의존명사)
+//      "강남 어깨통증치료 이러한 변화" → "강남 어깨통증치료, 이러한 변화"
+//      ※ 조사 강제 주입 회피 → 쉼표로 안전 분리 (의미 왜곡 차단)
+//   ③ 패치 ③-2 신규 — 은/는 받침 오류 교정
+//      "어깨통증치료은" → "어깨통증치료는" (받침 없음 → 는)
+//   ④ 재활 캡션 일반화 — "무릎 굽혀본" → "움직여본" (부위 한정 회피)
+//
+// ★ v3.7.1 변경사항 — 2026.05.13 (실생성 1회차 피드백)
+//   ① region + 부유 "이 치료" 패턴 복원 (cleanOrthoText 직후, alt 정규화 전)
+//      "강남 이 치료" → "강남 허리디스크치료"
+//   ② 조사 깨짐 차단 — 받침 자동 판별 (한글 종성 28진법)
+//      "허리디스크치료 자신에게" → "허리디스크치료가 자신에게"
+//   ③ "을/를" 받침 오류 교정 — "허리디스크치료을" → "허리디스크치료를"
+//   ④ region 패치는 cleanOrthoText 시그니처 변경 회피 — 호출부에서 처리
+//
+// ★ v3.7 변경사항 — 2026.05.13 (ent v3.6.3 PHOTO_POOL 패턴 이식)
+//   ① ORTHO_PHOTO_POOL 5종 (검사/상담/시술/재활/일상 — 정형외과 맥락)
+//      photos 3종 + captions 3종 / X-ray·MRI·도수치료·재활운동·산책 등
+//   ② buildOrthoPhotoPlaceholder() — [이미지: XX 사진] → 박스 placeholder
+//   ③ stripMarkdownForNaver에 박스 변환 1줄 추가 (헤더 처리 직후)
+//   ④ 박스 제외 글자수 재계산 — charCountPlain (사용자 기준)
+//   ⑤ QC 박스 카운트 로그 — [QC] PHOTO_POOL 박스 N개
+//   ⑥ Phase A 후처리 (cleanOrthoText 토큰화 직후):
+//      - BB-1 키워드 절단 복원 (긴 치료명 분리 → 복원)
+//      - BB-6 토큰 절단 보수 (큰/좋은/많은 + 라고 → 라고)
+//      - BB-7 부유 '이' (조사 12종)
+//      - 치료형 중복 (/치료$/) — 치료명 치료 → 치료명
+//      - 검사형 중복 (/검사$/) — 검사 + 치료 의미 충돌 차단
+//      - GG-1 fossil 회피어 (해당/이번 + 치료 → 이 치료)
+//      - GG-2 fossil 어휘 6패턴 (판단했답니다·큰 도움이 될 거예요 등)
+//   ※ ortho 동결: SYSTEM_PROMPT 미변경 / SCENE_POOL 미적용 / restoreKeyword 미호출
 //
 // ★ v3.6 (v2 패치) 변경사항 — 2026.05 (pain v3.6 동기화)
 //   ① stripMarkdownForNaver() 추가
@@ -62,12 +131,26 @@
 // ============================================================
 import { ORTHO_TREATMENTS }                          from "../../lib/ortho-data";
 import { buildOrthoPrompt }                          from "../../lib/ortho-prompts";
+import { buildIntentTitle }                          from "../../lib/spine/titleIntentEngine";
+import { renderInfoBlock }                           from "../../lib/spine/infoBlock";
+import { getCondition }                               from "../../lib/spine/conditionData";
 import { ORTHO_FLOW_ENGINE, ORTHO_TREATMENT_OVERRIDES } from "../../lib/ortho-playConfig";
 import {
   openai, calcCharCount, removeDuplicateSentences,
   stripInlineImages, restoreKeyword, diagnosePost,
   generateSection, autoSave,
 } from "./generateUtils";
+
+// ★ v3.7.6 — light scene 공통 모듈 (PHOTO_POOL 동작 표준화)
+//   ORTHO_PHOTO_POOL은 그대로 유지 (정체성 분리)
+//   buildOrthoPhotoPlaceholder / stripMarkdownForNaver 동작은 공통 모듈로 위임
+//   회귀 0 검증 완료 — 기존 박스 형식·strip 순서·QC 동일
+import {
+  buildPhotoPlaceholder as _buildPhotoPlaceholder,
+  stripMarkdownForNaver as _stripMarkdownForNaver,
+  calcContentCharCount  as _calcContentCharCount,
+  qcPhotoBoxes          as _qcPhotoBoxes,
+} from "../../lib/commonPhotoBox";
 
 // ── 정형외과 전용 금지 키워드 ────────────────────────────
 const ORTHO_FORBIDDEN = [
@@ -290,35 +373,50 @@ function buildOrthoTitle(treatmentName, region, seoData, blogTypeId, mode = "per
   // personal: 과정 기록 톤
   // ⚠ seoData.titlePatterns에 광고성 어휘("솔직/추천/만족") 들어있으면 사용 안 함
   const TITLE_AD_WORDS = /솔직|추천|꼭|만족|후회|다행|확실|드디어|결심|선택한 이유/;
-  if (seoData?.titlePatterns?.length) {
-    const safeTitles = seoData.titlePatterns
-      .map(t => t.replace(/\{region\}/g, region))
-      .filter(t => !TITLE_AD_WORDS.test(t));
-    if (safeTitles.length > 0) {
-      return safeTitles[Math.floor(Math.random() * safeTitles.length)];
-    }
-    // 광고성 어휘 들어간 패턴만 있으면 default로 fallthrough
-  }
+
+  // [v3.9] 제목 다양화 — 설명체 8종 기본 풀. seoData 패턴이 있으면 합쳐서 랜덤(단일 패턴 고정 방지).
+  const defaultPool = [
+    `${region} ${treatmentName}｜비수술 진료 과정 알아보기`,
+    `${region} ${treatmentName}｜검사부터 치료까지 살펴보기`,
+    `${region} ${treatmentName}｜상담 시 확인하는 내용`,
+    `${region} ${treatmentName}｜비수술 치료 과정 안내`,
+    `${region} ${treatmentName}｜진료 전 알아두면 좋은 내용`,
+    `${region} ${treatmentName}｜검사와 치료 절차 정리`,
+    `${region} ${treatmentName}｜진료는 어떻게 진행될까`,
+    `${region} ${treatmentName}｜방문 전 확인할 사항`,
+  ];
+
   if (blogTypeId === "compare") {
     const cw = seoData?.compareWith || "다른 치료";
     const cmp = [
-      `${region} ${treatmentName} vs ${cw}｜진료 비교 검토 기록`,
-      `${region} ${treatmentName}과 ${cw} 비교 검토｜진료 흐름 정리`,
+      `${region} ${treatmentName} vs ${cw}｜진료 비교 알아보기`,
+      `${region} ${treatmentName}과 ${cw}｜무엇이 다른지 살펴보기`,
     ];
     return cmp[Math.floor(Math.random() * cmp.length)];
   }
   if (blogTypeId === "consult") {
-    return `${region} ${treatmentName} 상담 단계 기록｜진료 흐름 정리`;
+    const consult = [
+      `${region} ${treatmentName}｜상담 시 확인하는 내용`,
+      `${region} ${treatmentName}｜상담 전 알아두면 좋은 내용`,
+    ];
+    return consult[Math.floor(Math.random() * consult.length)];
   }
-  // 기본: 검색 의도 매칭 위해 "후기" 단어 1개만 절제 사용 + 나머지는 기록형
-  const defaults = [
-    `${region} ${treatmentName} 진료 과정 기록｜검사·상담·경과 정리`,
-    `${treatmentName} 진료 흐름｜${region} 정형외과 단계별 정리`,
-    `${region} ${treatmentName}｜비수술 진료 단계 기록`,
-    `${region} ${treatmentName} 후기 검토 + 진료 과정 정리`,  // "후기" 1회 — 검색 의도 매칭용
-    `${region} ${treatmentName} 검사·치료 단계별 기록`,
-  ];
-  return defaults[Math.floor(Math.random() * defaults.length)];
+
+  let pool = defaultPool;
+  if (seoData?.titlePatterns?.length) {
+    const safeTitles = seoData.titlePatterns
+      .map(t => t.replace(/\{region\}/g, region))
+      .filter(t => !TITLE_AD_WORDS.test(t));
+    pool = [...defaultPool, ...safeTitles];  // 병합 → 단일 패턴 고정 방지
+  }
+
+  // [v4.0] 병원 공통 제목 Intent Spine — 증상/상황 기반 검색의도 제목.
+  //   질환 데이터(condition) 매칭 시 Spine 우선, 미매칭이면 defaultPool fallback.
+  const cond = getCondition('ortho', treatmentName);
+  const spineTitle = buildIntentTitle({ region, treatmentName, condition: cond });
+  // Spine 60% : 기존 pool 40% 비율로 다양성 유지 (초기 관측용)
+  if (spineTitle && Math.random() < 0.6) return spineTitle;
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 // ── 정형외과 전용 해시태그 ───────────────────────────────
@@ -340,31 +438,91 @@ function buildOrthoHashtags(treatmentName, region, mode = "personal") {
 }
 
 // ============================================================
+// ============================================================
+// ★ v3.7 (PHOTO_POOL) — 정형외과 맥락 5종 사진 풀
+//   카테고리: 검사 / 상담 / 시술 / 재활 / 일상
+//   각 카테고리당 photos 3종 + captions 3종
+//   stripMarkdownForNaver 단계에서 [이미지: XX 사진] → 박스 placeholder로 변환
+// ============================================================
+const ORTHO_PHOTO_POOL = {
+  "검사 사진": {
+    photos: [
+      "X-ray 결과 화면",
+      "MRI·CT 영상 판독",
+      "관절 가동범위 측정 장비",
+    ],
+    captions: [
+      "영상으로 상태를 확인하는 과정",
+      "검사 결과를 함께 살펴보는 단계",
+      "가동범위 측정 진행",
+    ],
+  },
+  "상담 사진": {
+    photos: [
+      "상담실 진료 데스크",
+      "치료 옵션 설명 차트",
+      "진료실 입구",
+    ],
+    captions: [
+      "증상과 경과를 확인하는 상담",
+      "치료 방향을 설명하는 과정",
+      "진료 일정을 안내하는 데스크",
+    ],
+  },
+  "시술 사진": {
+    photos: [
+      "시술실 입장 전 복도",
+      "처치 직후 대기실",
+      "주사 처치 의자",
+    ],
+    captions: [
+      "처치 전 준비 과정",
+      "처치 후 회복 대기 공간",
+      "주사 처치가 이루어지는 자리",
+    ],
+  },
+  "재활 사진": {
+    photos: [
+      "물리치료실 베드",
+      "도수치료 진행 중 손길",
+      "재활 운동 매트",
+    ],
+    captions: [
+      "물리치료가 진행되는 공간",
+      "도수치료로 가동범위를 회복하는 과정",
+      "재활 운동이 이루어지는 자리",
+    ],
+  },
+  "일상 사진": {
+    photos: [
+      "회복 후 동네 산책",
+      "운동 복귀 — 가벼운 스트레칭",
+      "계단 오르내리던 일상",
+    ],
+    captions: [
+      "일상 보행 상태를 확인하는 단계",
+      "회복 이후 활동 범위를 점검하는 과정",
+      "계단 보행 시 통증 변화를 살펴보는 단계",
+    ],
+  },
+};
+
+// ★ v3.7.6: 공통 모듈 위임 (회귀 0 — 기존 박스 형식·동작 동일)
+//   ORTHO_PHOTO_POOL은 그대로 사용 / placeholder 생성 로직만 공통화
+function buildOrthoPhotoPlaceholder(altRaw) {
+  return _buildPhotoPlaceholder(altRaw, ORTHO_PHOTO_POOL);
+}
+
 // ★ v2 패치: stripMarkdownForNaver — 네이버 블로그 복사용 평문 변환
 // 목적: 사용자가 글 복사 후 #/##/### 마크다운 기호를 수동 제거하지 않도록
 // 네이버는 마크다운 렌더링 안 함 → 평문으로 변환 필요
 // 위치: 모든 후처리 끝난 뒤 마지막 단계 (응답 직전)
+// ※ v3.7.6: 공통 모듈(commonPhotoBox)로 위임 — 기존 동작 100% 동일
 // ============================================================
 function stripMarkdownForNaver(text) {
-  let t = text;
-
-  // ① 줄 시작 헤더 변환 (제목·섹션·하위섹션)
-  t = t.replace(/^#\s+(.+)$/gm, "$1");                    // # 제목 → 평문
-  t = t.replace(/^##\s+(.+)$/gm, "\n$1\n");              // ## 섹션 → 빈줄+텍스트+빈줄
-  t = t.replace(/^###\s+(.+)$/gm, "▶ $1");                // ### 변화(1일/1주) → ▶ 마커
-
-  // ② 인라인에 끼어있는 헤더 (줄바꿈 없이 본문 중간에 박힌 경우)
-  t = t.replace(/\s+##\s+([가-힣A-Za-z0-9])/g, "\n\n$1"); // " ## 제목" → 줄바꿈
-  t = t.replace(/\s+###\s+([가-힣A-Za-z0-9])/g, "\n▶ $1"); // " ### 1일" → 줄바꿈+마커
-
-  // ③ 굵게/이탤릭 마크다운 제거 (혹시 GPT가 출력했을 경우)
-  t = t.replace(/\*\*([^*]+)\*\*/g, "$1");                 // **굵게** → 평문
-  t = t.replace(/\*([^*]+)\*/g, "$1");                     // *이탤릭* → 평문
-
-  // ④ 연속 빈 줄 압축 (3줄 이상 → 2줄)
-  t = t.replace(/\n{3,}/g, "\n\n");
-
-  return t;
+  // ★ [OneClick] 이미지 마커 통일 — [이미지: alt] 표준 유지. 박스 변환 비활성.
+  //    QC의 boxCount=0 / plainNoBox==plain 은 정상(로그 전용, 차단 아님).
+  return _stripMarkdownForNaver(text, null);
 }
 
 // ============================================================
@@ -661,6 +819,295 @@ function cleanOrthoText(text, treatmentName, mode = "personal") {
     __orthoImgAlts.push(m);
     return `__ORTHO_IMG_${__orthoImgAlts.length - 1}__`;
   });
+
+  // ════════════════════════════════════════════════════════════
+  // ★ Phase A (v3.7) — ent v3.6.3 후처리 패턴 이식
+  //   BB-1 키워드 절단 복원 / BB-6 토큰 절단 / BB-7 부유 '이'
+  //   치료형 중복 / 검사형 중복 / GG-1 fossil 회피어 / GG-2 fossil 어휘
+  // ════════════════════════════════════════════════════════════
+  {
+    const nameA   = String(treatmentName || "");
+    const escNameA = nameA.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    // BB-1: 키워드 절단 복원 — 긴 치료명이 공백으로 분리된 경우 복원
+    //   예: "발목인대 손상치료" → "발목인대손상치료"
+    if (nameA.length >= 4) {
+      for (let i = 2; i <= nameA.length - 2; i++) {
+        const head = nameA.slice(0, i);
+        const tail = nameA.slice(i);
+        if (head.length >= 2 && tail.length >= 2) {
+          const escH = head.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const escT = tail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          result = result.replace(new RegExp(escH + "\\s+" + escT, "g"), nameA);
+        }
+      }
+    }
+
+    // BB-6: 토큰 절단 (보수)
+    //   예: "큰 라고" / "좋은 라고" → "라고"
+    result = result.replace(/(큰|좋은|많은|적은)\s+라고/g, "라고");
+
+    // BB-7: 부유 '이' (v3.6.1 보강) — 치료명 + 이 + 치료 + 조사 → 치료명 + 조사
+    //   조사 12종 (을/를/는/이/가/와/과/도/의/에/로/으로)
+    result = result.replace(
+      new RegExp(escNameA + "\\s*이\\s*치료\\s*(을|를|는|이|가|와|과|도|의|에|로|으로)(\\s|$)", "g"),
+      nameA + "$1$2"
+    );
+    result = result.replace(
+      new RegExp(escNameA + "\\s*이\\s*치료(\\s)", "g"),
+      nameA + "$1"
+    );
+
+    // 치료형 중복 — 치료명이 "치료"로 끝나면 "치료명 치료" 중복 제거
+    if (/치료$/.test(nameA)) {
+      result = result.replace(
+        new RegExp(escNameA + "\\s+치료\\s*(을|를|는|이|가|와|과|도|의|에|로|으로)(\\s|$)", "g"),
+        nameA + "$1$2"
+      );
+      result = result.replace(
+        new RegExp(escNameA + "\\s+치료(\\s)", "g"),
+        nameA + "$1"
+      );
+    }
+
+    // 검사형 중복 (v3.6.3) — 치료명이 "검사"로 끝나면 "검사명 치료" 의미 충돌 차단
+    if (/검사$/.test(nameA)) {
+      result = result.replace(
+        new RegExp(escNameA + "\\s+치료\\s*(을|를|는|이|가|와|과|도|의|에|로|으로)(\\s|$)", "g"),
+        nameA + "$1$2"
+      );
+      result = result.replace(
+        new RegExp(escNameA + "\\s+치료(\\s)", "g"),
+        nameA + "$1"
+      );
+    }
+
+    // GG-1: fossil 회피어 (단일 치환) — "해당/이번 + 치료/시술/방법" → "이 + (동일)"
+    result = result
+      .replace(/해당\s+치료/g, "이 치료")
+      .replace(/해당\s+시술/g, "이 시술")
+      .replace(/해당\s+방법/g, "이 방법")
+      .replace(/이번\s+치료/g, "이 치료")
+      .replace(/이번\s+시술/g, "이 시술")
+      .replace(/이번\s+방법/g, "이 방법");
+
+    // GG-2 (v3.6.3): fossil 어휘 6패턴
+    result = result
+      .replace(/판단했답니다/g, "결정했어요")
+      .replace(/판단했어요/g, "결정했어요")
+      .replace(/판단됩니다/g, "보였어요")
+      .replace(/큰 도움이 될 거예요/g, "도움이 됐어요")
+      .replace(/큰 도움이 될 것입니다/g, "도움이 됩니다")
+      .replace(/큰 도움이 될 수 있어요/g, "도움이 될 수 있어요");
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // ★ Phase B (v3.8) — 관측 전 안정화: 토큰결합 오류 / 미완결 문장 / 단정 완화
+  // ════════════════════════════════════════════════════════════
+  {
+    const nameB = String(treatmentName || "");
+    const escB  = nameB.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    // BB-8: "없" + 치료명 결합 오류 — "수술 없허리디스크치료받으려는" → "수술 없이 허리디스크치료를 받으려는"
+    if (nameB) {
+      result = result.replace(new RegExp("없" + escB + "받", "g"), "없이 " + nameB + "를 받");
+      result = result.replace(new RegExp("없" + escB, "g"), "없이 " + nameB);
+      // 치료명 바로 뒤 동사 붙음 — "치료받으려는/치료진행" 등 조사 보정
+      result = result.replace(new RegExp(escB + "받(으려|고|는|아)", "g"), nameB + "를 받$1");
+
+      // BB-9: 치료명 뒤 조사 누락 보정 (관측 잔여, 범용)
+      //  "환자들허리디스크치료" → "환자들이 허리디스크치료"
+      result = result.replace(new RegExp("(환자들|사람들|이들)" + escB, "g"), "$1이 " + nameB);
+      //  치료명 + 공백 + (조사/정상연결어가 아닌 어절) → "는" 삽입
+      //  제외: 는/은/를/을/가/이/의/에/와/과/로/도/만/보다/비용/후/전/시/상담/진료/과정/이후/중/및/등/경과
+      result = result.replace(
+        new RegExp(escB + "\\s+(?!(는|은|를|을|가|이|의|에|와|과|로|도|만|보다|비용|후|전|시|상담|진료|과정|이후|중|및|등|경과)[\\s가-힣])([가-힣A-Za-z])", "g"),
+        nameB + "는 $2"
+      );
+      // 쉼표형 "치료명, ..." — 주어 조사 자리 쉼표
+      result = result.replace(new RegExp(escB + ",\\s*(?=[가-힣])", "g"), nameB + "는 ");
+      // 띄어쓰기 — "치료명 보다" → "치료명보다"
+      result = result.replace(new RegExp(escB + "\\s+보다", "g"), nameB + "보다");
+      // "이 치료 이러한/X-ray/..." 연결 오류 — 이 치료 + 어절
+      result = result.replace(/이 치료 이러한/g, "이 치료를 통해 이러한");
+      result = result.replace(/이 치료\s+(?!(는|를|가|의|에|와|과|로|이|보다)[\s가-힣])([가-힣A-Za-z])/g, "이 치료는 $2");
+    }
+
+    // 미완결 문장 방지 — "~로." "~것이." "~데." "~사례로." 처럼 서술어 없이 끝나는 절 보정
+    result = result
+      .replace(/사례로\.(\s|$)/g, "사례로 알려져 있습니다.$1")
+      .replace(/선택지로\.(\s|$)/g, "선택지로 검토됩니다.$1")
+      .replace(/확인하는 것이\.(\s|$)/g, "확인하는 것이 중요합니다.$1")
+      .replace(/파악하는 것이\.(\s|$)/g, "파악하는 것이 중요합니다.$1")
+      .replace(/안내된다고\.(\s|$)/g, "안내됩니다.$1")
+      .replace(/검토하는 것이\.(\s|$)/g, "검토하는 것이 필요합니다.$1")
+      .replace(/선택하는 데\.(\s|$)/g, "선택하는 데 참고가 됩니다.$1")
+      .replace(/결정하는 데\.(\s|$)/g, "결정하는 데 참고가 됩니다.$1")
+      .replace(/필요한 경우한 상태인지/g, "필요한 상태인지")
+      .replace(/단계가 살펴봅니다/g, "단계가 진행됩니다")
+      .replace(/우선적으로 검토됩니다/g, "우선적으로 검토합니다")
+      .replace(/장점으로\.(\s|$)/g, "장점으로 볼 수 있습니다.$1")
+      .replace(/기회를 가짐\.(\s|$)/g, "기회를 갖게 됩니다.$1")
+      .replace(new RegExp(escB + "들은", "g"), nameB + "는")
+      .replace(new RegExp(escB + "들이", "g"), nameB + "가")
+      .replace(/이러한 이 치료는/g, "이 치료는")
+      .replace(/진행됩니다\s+환자/g, "진행됩니다. 환자")
+      .replace(/맞춤형 접근이\.(\s|$)/g, "맞춤형 접근이 이루어집니다.$1");
+
+    // 단정 완화 — 개인차 큰 표현
+    result = result
+      .replace(/회복 시간이 짧고/g, "회복 양상은 개인에 따라 다를 수 있으며")
+      .replace(/회복 기간이 짧고/g, "회복 양상은 개인에 따라 다를 수 있으며")
+      .replace(/회복 기간이 짧다/g, "회복 양상은 개인에 따라 다를 수 있습니다")
+      .replace(/일상 복귀가 빠르다는/g, "일상 복귀 시점은 개인에 따라 다를 수 있다는")
+      .replace(/일상생활로의 복귀가 비교적 빠른/g, "일상 복귀 시점은 개인에 따라 다를 수 있는")
+      .replace(/통증이 점차 감소되고/g, "통증 양상은 개인에 따라 다를 수 있으며")
+      .replace(/통증 20~30% 감소/g, "통증 완화를 체감하기도")
+      .replace(/가동 범위 10~20도/g, "가동 범위가 점차");
+
+    // 미완결 문장 추가 보정
+    result = result
+      .replace(/받는 것이\.(\s|$)/g, "받는 것이 중요합니다.$1")
+      .replace(/것이 목적임\.(\s|$)/g, "것이 목적입니다.$1")
+      .replace(/하는 것으로\.(\s|$)/g, "하는 경우가 많습니다.$1")
+      .replace(/이해하는 데\.(\s|$)/g, "이해하는 데 도움이 됩니다.$1")
+      .replace(/도움을 주는 데\.(\s|$)/g, "도움을 줍니다.$1")
+      // 관측 잔여 미완결 종결 보정 (좁은 whitelist — 서술어 탈락형만)
+      .replace(/찾는 것이\.(\s|$)/g, "찾는 것이 중요합니다.$1")
+      .replace(/검토하는 사례로\.(\s|$)/g, "검토하는 사례로 볼 수 있습니다.$1")
+      .replace(/되는 사례로\.(\s|$)/g, "되는 사례로 볼 수 있습니다.$1")
+      .replace(/검토하는 단계가\.(\s|$)/g, "검토하는 단계가 진행됩니다.$1")
+      .replace(/검토하는 단계가\s*\.(\s|$)/g, "검토하는 단계가 진행됩니다.$1")
+      .replace(/안내받음\.(\s|$)/g, "안내받게 됩니다.$1")
+      .replace(/안내받음(\s|$)/g, "안내받게 됩니다.$1");
+
+    // [v3.8 버그패치] 생성 실패 4계열 (관측 잔여 — FREEZE 유지, 후처리 정화만)
+    result = result
+      // ① 회수 → 횟수 (본문 생성물 오타. 프롬프트/기준문 소스는 무변경)
+      .replace(/치료 회수/g, "치료 횟수")
+      .replace(/진료 회수/g, "진료 횟수")
+      // ② 미완결 문장 (서술어 탈락 종결)
+      .replace(/이해도\.(\s|$)/g, "이해도 필요합니다.$1")
+      .replace(/과정이\.(\s|$)/g, "과정이 진행됩니다.$1")
+      .replace(/방법으로\.(\s|$)/g, "방법으로 활용됩니다.$1")
+      .replace(/설정하는 것이\.(\s|$)/g, "설정하는 것이 중요합니다.$1")
+      // ③ 수동 표현 오류 (목적어+검토됩니다 → 검토합니다)
+      .replace(/([를을])\s*우선적으로 검토됩니다/g, "$1 우선적으로 검토합니다")
+      // ④ 주어·서술어 충돌 (~이/가 ... 살펴봅니다 → 진행됩니다/이루어집니다)
+      .replace(/추가적인 방법이 살펴봅니다/g, "추가적인 방법이 검토됩니다")
+      .replace(/위 항목이 비중 있게 살펴봅니다/g, "위 항목이 비중 있게 안내됩니다")
+      .replace(/위 항목이 비중 있게 안내합니다/g, "위 항목이 비중 있게 안내됩니다");
+
+    // [v3.8 버그패치 2차] 관측 잔여 4계열 (FREEZE 유지, 후처리 정화만)
+    if (nameB) {
+      const escN = String(treatmentName||"").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // ① 치료명, 이러한/다양한 → 치료명은 이러한/다양한 (조사 누락 콤마형)
+      result = result.replace(new RegExp(escN + ",\\s*(이러한|다양한)", "g"), nameB + "는 $1");
+      // ② 비수술적 치료명 + 공백 + 어절 (조사 탈락) → 치료명은
+      result = result.replace(new RegExp("비수술적 " + escN + "\\s+(?!(는|를|가|의|에|와|과|로|이|보다|후|비용|상담)[\\s가-힣])([가-힣])", "g"), "비수술적 " + nameB + "는 $2");
+    }
+    result = result
+      // ③ 미완결 문장 (선택하는 것이.)
+      .replace(/선택하는 것이\.(\s|$)/g, "선택하는 것이 중요합니다.$1")
+      // ④ 주어·서술어 충돌 (여러 단계로 살펴봅니다)
+      .replace(/여러 단계로 살펴봅니다/g, "여러 단계로 진행됩니다")
+      // ⑤ 조사 중복 (치료명를 (를) 찾을 때 / 을(를) 잔재)
+      .replace(/를\s*\(를\)/g, "를")
+      .replace(/을\s*\(를\)/g, "을");
+
+    // 조사 ~됨 → ~합니다 (담담 기록형 잔여 → 설명체)
+    result = result
+      .replace(/안내됨\./g, "안내합니다.").replace(/안내됨(\s|$)/g, "안내합니다$1")
+      .replace(/실시됨\./g, "실시합니다.").replace(/실시됨(\s|$)/g, "실시합니다$1")
+      .replace(/활용됨\./g, "활용합니다.").replace(/활용됨(\s|$)/g, "활용합니다$1")
+      .replace(/결정됨\./g, "결정합니다.").replace(/결정됨(\s|$)/g, "결정됩니다$1")
+      .replace(/확인됨\./g, "확인합니다.").replace(/확인됨(\s|$)/g, "확인합니다$1")
+      .replace(/검토됨\./g, "검토합니다.").replace(/검토됨(\s|$)/g, "검토합니다$1")
+      .replace(/진행됨\./g, "진행합니다.").replace(/진행됨(\s|$)/g, "진행됩니다$1")
+      .replace(/비롯됨\./g, "비롯됩니다.").replace(/비롯됨(\s|$)/g, "비롯됩니다$1");
+
+    // 키워드 억지 삽입 완화 — "지역 치료명, 이러한/다양한 ~" 콤마 삽입형
+    if (nameB) {
+      const escR = String(treatmentName||"").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      result = result.replace(new RegExp("([가-힣]+)\\s+" + escR + ",\\s*이러한", "g"), "$1 " + nameB + "는 이러한");
+      result = result.replace(new RegExp(escR + ",\\s*이러한 다양한 사례를 바탕으로", "g"), nameB + "는 다양한 사례를 바탕으로");
+    }
+
+    // 의학적 단정 중립화
+    result = result
+      .replace(/디스크 자체의 변화에는 한계가 있을 수 있음/g, "디스크 상태에 따라 적용 방향이 달라질 수 있음")
+      .replace(/한계가 있을 수 있음을 확인함/g, "적용 방향이 달라질 수 있음을 안내함");
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // ★ Phase C (v4.0) — 문체 통일 / 조사 오류 / 주어 다양화 / 반복 표현
+  // ════════════════════════════════════════════════════════════
+  {
+    // (1) 문체 통일 — 기록체 어미(~함/~됨/~게 됨)를 설명체(~합니다/~됩니다)로 수렴
+    result = result
+      .replace(/검토하게 됨(\s|$)/g, "검토하게 됩니다$1")
+      .replace(/검토됨(\s|$)/g, "검토됩니다$1")
+      .replace(/이루어짐(\s|$)/g, "이루어집니다$1")
+      .replace(/비교함(\.|\s|$)/g, "비교합니다$1")
+      .replace(/많음(\.|\s|$)/g, "많습니다$1")
+      .replace(/강조함(\.|\s|$)/g, "강조합니다$1")
+      .replace(/설명함(\.|\s|$)/g, "설명합니다$1")
+      .replace(/한다고 설명함/g, "한다고 설명합니다")
+      .replace(/점임(\.|\s|$)/g, "점입니다$1")
+      .replace(/자료로 활용함/g, "자료로 활용합니다")
+      .replace(/관찰됨(\.|\s|$)/g, "관찰됩니다$1")
+      .replace(/사용됨(\.|\s|$)/g, "사용됩니다$1");
+
+    // (1-b) 종결 위치 기록체 어미 통합 수렴 — 문장 끝(마침표/줄끝)의 "~됨/~함/~음/~임"만.
+    //   개별 어휘 나열 대신 종결 위치 한정으로 처리(문장 중간 명사 '저림/떨림' 오손상 회피).
+    //   "보임. 관찰됨. 확인함. 평가됨. ~수 있음. 함." → "~습니다."
+    result = result
+      .replace(/(다|도|을|를|게|서|서도)\s*됨\s*\.(\s|$)/g, "$1 됩니다.$2")
+      .replace(/([가-힣])됨\s*\.(\s|$)/g, "$1됩니다.$2")
+      .replace(/(다|도|을|를|게|서|서도|주로)\s*함\s*\.(\s|$)/g, "$1 합니다.$2")
+      .replace(/([가-힣])함\s*\.(\s|$)/g, "$1합니다.$2")
+      .replace(/보임\s*\.(\s|$)/g, "보입니다.$1")
+      .replace(/보임(\s)/g, "보입니다$1")
+      .replace(/나타남\s*\.(\s|$)/g, "나타납니다.$1")
+      .replace(/이어짐\s*\.(\s|$)/g, "이어집니다.$1")
+      .replace(/([가-힣])어짐\s*\.(\s|$)/g, "$1어집니다.$2")
+      .replace(/(있|없|같|아니)음\s*\.(\s|$)/g, "$1습니다.$2")
+      .replace(/([가-힣])임\s*\.(\s|$)/g, "$1입니다.$2");
+
+    // (2) 조사·서술어 오류 — "여부가/과정이/선택지가 ~ 검토합니다" → 피동 정정
+    result = result
+      .replace(/검사 여부가 검토합니다/g, "검사 여부가 검토됩니다")
+      .replace(/과정이 진행합니다/g, "과정이 진행됩니다")
+      .replace(/([가-힣]+지가) 결정합니다/g, "$1 결정됩니다")
+      .replace(/선택지가 결정합니다/g, "선택지가 결정됩니다")
+      .replace(/여부가 검토합니다/g, "여부가 검토됩니다")
+      .replace(/([가-힣]+이|[가-힣]+가) 검토합니다/g, "$1 검토됩니다")
+      .replace(/([가-힣]+이|[가-힣]+가) 진행합니다/g, "$1 진행됩니다")
+      .replace(/비중 있게 검토합니다/g, "비중 있게 검토됩니다")
+      .replace(/비중 있게 설명합니다/g, "비중 있게 검토됩니다")
+      .replace(/([가-힣]+이|[가-힣]+가) 살펴봅니다/g, "$1 검토됩니다")
+      .replace(/우선적으로 검토합니다/g, "우선적으로 검토됩니다")
+      .replace(/우선적으로 시도합니다/g, "우선적으로 시도됩니다");
+
+    // (3) 주어 "환자들은" 남발 — 일부를 문맥 주어로 치환(전부는 아님, 첫 출현 제외 회전)
+    let cnt = 0;
+    const subjRotate = ['진료 과정에서는 ', '상담 시에는 ', '검사 결과를 바탕으로 ', '치료 계획은 '];
+    result = result.replace(/환자들은 /g, (m) => {
+      cnt++;
+      if (cnt === 1) return m;                 // 첫 출현 유지
+      if (cnt % 2 === 0) return subjRotate[(cnt/2 - 1) % subjRotate.length];
+      return m;
+    });
+
+    // (4) 반복 표현(확인/검토/진행) 완화 — 3연속 이상 시 동의어 회전
+    const syn = ['살펴봅니다', '안내합니다', '설명합니다', '평가합니다', '계획합니다', '적용합니다'];
+    let rep = 0;
+    result = result.replace(/확인합니다|검토됩니다|진행됩니다/g, (m) => {
+      rep++;
+      if (rep % 4 === 0) return syn[(rep/4 - 1) % syn.length];
+      return m;
+    });
+  }
 
   // 디버그: 함수 진입 확인
   const beforeCount = (result.match(new RegExp(treatmentName + '이', 'g')) || []).length;
@@ -1244,6 +1691,10 @@ function cleanOrthoText(text, treatmentName, mode = "personal") {
         console.warn(`[ortho][cleanCommercial] 2패스 후 잔존: ${v2.total}건`, v2.counts);
       }
     }
+    // 방어선: personal 후기체 문단 혼입 시 제거 (commercial 정보형에 1인칭 후기 톤 금지)
+    result = result
+      .replace(/[^\n]*가장 먼저 본 건[^\n]*\n?/g, "")
+      .replace(/[^\n]*재활까지 꾸준히 다녀야 해서요[^\n]*\n?/g, "");
   }
 
   // ── personal 모드 광고 톤 다운 (가벼운 정화) ────────────
@@ -1285,16 +1736,16 @@ function insertOrthoTimeline(text, treatmentName, mode = "personal") {
                   : isInjection ? "주사 직후 — 당일은 안정, 다음날부터 효과 체감 시작"
                   : "치료 직후 느낌 변화";
 
-  const week1Note = isSurgery   ? "퇴원·보행 보조기 사용, 재활 시작"
-                  : isFracture  ? "관절 가동 범위 10~20도 회복, 부기 감소"
-                  : isShockwave ? "2~3회차 완료, 통증 20~30% 감소 체감"
-                  : isManual    ? "3~5회차 완료, 자세 변화·통증 완화 시작"
-                  : isKnee      ? "무릎 부기 감소, 계단 보행 조금 수월해짐"
-                  : isShoulder  ? "팔 운동 범위 10~20도 개선, 야간 통증 감소"
+  const week1Note = isSurgery   ? "퇴원·보행 보조기 사용, 재활 시작하는 경우가 있음"
+                  : isFracture  ? "관절 가동 범위가 점차 회복되며 부기 감소"
+                  : isShockwave ? "회차가 진행되며 통증 완화를 체감하기도 함"
+                  : isManual    ? "회차가 진행되며 자세 변화·통증 완화가 나타나기도 함"
+                  : isKnee      ? "무릎 부기 감소, 계단 보행이 점차 수월해지기도 함"
+                  : isShoulder  ? "팔 운동 범위가 점차 개선되고 야간 통증 감소"
                   : isFoot      ? "아침 첫발 통증 감소, 장시간 보행 개선"
                   : "증상 완화 시작, 치료 리듬 안정";
 
-  const timeline = `\n\n**회복 단계 기록**\n- 1회 직후: ${firstNote}\n- 1주일차: ${week1Note}\n- 1개월차: 기능 개선이 단계별로 관찰됨\n- 3개월차: 일상 복귀·경과 추적 단계로 진행됨`;
+  const timeline = `\n\n**회복 단계 안내**\n- 초기 경과 확인: ${firstNote}\n- 치료 계획 조정: ${week1Note}\n- 기능 회복 평가: 기능 개선 정도를 단계별로 살펴봄\n- 장기 경과 관찰: 일상 복귀·경과를 확인하는 단계로 진행\n(경과 확인은 개인 상태에 따라 수일~수개월에 걸쳐 진행될 수 있습니다)`;
   return text.trimEnd() + timeline;
 }
 
@@ -1437,12 +1888,15 @@ function getOrthoDecisionCriteria(treatmentName, region) {
 }
 
 // ── v3.5 키워드 밀도 보정 ─────────────────────────────
-function injectOrthoKeywordDensity(text, fullKeyword, treatmentName, region) {
+function injectOrthoKeywordDensity(text, fullKeyword, treatmentName, region, mode = "personal") {
   const fkEsc = fullKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const fkCount = (text.match(new RegExp(fkEsc, "g")) || []).length;
   if (fkCount >= 3) return text;
 
-  const insertA = `\n\n${fullKeyword}을(를) 찾을 때 가장 먼저 본 건 거리·상담 분위기였어요. 정형외과는 한 번으로 끝나는 게 아니라 재활까지 꾸준히 다녀야 해서요.\n`;
+  // insertA: personal=후기체 / commercial=정보 설명체 (정보형 글에 후기 톤 혼입 방지)
+  const insertA = (mode === "commercial")
+    ? `\n\n${fullKeyword}를 찾을 때는 통원 거리와 상담 과정을 함께 살펴보는 것이 도움이 됩니다. 정형외과는 재활까지 이어지는 경우가 많아 지속적인 통원 여건도 함께 고려됩니다.\n`
+    : `\n\n${fullKeyword}을(를) 찾을 때 가장 먼저 본 건 거리·상담 분위기였어요. 정형외과는 한 번으로 끝나는 게 아니라 재활까지 꾸준히 다녀야 해서요.\n`;
   const insertB = `\n\n${region}에서 ${treatmentName} 고민이라면, 한 곳만 보지 말고 2~3곳 비교 상담해보는 걸 권합니다. 진단·치료 방향이 병원마다 다를 수 있거든요.\n`;
 
   let result = text;
@@ -1650,9 +2104,9 @@ function runOrthoQC(text, treatmentName, fullKeyword, mode = "personal") {
 // 메인 핸들러
 // ============================================================
 export default async function handleOrtho(req, res) {
-  const { target, program, blogType, userRegion, userMemo, overrideTitle, mode = "personal" } = req.body;
+  const { target, program, blogType, userRegion, userMemo, overrideTitle, mode = "personal", storeId } = req.body;
 
-  const subKw      = program.name || "";
+  let subKw        = program.name || "";  // v3.7.4: 흡수 변환 위해 let
   const region     = (userRegion || "강남").trim();
   const targetId   = target?.id   || "consult";
   const blogTypeId = blogType?.id || "review";
@@ -1663,14 +2117,55 @@ export default async function handleOrtho(req, res) {
   console.log(`[ortho] mode: ${validMode}`);
 
   // 정형외과 치료 검증
-  const ORTHO_IDS   = ["lumbar_disc","cervical_disc","spinal_stenosis","knee_arthritis","meniscus","shoulder","manual_therapy_ortho","shockwave_ortho","prolotherapy","acl","plantar_fasciitis","ankle_sprain","elbow","carpal_tunnel","fracture_rehab","scoliosis","regenerten"];
-  const ORTHO_NAMES = ["허리디스크치료","목디스크치료","척추관협착증치료","무릎관절염치료","반월상연골치료","어깨통증치료","도수치료","체외충격파치료","프롤로주사치료","전방십자인대치료","족저근막염치료","발목인대손상치료","팔꿈치통증치료","손목터널증후군치료","골절재활치료","척추측만증치료","리제네텐주사치료"];
+  // v3.7.5 (2026-05-13): 동적 whitelist + 부위별 흡수 변환 + fallback
+  //   원인: ortho-data.js에 등록된 카드와 generateOrtho 화이트리스트 동기화 부재
+  //         (회전근개·연골주사·경추협착증·무지외반증 등 카드 누락 반복)
+  //   결정: ORTHO_TREATMENTS(이미 import)를 동적 참조 → 데이터 정합성 자동 보장
+  //         부위 인식 가능한 항목은 어깨통증치료/도수치료 narrative로 흡수
+  //         미매칭 항목은 도수치료로 fallback (bodyPartMap은 "해당 부위" 안전망 작동)
+  const ORTHO_IDS   = ORTHO_TREATMENTS.map(t => t.id);
+  const ORTHO_NAMES = ORTHO_TREATMENTS.map(t => t.name);
   const isOrthoTreatment = ORTHO_IDS.includes(program.id) || ORTHO_NAMES.includes(subKw);
   if (!isOrthoTreatment) {
     console.error(`[ortho] 잘못된 치료 진입 차단: ${subKw} (${program.id})`);
     return res.status(400).json({ error: `정형외과 생성기에 잘못된 치료가 전달되었습니다: ${subKw}` });
   }
   console.log(`[ortho] 치료 검증 통과: ${subKw}`);
+
+  // v3.7.5: 부위·계열 키워드 기반 흡수 변환 + fallback
+  //   목적: ortho-data.js 카드 추가 시마다 generateOrtho 수정 불필요
+  //   원칙: 기존 핵심 narrative (어깨/무릎/허리/도수)로 흡수 — freeze 유지
+  const ABSORB_RULES = [
+    // 어깨 계열 → 어깨통증치료
+    { match: /회전근개|오십견|유착성관절낭염|어깨/, target: { id: "shoulder", name: "어깨통증치료" } },
+    // 무릎 계열 → 무릎관절염치료
+    { match: /연골|반월|십자인대|무릎/,             target: { id: "knee_arthritis", name: "무릎관절염치료" } },
+    // 척추 계열 → 척추관협착증치료 또는 허리디스크
+    { match: /경추협착|척추협착|척추관/,             target: { id: "spinal_stenosis", name: "척추관협착증치료" } },
+    { match: /허리디스크|요추/,                       target: { id: "lumbar_disc", name: "허리디스크치료" } },
+    { match: /목디스크|경추디스크/,                   target: { id: "cervical_disc", name: "목디스크치료" } },
+    // 발/발목 계열 → 도수치료 (별도 narrative 없는 경우)
+    { match: /무지외반|족부|발/,                       target: { id: "manual_therapy_ortho", name: "도수치료" } },
+    // 기본 fallback — 미매칭 시 도수치료 narrative
+  ];
+
+  // ortho-data.js 카드 이름이 화이트리스트엔 있으나 흡수 대상이 아닌 경우는 그대로 진행
+  // (기존 17개 핵심 카드 — 직접 narrative 보유)
+  const CORE_NAMES = new Set([
+    "허리디스크치료","목디스크치료","척추관협착증치료","무릎관절염치료","반월상연골치료",
+    "어깨통증치료","도수치료","체외충격파치료","프롤로주사치료","전방십자인대치료",
+    "족저근막염치료","발목인대손상치료","팔꿈치통증치료","손목터널증후군치료",
+    "골절재활치료","척추측만증치료","리제네텐주사치료"
+  ]);
+
+  if (!CORE_NAMES.has(subKw)) {
+    const rule = ABSORB_RULES.find(r => r.match.test(subKw) || r.match.test(program.id));
+    const target = rule ? rule.target : { id: "manual_therapy_ortho", name: "도수치료" };
+    console.log(`[ortho] 흡수 변환: ${subKw} (${program.id}) → ${target.name} (${target.id})${rule ? "" : " [fallback]"}`);
+    subKw         = target.name;
+    program.id    = target.id;
+    if (program.name) program.name = target.name;
+  }
 
   const treatmentData = ORTHO_TREATMENTS.find(t => t.id === program.id || t.name === program.name)
     || ORTHO_TREATMENTS[0];
@@ -1917,14 +2412,9 @@ ${richPrompt}`;
   const lastKey = secKeys[secKeys.length - 1];
   if (sectionTexts[lastKey]) {
     if (validMode === "commercial") {
-      // commercial CTA — 광고법 안전 (3가지 톤 랜덤)
-      const commercialCTAs = [
-        `\n\n비슷한 증상이 있다면 ${region} ${subKw} 진료를 고려해볼 수 있습니다. 진단·치료 결정은 의료진 상담 후 안내됩니다.`,
-        `\n\n${region}에서 ${subKw} 진료 검토 시 전문의 자격, 시설(MRI·X-ray·초음파), 진료 분야 등을 일반적으로 확인해보시는 것이 권장됩니다.`,
-        `\n\n${subKw} 진행 여부는 환자 상태에 따라 다르므로 ${region} 정형외과 진료 후 안내받으실 수 있습니다.`,
-      ];
+      // commercial CTA — 광고법 안전 (3가지 톤 랜덤) → InfoBlock Spine 이관
       sectionTexts[lastKey] = sectionTexts[lastKey].trimEnd()
-        + commercialCTAs[Math.floor(Math.random() * commercialCTAs.length)];
+        + renderInfoBlock("ortho", "commercial", { region, subKw });
     } else {
       // personal: 적용 대상자 유형 + 진료처 검토 기준 + 사실 마무리 (광고 어휘 제거)
       const recList = ORTHO_REC_MAP[subKw] || [];
@@ -1936,14 +2426,14 @@ ${richPrompt}`;
       const decisionBlock = `\n\n**${region}에서 ${subKw} 진료처 검토 시 일반 기준**\n${decisionList.map(d => `- ${d}`).join("\n")}`;
 
       // 사실 기술 마무리 (CTA·만족 표현 제거)
-      const closing = `\n\n${subKw} 자체보다 위 항목이 비중 있게 검토됨. 동일 진료라도 진료처에 따라 경과 차이가 관찰됨.`;
+      const closing = `\n\n${subKw}보다 위 항목이 비중 있게 검토됩니다. 동일 진료라도 진료처에 따라 경과 차이가 관찰됩니다.`;
 
       sectionTexts[lastKey] = sectionTexts[lastKey].trimEnd()
         + recBlock + decisionBlock + closing;
     }
   }
 
-  let assembled = `# ${title}\n\n`;
+  let assembled = "";
   secKeys.forEach((key, i) => {
     const secContent = sectionTexts[key] || "";
     if (calcCharCount(secContent) < 50) return;
@@ -1955,7 +2445,7 @@ ${richPrompt}`;
 
   // ── v3.5: 키워드 밀도 보정 ──────────────────────
   const fullKeyword = `${region} ${subKw}`;
-  assembled = injectOrthoKeywordDensity(assembled, fullKeyword, subKw, region);
+  assembled = injectOrthoKeywordDensity(assembled, fullKeyword, subKw, region, validMode);
 
   // ── v3.5e3: 검사 디테일 강제 삽입 (personal 전용 — 단정 표현 위험) ──
   if (validMode === "personal") {
@@ -1967,6 +2457,155 @@ ${richPrompt}`;
   // commercial 모드는 2회 통과 — 1차에서 변환된 표현이 다른 패턴을 만들 수 있음
   if (validMode === "commercial") {
     assembled = cleanOrthoText(assembled, subKw, validMode);
+  }
+
+
+  // ════════════════════════════════════════════════════════════
+  // ★ v3.7.1 PATCH — region + placeholder 복원 + 조사 깨짐 차단
+  //   (cleanOrthoText에서 처리 불가 — region 정보 필요)
+  // ════════════════════════════════════════════════════════════
+  {
+    const escSub    = subKw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escRegion = region.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    // ⓪ commercial 최종 안전망 — personal 후기체 문단 제거 (혼입/구버전 잔여 대비)
+    if (validMode === "commercial") {
+      assembled = assembled
+        .replace(/[^\n]*가장 먼저 본 건[^\n]*\n?/g, "")
+        .replace(/[^\n]*재활까지 꾸준히 다녀야 해서요[^\n]*\n?/g, "")
+        .replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    // ① placeholder 잔존 — "강남 이 치료" → "강남 허리디스크치료"
+    //   원인: cleanOrthoText의 GG-1/이전 변환이 region 직후 치료명을 "이 치료"로 바꿈
+    //   처리: region + 공백 + "이 치료/시술/방법" 패턴 → region + subKw 복원
+    assembled = assembled.replace(
+      new RegExp(escRegion + "\\s+이\\s+(치료|시술|방법)(\\s|를|을|는|이|가|와|과|도|의|에|로|으로)", "g"),
+      (_m, _kw, josa) => `${region} ${subKw}${josa}`
+    );
+
+    // ② 조사 깨짐 — "치료명 + 자신/대상/적합/필요" 형태 (조사 누락)
+    //   "허리디스크치료 자신에게" → "허리디스크치료가 자신에게"
+    //   ※ 받침 자동 판별 (한글 마지막 글자 + 0x4E00 진폭 활용)
+    const hasBatchim = (() => {
+      const last = subKw.charCodeAt(subKw.length - 1);
+      if (last < 0xAC00 || last > 0xD7A3) return null; // 한글 아님
+      return ((last - 0xAC00) % 28) !== 0;
+    })();
+    const josaIGa = hasBatchim === true  ? "이" : hasBatchim === false ? "가" : null;
+    const josaEulReul = hasBatchim === true ? "을" : hasBatchim === false ? "를" : null;
+
+    if (josaIGa) {
+      // "치료명 + (공백) + 자신|적합|필요|효과|도움|가능|중요|환자" (v3.7.2)
+      //   ※ "환자"는 명사 충돌형 — "어깨통증치료 환자의 상태" → "어깨통증치료가 환자의 상태"
+      assembled = assembled.replace(
+        new RegExp(escSub + "\\s+(자신|적합|필요|효과|도움|가능|중요|환자)([에가이은는을를의])", "g"),
+        `${subKw}${josaIGa} $1$2`
+      );
+
+      // ②-3 (v3.7.3): "치료명 + 비수술/수술/관절/근력" 형태 — 관형사·복합명사 충돌형
+      //   "무릎관절염치료 비수술적 접근" → "무릎관절염치료는 비수술적 접근"
+      //   ※ "는/은"이 더 자연스러움 (대비·주제 표현)
+      const josaNeunEun = hasBatchim === true ? "은" : hasBatchim === false ? "는" : null;
+      if (josaNeunEun) {
+        assembled = assembled.replace(
+          new RegExp(escSub + "\\s+(비수술|수술적|보존적|약물적|재활적)", "g"),
+          `${subKw}${josaNeunEun} $1`
+        );
+        // ②-3c (v4.1): 조사 누락형 확장 — "치료 통증을/주로/개인의/적절한/인공관절/목의"
+        //   주제·대비 표현이 자연스러운 케이스만 "는/은" 주입.
+        assembled = assembled.replace(
+          new RegExp(escSub + "\\s+(통증|주로|개인|적절|인공관절|목의|증상)", "g"),
+          `${subKw}${josaNeunEun} $1`
+        );
+      }
+      // ②-3d (v4.1): "치료 + 가능한지/고려될/검토" 주격형 — "가/이" 주입
+      if (josaIGa) {
+        assembled = assembled.replace(
+          new RegExp(escSub + "\\s+(가능한지|고려될|검토되는)", "g"),
+          `${subKw}${josaIGa} $1`
+        );
+      }
+    }
+
+    // ②-2 (v3.7.2): 연결 조사형 — "region + subKw + 의존명사" 패턴
+    //   "강남 어깨통증치료 이러한 변화를" → "강남 어깨통증치료, 이러한 변화를"
+    //   원인: GPT가 동격/연결 조사("는·은·과") 생략 + 의존명사로 직접 연결
+    //   처리: 쉼표로 안전 분리 (조사 강제 주입은 의미 왜곡 위험)
+    assembled = assembled.replace(
+      new RegExp(escRegion + "\\s+" + escSub + "\\s+(이러한|다양한|이런|저런|그런)\\s+([가-힣]{2,})", "g"),
+      `${region} ${subKw}, $1 $2`
+    );
+
+    // ②-2b (v4.1): region과 subKw 사이 조사("에서의/에서/의")가 끼어 ②-2가 놓친 케이스
+    //   "…에서의 허리디스크치료 이러한 여러 단계를" → "…에서의 허리디스크치료, 이러한 …"
+    assembled = assembled.replace(
+      new RegExp(escSub + "\\s+(이러한|다양한|이런|저런|그런)\\s+([가-힣]{2,})", "g"),
+      (m, dem, noun) => {
+        // 이미 쉼표/조사로 끝나 자연스러운 경우 스킵
+        return `${subKw}, ${dem} ${noun}`;
+      }
+    );
+
+    // ②-3b (v4.1): "비수술적/보존적 + subKw + 수술/시술" 명사구 중간 삽입형
+    //   "비수술적 허리디스크치료 수술에 대한 부담" → "비수술적 치료는 수술에 대한 부담"
+    //   (키워드가 수식어와 뒤 명사 사이에 억지로 낀 형태 → 키워드 제거 후 자연 연결)
+    assembled = assembled.replace(
+      new RegExp("(비수술적|보존적|수술적|약물적|재활적)\\s+" + escSub + "\\s+(수술|시술|치료|주사)", "g"),
+      "$1 치료는 $2"
+    );
+
+    // ②-4 (v3.7.3): "이 치료 + 명사" placeholder 연결 조사형
+    //   "이 치료 무릎 통증" → "이 치료는 무릎 통증"
+    //   ※ "이 치료" 자체는 받침 없음 → "는" 일관 적용
+    //   ※ 의미 보존 위해 쉼표 대신 "는" 주입 (placeholder 후속이라 조사 명확)
+    assembled = assembled.replace(
+      /이\s+치료\s+([가-힣]{2,})/g,
+      (m, noun) => {
+        // 이미 조사가 있는 경우 스킵 — "이 치료는/이 치료가/이 치료를" 등
+        if (/^(는|은|이|가|를|을|와|과|도|의|에|로)/.test(noun)) return m;
+        // 동사·형용사 어간 패턴 회피 ("이 치료 받은/이 치료 후")
+        if (/^(받|진행|이후|후|전|중|시|때|당시)/.test(noun)) return m;
+        return `이 치료는 ${noun}`;
+      }
+    );
+
+    // ③ "치료명 + 을/를" 받침 오류 — 받침 ㄹ 등으로 "을" 잘못 결합
+    //   "허리디스크치료을" → "허리디스크치료를"
+    //   ※ 일반 규칙: 받침 있으면 "을", 없으면 "를"
+    //   ※ 단 "치료/시술/주사" 등 ㄹ받침은 "를"이 자연스러움
+    if (hasBatchim !== null) {
+      const wrongJosa = hasBatchim ? "를" : "을";
+      const rightJosa = hasBatchim ? "을" : "를";
+      // 잘못 붙은 경우만 교정
+      assembled = assembled.replace(
+        new RegExp(escSub + wrongJosa + "(?=[\\s가-힣])", "g"),
+        subKw + rightJosa
+      );
+    }
+
+    // ③-2 (v3.7.2): "치료명 + 은/는" 받침 오류
+    //   "어깨통증치료은" (받침 없음 → 는) / "수술은" (받침 있음 → 은) 형태
+    //   받침 없는 치료명에 "은"이 붙은 케이스만 교정
+    if (hasBatchim === false) {
+      assembled = assembled.replace(
+        new RegExp(escSub + "은(?=[\\s가-힣])", "g"),
+        subKw + "는"
+      );
+    } else if (hasBatchim === true) {
+      // 받침 있는데 "는"이 붙은 케이스
+      assembled = assembled.replace(
+        new RegExp(escSub + "는(?=[\\s가-힣])", "g"),
+        subKw + "은"
+      );
+    }
+
+    // ④ 부유 "이 치료" 잔존 정리 — "강남 이 치료 ~" 형태가 ① 처리 후에도 남는 경우
+    //   "강남 이 치료 이러한" → "강남 ${subKw} 이러한"
+    assembled = assembled.replace(
+      new RegExp(escRegion + "\\s+이\\s+(치료|시술|방법)\\s+", "g"),
+      `${region} ${subKw} `
+    );
   }
 
   // ─────────────────────────────────────────────
@@ -1990,6 +2629,9 @@ ${richPrompt}`;
   // 해시태그 추가 (clean 이후 — "이 치료" 변환 차단)
   const tags = buildOrthoHashtags(subKw, region, validMode);
   assembled += "\n\n" + tags;
+
+  // [v4.1] 제목 결합 — 모든 본문 후처리(clean/키워드치환/region복원/해시태그)를 제목이 타지 않도록 최종 단계에서 결합
+  assembled = `# ${title}\n\n${assembled}`;
 
   const charCount = calcCharCount(assembled);
   const seoScore  = diagnosePost(assembled, subKw);
@@ -2019,7 +2661,7 @@ ${richPrompt}`;
     }
   }
 
-  await autoSave({ assembled, charCount, subKw, region, seoScore, industry });
+  await autoSave({ assembled, charCount, subKw, region, seoScore, industry, storeId });
 
   const imageRegex = /\[이미지:\s*([^\]]+)\]/g;
   const images = [];
@@ -2031,12 +2673,22 @@ ${richPrompt}`;
 
   // ★★★ v2 패치: 네이버 블로그 복사용 평문 변환 (마크다운 헤더 제거) ★★★
   const assembledMarkdown = assembled;                    // 마크다운 원본 보존
-  const assembledPlain    = stripMarkdownForNaver(assembled); // 네이버 복사용 평문
+  const assembledPlain    = stripMarkdownForNaver(assembled); // 네이버 복사용 평문 (박스 포함)
+
+  // ★ v3.7: 박스 제외 글자수 재계산 — 사용자 기준 본문 글자수
+  //   stripMarkdownForNaver가 [이미지: XX] → 박스 placeholder로 변환했으므로
+  //   박스 5라인 블록을 제거한 텍스트로 글자수 산출
+  const plainForCount = assembledPlain.replace(/\n┌─+┐[\s\S]*?└─+┘\n/g, "\n");
+  const charCountPlain = calcCharCount(plainForCount);
+
+  // ★ v3.7: QC 박스 카운트 로그
+  const _boxCount = (assembledPlain.match(/┌─+┐/g) || []).length;
+  console.log(`[QC] PHOTO_POOL 박스 ${_boxCount}개 / 평문 글자수(박스제외) ${charCountPlain}자`);
 
   return res.status(200).json({
     success: true, text: assembledPlain, textMarkdown: assembledMarkdown,
     hashtags: hashtagsArr,
-    images, charCount, seoScore,
+    images, charCount: charCountPlain, seoScore,
     mode: validMode,
     qc: validMode === "commercial" ? {
       totalViolations:  finalQC.totalViolations,
@@ -2047,6 +2699,6 @@ ${richPrompt}`;
       priceBait:        finalQC.priceCount,
       clinicPraise:     finalQC.clinicPraiseCount,
     } : undefined,
-    validation: { passed: charCount >= 2000, charCount },
+    validation: { passed: charCountPlain >= 2000, charCount: charCountPlain },
   });
 }

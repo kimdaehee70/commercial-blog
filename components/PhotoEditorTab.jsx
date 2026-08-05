@@ -10,6 +10,8 @@ import {
   WM_TEXT_DEFAULT,
   drawWatermarkOnCanvas,
 } from "../lib/watermark";
+// ★ [PATCH v3.7] 새로고침 시 가게이름·워터마크 설정 유지
+import { usePersistentState, SK, storageGet } from "../lib/storage";
 
 function fileToDataUrl(file) {
   return new Promise((res, rej) => {
@@ -29,18 +31,19 @@ function loadImage(src) {
 }
 export default function PhotoEditorTab() {
   const [step,      setStep]      = useState("photos");
-  const [theme1,    setTheme1]    = useState("");
-  const [theme2,    setTheme2]    = useState("");
+  // ★ [PATCH v3.7] 가게이름·테마·워터마크 설정은 새로고침 후에도 유지
+  const [theme1,    setTheme1]    = usePersistentState(SK.PE_THEME1, "");
+  const [theme2,    setTheme2]    = usePersistentState(SK.PE_THEME2, "");
   const [photoData, setPhotoData] = useState([]);
   const [captionSuffix, setCaptionSuffix] = useState([]);
   const [copiedIdx,  setCopiedIdx]  = useState(null);
   const [processing, setProcessing] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [saveMsg,    setSaveMsg]    = useState("");
-  const [wmEnabled,  setWmEnabled]  = useState(true);
-  const [wmStyle,    setWmStyle]    = useState("friendly-blue");
-  const [wmPosition, setWmPosition] = useState("bottom-right");
-  const [wmText,     setWmText]     = useState(WM_TEXT_DEFAULT);
+  const [wmEnabled,  setWmEnabled]  = usePersistentState(SK.PE_WM_ENABLED,  true);
+  const [wmStyle,    setWmStyle]    = usePersistentState(SK.PE_WM_STYLE,    "friendly-blue");
+  const [wmPosition, setWmPosition] = usePersistentState(SK.PE_WM_POSITION, "bottom-right");
+  const [wmText,     setWmText]     = usePersistentState(SK.PE_WM_TEXT,     WM_TEXT_DEFAULT);
 
   const fileInputRef     = useRef();
   const previewCanvasRef = useRef();
@@ -60,7 +63,7 @@ export default function PhotoEditorTab() {
   const handleFiles = useCallback(async (rawFiles) => {
     const arr = Array.from(rawFiles).filter(f => f.type.startsWith("image/"));
     const items = await Promise.all(arr.map(async (file, i) => ({
-      id: Date.now()+i, file, name: file.name,
+      id: `${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`, file, name: file.name,
       preview: await fileToDataUrl(file), alt: "", resultDataUrl: null,
     })));
     setPhotoData(prev => [...prev, ...items]);
@@ -240,7 +243,7 @@ export default function PhotoEditorTab() {
                 <div style={S.stepTitle}>② 사진 업로드</div>
                 <div style={S.stepDesc}>장수 제한 없이 업로드 가능합니다. (5장씩 배치 처리)</div>
                 <label style={S.dropZone} onDrop={e=>{e.preventDefault();handleFiles(e.dataTransfer.files);}} onDragOver={e=>e.preventDefault()}>
-                  <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e=>handleFiles(e.target.files)} />
+                  <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e=>{ handleFiles(e.target.files); e.target.value=""; }} />
                   <div style={{ fontSize: 40, marginBottom: 8 }}>🖼️</div>
                   <div style={{ fontWeight: 700, color: "#37474f", marginBottom: 4 }}>사진을 드래그하거나 클릭해서 선택</div>
                   <div style={{ fontSize: 12, color: "#90a4ae" }}>JPG · PNG · WEBP · 장수 제한 없음</div>

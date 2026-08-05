@@ -1,5 +1,12 @@
 // ============================================================
-// generateEnt.js — 이비인후과 블로그 생성기 v3.4
+// generateEnt.js — 이비인후과 블로그 생성기 v3.6.4
+//
+// 변경사항 (v3.6.4) — semi-migration to commonPhotoBox:
+//   ① stripMarkdownForNaver 헤더 변환만 공통 모듈(_stripMarkdownForNaver) 위임
+//   ② ENT_PHOTO_POOL / buildEntPhotoPlaceholder 무변경 (4줄 ━━━ 박스 형식 보존)
+//   ③ 박스 placeholder 변환은 ent 전용 후처리로 분리 (시각 regression 방지)
+//   ④ ABSORB / whitelist / cleanEnt / FORBIDDEN 무변경
+//   ⑤ dental v3.6.7 semi-migration 패턴 동일 적용
 //
 // 변경사항 (v3.4) — clinic v3.4 후처리 로직 완전 이식:
 //   ① cleanText 통합 (mode 분기 + 헤더 정규화 + 가격 치환 + 동사 변환)
@@ -22,6 +29,9 @@ import {
 // ★ v2.0 — 과별 침투 차단 + 안전 단어 제거 모듈
 import { getCrossBlocks } from "../../lib/industryBlocks";
 import { safeRemoveWords, fixThisTreatmentParticles, fixParticles } from "../../lib/safeRemove";
+
+// ★ v3.6.4 — semi-migration: stripMarkdownForNaver 헤더 변환만 공통 모듈 위임
+import { stripMarkdownForNaver as _stripMarkdownForNaver } from "../../lib/commonPhotoBox";
 
 // ============================================================
 // 0. 금지 키워드 (FORBIDDEN)
@@ -240,6 +250,113 @@ function buildEntHashtags(treatmentName, region, mode) {
 // ============================================================
 function cleanEntText(text, treatmentName, region, mode = "personal") {
   let result = text;
+
+  // ════════════════════════════════════════════════════════
+  // ★ v3.6 Phase A — BB + 치료명 중복 + GG-1 fossil
+  // derma 검증 패턴 이식 (narrative 미적용 / 단순 후처리만)
+  // ════════════════════════════════════════════════════════
+
+  // ── BB-1: 키워드 절단 fix (긴 치료명이 GPT 응답에서 잘리는 패턴) ──
+  // 예: "코골이수면치" + "료를" 분리 / "코골이수면 치료" 깨짐
+  if (treatmentName && treatmentName.length >= 4) {
+    // 치료명 중간에 공백/개행이 끼어든 경우 복원
+    const tn = treatmentName;
+    for (let i = 2; i < tn.length - 1; i++) {
+      const head = tn.slice(0, i);
+      const tail = tn.slice(i);
+      const splitPattern = new RegExp(`${head}\\s+${tail}`, "g");
+      result = result.replace(splitPattern, tn);
+    }
+  }
+
+  // ── BB-6: 토큰 절단 (GPT 응답이 문장 중간에 끊긴 패턴) ──
+  // 예: '큰 "라고' (도움이 큰 [절단] "라고) / '방향으로 ' 같은 부유 토큰
+  result = result.replace(/(?:큰|좋은|많은|적은)\s+"라고/g, '"라고');
+  result = result.replace(/(?:큰|좋은)\s+도움이?\s*"라고/g, '도움이 된다"라고');
+  // 닫는 따옴표 누락 — 큰따옴표 짝 안 맞는 경우 직전 토큰 제거
+  result = result.replace(/([가-힣]{1,3})\s+"라고\s+(?:답해|말해|설명해)/g, (m, prev) => {
+    // 의미 있는 단어면 보존, 단음절 부유 토큰이면 제거
+    if (prev.length <= 2) return `"라고 답해`;
+    return m;
+  });
+
+  // ── BB-7: 부유 '이' (치료명+이+치료 패턴) ──
+  // 예: "코골이 이 치료를" / "비염 이 치료가" → 키워드만 남기고 '이 치료+조사' 제거
+  // 정규식 보강 — 조사 포함 케이스 전부 커버 (을/를/는/이/가/와/과/도/의/에/로/으로)
+  if (treatmentName) {
+    const tnEsc = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 패턴 1: 치료명 + 공백 + 이 + 치료 + 조사 → 치료명 + 조사
+    result = result.replace(
+      new RegExp(`${tnEsc}\\s+이\\s+치료(을|를|는|이|가|와|과|도|의|에|로|으로)`, "g"),
+      `${treatmentName}$1`
+    );
+    // 패턴 2: 치료명 + 공백 + 이 + 치료 + (공백/구두점) → 치료명 + 구두점
+    result = result.replace(
+      new RegExp(`${tnEsc}\\s+이\\s+치료([\\s.,!?])`, "g"),
+      `${treatmentName}$1`
+    );
+  }
+
+  // ── BB-8 제거 (v3.6.1) ──
+  // 가이/이가 패턴은 받침 오판 위험 ("치료가이" → "치료이" 받침 깨짐)
+  // "오타 제거"보다 "자연스러움 유지" 우선 — 미적용
+
+  // ── ent 특화: "치료명 치료" 중복 제거 (★ ent 고유 fossil) ──
+  // 예: "코골이수면치료 치료를" / "비염치료 치료가"
+  if (treatmentName && /치료$/.test(treatmentName)) {
+    const tnEsc = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 치료명이 이미 '치료'로 끝나면 바로 뒤 '치료+조사' 중복 제거
+    result = result.replace(
+      new RegExp(`${tnEsc}\\s+치료(을|를|는|이|가|와|과|도|의|에|로|으로)`, "g"),
+      `${treatmentName}$1`
+    );
+    // 마침표/공백으로 끝나는 단독 중복
+    result = result.replace(
+      new RegExp(`${tnEsc}\\s+치료([\\s.,!?])`, "g"),
+      `${treatmentName}$1`
+    );
+  }
+
+  // ── ent 특화 v3.6.3: "검사명 + 치료" 의미 충돌 제거 ──
+  // 예: "후두내시경검사 치료를 통해" → "후두내시경검사를 통해"
+  // 검사는 진단 행위이므로 "치료"가 붙으면 의미 충돌
+  if (treatmentName && /검사$/.test(treatmentName)) {
+    const tnEsc = treatmentName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    result = result.replace(
+      new RegExp(`${tnEsc}\\s+치료(을|를|는|이|가|와|과|도|의|에|로|으로)`, "g"),
+      `${treatmentName}$1`
+    );
+    result = result.replace(
+      new RegExp(`${tnEsc}\\s+치료([\\s.,!?])`, "g"),
+      `${treatmentName}$1`
+    );
+  }
+
+  // ── GG-1: fossil 회피어 차단 (해당/이번 치료 → 이 치료) ──
+  // derma v3.16 패턴 — ent에는 일단 단일 대체어로만 (50/50 분산은 Phase C 보류)
+  result = result
+    .replace(/해당\s+치료/g, "이 치료")
+    .replace(/이번\s+치료/g, "이 치료")
+    .replace(/해당\s+시술/g, "이 치료")
+    .replace(/이번\s+시술/g, "이 치료")
+    .replace(/해당\s+방법/g, "이 방법")
+    .replace(/이번\s+방법/g, "이 방법");
+
+  // ── GG-2 v3.6.3: fossil 어휘 차단 (광고톤/추론형 2종) ──
+  // ⚠️ 추가 패턴 금지 — 검증된 2개만 (과보정 위험)
+  result = result
+    // 추론형 어미
+    .replace(/판단했답니다/g, "결정했어요")
+    .replace(/판단했어요/g, "결정했어요")
+    .replace(/판단됩니다/g, "보였어요")
+    // 광고톤 미래 약속
+    .replace(/큰\s+도움이?\s+될\s+거예요/g, "도움이 됐어요")
+    .replace(/큰\s+도움이?\s+될\s+것입니다/g, "도움이 됩니다")
+    .replace(/큰\s+도움이?\s+될\s+수\s+있어요/g, "도움이 될 수 있어요");
+
+  // ════════════════════════════════════════════════════════
+  // Phase A 끝 — 이하 기존 로직
+  // ════════════════════════════════════════════════════════
 
   // 공통: 기본 + AI 냄새 금지어 + 과별 침투 차단
   const removeList = [...ENT_FORBIDDEN_BASE, ...ENT_FORBIDDEN_AI, ...ENT_CROSS_BLOCK];
@@ -745,28 +862,101 @@ function runQC(text, treatmentName, mode) {
 }
 
 // ============================================================
-// ★ v2 패치: stripMarkdownForNaver — 네이버 블로그 복사용 평문 변환
+// ============================================================
+// ★ v3.5 — ENT_PHOTO_POOL (이비인후과 맥락 5종)
+// dental v3.6.6 + eye v3.1 PHOTO_POOL 패턴 복제
+// derma narrative 전환 ❌ 적용 안 함 (ent는 증상·처치 중심)
+// ============================================================
+const ENT_PHOTO_POOL = {
+  "검사 사진": {
+    photos: [
+      "비강 내시경 화면",
+      "청력 검사 부스 안",
+      "X-ray·CT 결과 화면",
+    ],
+    captions: [
+      "검사받던 날 코·귀 상태 측정",
+      "결과 화면 같이 본 순간",
+      "내시경으로 안쪽 확인 끝나고",
+    ],
+  },
+  "상담 사진": {
+    photos: [
+      "상담실 진료 데스크",
+      "치료 옵션 비교 차트",
+      "진료실 입구",
+    ],
+    captions: [
+      "상담 가기 전 증상 메모 정리",
+      "치료 방향 설명 듣던 순간",
+      "다음 일정 잡던 날",
+    ],
+  },
+  "치료 사진": {
+    photos: [
+      "처방약 챙긴 진료실 데스크",
+      "네뷸라이저 치료실",
+      "약물 치료 안내 화면",
+    ],
+    captions: [
+      "처방받고 나오던 길",
+      "치료받는 동안 잠깐",
+      "약 받아 챙긴 진료 직후",
+    ],
+  },
+  "시술 사진": {
+    photos: [
+      "시술실 입장 전 복도",
+      "처치 직후 대기실",
+      "회복실 의자",
+    ],
+    captions: [
+      "시술 직전 마지막 사진",
+      "처치 마치고 나오던 길",
+      "회복실에서 잠시 쉬던 시간",
+    ],
+  },
+  "일상 사진": {
+    photos: [
+      "외출 셀카 한 컷",
+      "회복 후 첫 카페",
+      "운동·수면 일상",
+    ],
+    captions: [
+      "시술 전 평소 컨디션",
+      "회복 후 첫 외출하던 날",
+      "코로 숨 편하게 쉬던 날",
+    ],
+  },
+};
+
+function buildEntPhotoPlaceholder(altRaw) {
+  const alt = String(altRaw || "").trim();
+  const pool = ENT_PHOTO_POOL[alt];
+  if (!pool) return `[이미지: ${alt || "상담 사진"}]`;
+
+  const photo   = pool.photos[Math.floor(Math.random() * pool.photos.length)];
+  const caption = pool.captions[Math.floor(Math.random() * pool.captions.length)];
+
+  return `━━━━━━━━━━━━━━━━━━━━\n[ 📷 ${alt} ]\n추천: ${photo}\n캡션: ${caption}\n━━━━━━━━━━━━━━━━━━━━`;
+}
+
+// ============================================================
+// ★ v3.6.4 patch: stripMarkdownForNaver — semi-migration
+// 헤더/마크다운 변환은 공통 모듈(_stripMarkdownForNaver) 위임 (photoPool=null → 박스 변환 skip)
+// 박스 placeholder 변환은 ent 전용 후처리로 분리 (4줄 ━━━ 형식 보존)
 // 목적: 사용자가 글 복사 후 #/##/### 마크다운 기호를 수동 제거하지 않도록
 // 네이버는 마크다운 렌더링 안 함 → 평문으로 변환 필요
 // 위치: 모든 후처리 끝난 뒤 마지막 단계 (응답 직전)
 // ============================================================
 function stripMarkdownForNaver(text) {
-  let t = text;
+  let t = _stripMarkdownForNaver(text, null);  // photoPool 미주입 → 박스 변환 skip
 
-  // ① 줄 시작 헤더 변환 (제목·섹션·하위섹션)
-  t = t.replace(/^#\s+(.+)$/gm, "$1");                    // # 제목 → 평문
-  t = t.replace(/^##\s+(.+)$/gm, "\n$1\n");              // ## 섹션 → 빈줄+텍스트+빈줄
-  t = t.replace(/^###\s+(.+)$/gm, "▶ $1");                // ### 변화(1일/1주) → ▶ 마커
+  // ★ [OneClick] 이미지 마커 통일 — [이미지: alt] 표준 유지. 박스 변환 비활성.
+  //    QC의 boxCount=0 / plainNoBox==plain 은 정상(로그 전용, 차단 아님).
+  // (구) ent 전용 ━ 박스 변환 — 비활성. buildEntPhotoPlaceholder는 롤백용 보존.
 
-  // ② 인라인에 끼어있는 헤더 (줄바꿈 없이 본문 중간에 박힌 경우)
-  t = t.replace(/\s+##\s+([가-힣A-Za-z0-9])/g, "\n\n$1"); // " ## 제목" → 줄바꿈
-  t = t.replace(/\s+###\s+([가-힣A-Za-z0-9])/g, "\n▶ $1"); // " ### 1일" → 줄바꿈+마커
-
-  // ③ 굵게/이탤릭 마크다운 제거 (혹시 GPT가 출력했을 경우)
-  t = t.replace(/\*\*([^*]+)\*\*/g, "$1");                 // **굵게** → 평문
-  t = t.replace(/\*([^*]+)\*/g, "$1");                     // *이탤릭* → 평문
-
-  // ④ 연속 빈 줄 압축 (3줄 이상 → 2줄)
+  // 연속 빈 줄 압축 (3줄 이상 → 2줄)
   t = t.replace(/\n{3,}/g, "\n\n");
 
   return t;
@@ -779,7 +969,7 @@ export default async function handleEnt(req, res) {
   const {
     target, program, blogType,
     userRegion, userMemo, overrideTitle,
-    mode = "personal",
+    mode = "personal", storeId,
   } = req.body;
 
   const subKw      = program.name || "";
@@ -890,6 +1080,8 @@ ${richPrompt}`;
     secText = cleanEntText(secText, subKw, region, validMode);
     secText = stripInlineImages(secText);
     secText = restoreKeyword(secText, subKw);
+    // ★ v3.6.2: restoreKeyword 부작용 흡수 — "치료명 치료" 중복 등 재발 패턴 정리
+    secText = cleanEntText(secText, subKw, region, validMode);
 
     if (calcCharCount(secText) < 100) {
       console.log(`[ent] ${sec.label}: 빈 섹션 → 재생성`);
@@ -901,6 +1093,8 @@ ${richPrompt}`;
       retry = cleanEntText(retry, subKw, region, validMode);
       retry = stripInlineImages(retry);
       retry = restoreKeyword(retry, subKw);
+      // ★ v3.6.2: restoreKeyword 부작용 흡수
+      retry = cleanEntText(retry, subKw, region, validMode);
       if (calcCharCount(retry) > calcCharCount(secText)) secText = retry;
     }
 
@@ -1032,7 +1226,7 @@ ${richPrompt}`;
     if (qc.priceCount > 0)       console.warn(`[ent] ⚠️ commercial 모드 가격 ${qc.priceCount}건 잔존`);
   }
 
-  await autoSave({ assembled, charCount, subKw, region, seoScore, industry });
+  await autoSave({ assembled, charCount, subKw, region, seoScore, industry, storeId });
 
   // ── 이미지 메타 ─────────────────────────────────
   const imageRegex = /\[이미지:\s*([^\]]+)\]/g;
@@ -1046,7 +1240,13 @@ ${richPrompt}`;
   // ★★★ v2 패치: 네이버 블로그 복사용 평문 변환 ★★★
   const assembledMarkdown = assembled;                         // 마크다운 원본 보존
   const assembledPlain    = stripMarkdownForNaver(assembled);  // 네이버 복사용 평문
-  const charCountPlain    = calcCharCount(assembledPlain);
+  // ★ v3.5: 박스(placeholder) 제거 후 실제 글자수 계산
+  const plainNoBox        = assembledPlain.replace(/━{5,}[\s\S]*?━{5,}/g, "");
+  const charCountPlain    = calcCharCount(plainNoBox);
+
+  // ★ v3.5: QC 박스 카운트
+  const _boxCount = (assembledPlain.match(/━{5,}[\s\S]*?━{5,}/g) || []).length;
+  console.log(`[QC] 박스 placeholder ${_boxCount}개 삽입 / 본문 ${charCountPlain}자 (박스 제외)`);
 
   return res.status(200).json({
     success: true,

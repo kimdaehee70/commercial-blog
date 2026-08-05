@@ -4,6 +4,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import Head from "next/head";
+
 // ★ [PATCH v2.0] lib/watermark.js 사용 — 15종 워터마크 + 6카테고리
 import {
   WM_PRESETS,
@@ -11,6 +12,13 @@ import {
   WM_CATEGORIES,
   drawWatermarkOnCanvas,
 } from "../lib/watermark";
+// ★ [PATCH v3.7] 새로고침 시 가게이름·워터마크 설정 유지 (탭 버전과 키 공유)
+import { usePersistentState, SK } from "../lib/storage";
+
+
+// [v-video 2026-07-27] 사진편집기 사용방법 영상 — 교체는 이 한 줄만.
+//   index.js COACH_VIDEOS.tools 와 같은 영상. 전체화면이라 코치창을 못 쓰므로 본문에 직접 배치.
+const TOOLS_VIDEO_ID = "XZ8QbVjNPqY";
 
 function fileToDataUrl(file) {
   return new Promise((res, rej) => {
@@ -30,20 +38,22 @@ function loadImage(src) {
 }
 
 const WM_TEXT_DEFAULT = "내 가게 이름\n010-0000-0000";
-export default function PhotoEditor() {
+
+export default function PhotoEditor({ onRequireAuth, isAuthed } = {}) {
   const [step,      setStep]      = useState("photos");
-  const [theme1,    setTheme1]    = useState("");
-  const [theme2,    setTheme2]    = useState("");
+  // ★ [PATCH v3.7] 가게이름·테마·워터마크 설정은 새로고침 후에도 유지
+  const [theme1,    setTheme1]    = usePersistentState(SK.PE_THEME1, "");
+  const [theme2,    setTheme2]    = usePersistentState(SK.PE_THEME2, "");
   const [photoData, setPhotoData] = useState([]);
   const [captionSuffix, setCaptionSuffix] = useState([]);
   const [copiedIdx,  setCopiedIdx]  = useState(null);
   const [processing, setProcessing] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [saveMsg,    setSaveMsg]    = useState("");
-  const [wmEnabled,  setWmEnabled]  = useState(true);
-  const [wmStyle,    setWmStyle]    = useState("friendly-blue");
-  const [wmPosition, setWmPosition] = useState("bottom-right");
-  const [wmText,     setWmText]     = useState(WM_TEXT_DEFAULT);
+  const [wmEnabled,  setWmEnabled]  = usePersistentState(SK.PE_WM_ENABLED,  true);
+  const [wmStyle,    setWmStyle]    = usePersistentState(SK.PE_WM_STYLE,    "friendly-blue");
+  const [wmPosition, setWmPosition] = usePersistentState(SK.PE_WM_POSITION, "bottom-right");
+  const [wmText,     setWmText]     = usePersistentState(SK.PE_WM_TEXT,     WM_TEXT_DEFAULT);
   // ★ [PATCH v3.5] 로고 업로드
   const [logoDataUrl, setLogoDataUrl] = useState(null);
   const [logoImg,     setLogoImg]     = useState(null);
@@ -109,7 +119,7 @@ export default function PhotoEditor() {
     if (slot === 0) return;
     const trimmed = arr.slice(0, slot);
     const items = await Promise.all(trimmed.map(async (file, i) => ({
-      id: Date.now()+i, file, name: file.name,
+      id: `${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`, file, name: file.name,
       preview: await fileToDataUrl(file), alt: "", resultDataUrl: null,
     })));
     setPhotoData(prev => [...prev, ...items].slice(0, MAX_PHOTOS));
@@ -202,6 +212,11 @@ export default function PhotoEditor() {
 
   const processAndSave = async () => {
     if (!photoData.length) return;
+    // [v40] 저장 게이트 — 비로그인이면 우측 인라인 로그인폼 오픈. 편집/미리보기는 자유.
+    if (typeof isAuthed !== "undefined" && !isAuthed) {
+      if (typeof onRequireAuth === "function") onRequireAuth();
+      return;
+    }
     setProcessing(true); setSaveStatus("saving"); setSaveMsg("처리 중...");
     // 5장씩 배치 처리 — 메모리 과부하 방지
     const updated = [];
@@ -348,7 +363,7 @@ export default function PhotoEditor() {
                 <div style={{ ...S.stepCard, padding: 16, flex: 1, display: "flex", flexDirection: "column" }}>
                   <div style={S.stepTitle}>① 사진 업로드 <span style={{ fontSize: 11, fontWeight: 600, color: photoData.length >= MAX_PHOTOS ? "#c62828" : "#78909c" }}>— {photoData.length}/{MAX_PHOTOS}</span></div>
                   <label style={{ ...S.dropZone, padding: "20px 12px", marginTop: 8, marginBottom: 0, opacity: photoData.length >= MAX_PHOTOS ? 0.5 : 1, pointerEvents: photoData.length >= MAX_PHOTOS ? "none" : "auto" }} onDrop={e=>{e.preventDefault();handleFiles(e.dataTransfer.files);}} onDragOver={e=>e.preventDefault()}>
-                    <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e=>handleFiles(e.target.files)} disabled={photoData.length >= MAX_PHOTOS} />
+                    <input ref={fileInputRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e=>{ handleFiles(e.target.files); e.target.value=""; }} disabled={photoData.length >= MAX_PHOTOS} />
                     <div style={{ fontSize: 26, marginBottom: 2 }}>🖼️</div>
                     <div style={{ fontWeight: 700, color: "#37474f", fontSize: 12 }}>{photoData.length >= MAX_PHOTOS ? "30장 도달" : "드래그 / 클릭"}</div>
                     <div style={{ fontSize: 10, color: "#90a4ae", marginTop: 2 }}>최대 30장 · JPG·PNG·WEBP</div>
@@ -399,84 +414,36 @@ export default function PhotoEditor() {
                 </div>
               </div>
 
-              {/* ★ [PATCH v3.3] ③ 폴더 정리법 — 좌우 2열 (구조 + 활용흐름) */}
+              {/* ★ [v-video 2026-07-27] ③ 사용방법 영상 — 기존 「폴더 정리법 + 캡션 작성」 2카드 교체.
+                  근거: 사진편집기는 전체화면이라 좌측 코치창(CoachVideoCard)이 없다. 두 카드의 내용은
+                        영상에서 모두 설명되므로 중복. videoId 교체는 아래 상수 1줄만 수정하면 된다.
+                  videoId 빈값이면 「준비 중」 안내로 축퇴(화면 공백 방지). */}
               <div style={{ ...S.stepCard, padding: 16, flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
-                <div style={S.stepTitle}>📁 폴더 정리법 <span style={{ fontSize: 11, fontWeight: 600, color: "#78909c" }}>— 미리 이렇게 정리해두세요</span></div>
+                <div style={S.stepTitle}>🎥 사용방법 영상 <span style={{ fontSize: 11, fontWeight: 600, color: "#78909c" }}>— 폴더 정리 · 캡션 작성까지 한 번에</span></div>
 
-                {/* 좌우 2열 grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10, flex: 1, minHeight: 0 }}>
+                <div style={{
+                  marginTop: 10, flex: 1, minHeight: 0, borderRadius: 12, overflow: "hidden",
+                  border: "2px solid #90caf9", background: "#000",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {TOOLS_VIDEO_ID ? (
+                    <iframe
+                      src={`https://www.youtube.com/embed/${TOOLS_VIDEO_ID}?cc_load_policy=0&iv_load_policy=3`}
+                      title="사진편집기 사용 도우미"
+                      style={{ width: "100%", height: "100%", border: 0, display: "block" }}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      allowFullScreen
+                    />
+                  ) : (
+                    <div style={{ color: "#b0bec5", fontSize: 12.5, fontWeight: 700, background: "#fafbfc", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      준비 중인 영상입니다.
+                    </div>
+                  )}
+                </div>
 
-                  {/* === 좌측: 폴더 구조 예시 === */}
-                  <div style={{
-                    padding: "12px 14px",
-                    borderRadius: 12,
-                    background: "#fff",
-                    border: "2px solid #90caf9",
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: 0,
-                    overflow: "hidden",
-                  }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: "#1565c0", marginBottom: 8, flexShrink: 0 }}>
-                      💡 시술·상황별로 폴더 분류
-                    </div>
-                    <div style={{
-                      background: "#fafbfc",
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      fontFamily: "'Consolas','Malgun Gothic',monospace",
-                      fontSize: 12,
-                      lineHeight: 1.85,
-                      color: "#37474f",
-                      border: "1px solid #e0e0e0",
-                      flex: 1,
-                      overflowY: "auto",
-                      minHeight: 0,
-                    }}>
-                      <div style={{ color: "#1565c0", fontWeight: 700 }}>📁 강남눈성형/</div>
-                      <div style={{ paddingLeft: 16 }}>📁 상담실</div>
-                      <div style={{ paddingLeft: 16 }}>📁 수술전후</div>
-                      <div style={{ paddingLeft: 16 }}>📁 회복실</div>
-                      <div style={{ paddingLeft: 16 }}>📁 후기인터뷰</div>
-                      <div style={{ paddingLeft: 16 }}>📁 의료진</div>
-                      <div style={{ paddingLeft: 16 }}>📁 시설내부</div>
-                      <div style={{ paddingLeft: 16, color: "#9e9e9e" }}>📁 ...</div>
-                    </div>
-                  </div>
-
-                  {/* === 우측: 활용 흐름 === */}
-                  <div style={{
-                    padding: "12px 14px",
-                    borderRadius: 12,
-                    background: "linear-gradient(135deg,#fff8e1,#fffde7)",
-                    border: "2px solid #ffd54f",
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: 0,
-                  }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: "#e65100", marginBottom: 10, lineHeight: 1.4, flexShrink: 0 }}>
-                      ⚡ 미리 정리해두면<br/>글 발행이 5분 안에 끝!
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 9, flex: 1, justifyContent: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#1a237e", color: "#fff", fontWeight: 900, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>1</div>
-                        <div style={{ fontSize: 13, color: "#37474f", fontWeight: 700 }}>글 생성</div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#1a237e", color: "#fff", fontWeight: 900, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>2</div>
-                        <div style={{ fontSize: 13, color: "#37474f", fontWeight: 700 }}>복사</div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#1a237e", color: "#fff", fontWeight: 900, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>3</div>
-                        <div style={{ fontSize: 13, color: "#37474f", fontWeight: 700 }}>해당 폴더에서 사진 첨부</div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#43a047", color: "#fff", fontWeight: 900, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✓</div>
-                        <div style={{ fontSize: 13, color: "#2e7d32", fontWeight: 800 }}>발행 완료</div>
-                      </div>
-                    </div>
-                  </div>
-
+                <div style={{ marginTop: 8, fontSize: 11, color: "#78909c", lineHeight: 1.5, flexShrink: 0 }}>
+                  폴더는 시술·상황별로 나눠두고, 캡션은 사진 속 장면을 그대로 한 줄 — 광고 문구는 피합니다.
                 </div>
               </div>
             </div>
@@ -499,7 +466,7 @@ export default function PhotoEditor() {
                       <textarea style={{ flex: 1, border: "1.5px solid #c5cae9", borderRadius: 6, padding: "6px 10px", fontSize: 13, fontFamily: "'Noto Sans KR',sans-serif", outline: "none", resize: "none", boxSizing: "border-box", height: 52, lineHeight: 1.4, color: "#37474f", minWidth: 0 }} rows={2} value={wmText} onChange={e=>setWmText(e.target.value)} placeholder="상호 / 연락처 등 (Enter로 줄바꿈)" />
                       {/* ★ [PATCH v3.5] 로고 업로드 영역 */}
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                        <input ref={logoInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e=>handleLogoUpload(e.target.files[0])} />
+                        <input ref={logoInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e=>{ handleLogoUpload(e.target.files[0]); e.target.value=""; }} />
                         {logoDataUrl ? (
                           <div style={{ position: "relative" }}>
                             <img src={logoDataUrl} alt="로고" style={{ width: 52, height: 52, borderRadius: "50%", border: "2px solid #3949ab", objectFit: "cover", cursor: "pointer" }} onClick={()=>logoInputRef.current?.click()} title="클릭해서 변경" />

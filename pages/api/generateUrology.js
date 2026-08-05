@@ -751,7 +751,7 @@ export default async function handleUrology(req, res) {
   const {
     target, program, blogType,
     userRegion, userMemo, overrideTitle,
-    mode = "personal",
+    mode = "personal", storeId,
   } = req.body;
 
   const subKw      = program.name || "";
@@ -1006,7 +1006,7 @@ ${richPrompt}`;
     if (qc.priceCount > 0)       console.warn(`[urology] ⚠️ commercial 모드 가격 ${qc.priceCount}건 잔존`);
   }
 
-  await autoSave({ assembled, charCount, subKw, region, seoScore, industry });
+  await autoSave({ assembled, charCount, subKw, region, seoScore, industry, storeId });
 
   // ── 이미지 메타 ─────────────────────────────────
   const imageRegex = /\[이미지:\s*([^\]]+)\]/g;

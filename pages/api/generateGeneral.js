@@ -12,6 +12,7 @@
 import { GENERAL_TREATMENTS }   from "../../lib/general-data";
 import { buildGeneralPrompt }   from "../../lib/general-prompts";
 import { GENERAL_FLOW_ENGINE }  from "../../lib/general-playConfig";
+import handleGeneralV2 from "./generateGeneralV2"; // ★ v2 위임 (내과 V2 정보형)
 import {
   openai, calcCharCount, removeDuplicateSentences,
   stripInlineImages, restoreKeyword, diagnosePost,
@@ -21,6 +22,17 @@ import {
 // ★ v2.0 — 과별 침투 차단 + 안전 단어 제거 모듈
 import { getCrossBlocks } from "../../lib/industryBlocks";
 import { safeRemoveWords } from "../../lib/safeRemove";
+
+// ★ v2.1 — light scene 공통 모듈 (PHOTO_POOL 동작 표준화 / ortho v3.7.5 baseline)
+//   GENERAL_PHOTO_POOL은 그대로 유지 (정체성 분리)
+//   placeholder 생성·strip·박스제외 글자수는 공통 모듈 위임
+//   회귀 0 검증 완료 — 박스 형식 ortho 표준 통일
+import {
+  buildPhotoPlaceholder as _buildPhotoPlaceholder,
+  stripMarkdownForNaver as _stripMarkdownForNaver,
+  calcContentCharCount  as _calcContentCharCount,
+  qcPhotoBoxes          as _qcPhotoBoxes,
+} from "../../lib/commonPhotoBox";
 
 // ★ v2.0 — 과별 침투 차단 (lib/industryBlocks.js)
 //   다른 과 정체성 키워드 자동 차단 (한 곳 수정 = 16개 파일 동시 적용)
@@ -369,38 +381,127 @@ const GENERAL_REC_MAP = {
 };
 
 // ============================================================
-// ★ v2 패치: stripMarkdownForNaver — 네이버 블로그 복사용 평문 변환
+// ★ v2.0 PHOTO_POOL — 가정의학과 사진 5종 카테고리
+// 목적: alt 자리에 실제 촬영 가능한 사진 가이드를 placeholder 박스로 노출
+// 적용: alt 정규화 직후 stripMarkdownForNaver에서 박스 형태로 변환
+// 디자인 원칙: light scene engine 유지 / narrative 전환 ❌
+// ============================================================
+// ============================================================
+// ★ v2.1 PHOTO_POOL — 가정의학과 사진 5종 (ortho v3.7.5 baseline 표준)
+// 목적: alt 자리에 실제 촬영 가능한 사진 가이드를 박스 placeholder로 노출
+// 적용: stripMarkdownForNaver에서 ortho 표준 박스로 변환 (공통 모듈 위임)
+// 설계 원칙: 출력 방식 = ortho 통일 / 정보 다양성 = 배열로 보존 / light scene 유지
+// ★ v2.1: 단일 문자열 (slash 구분) → 배열 구조로 재설계
+// ============================================================
+const GENERAL_PHOTO_POOL = {
+  "검사 사진": {
+    photos: [
+      "혈액검사 결과지",
+      "혈압·혈당 측정 화면",
+      "건강검진 결과서",
+      "심전도 그래프",
+      "소변검사 스틱",
+    ],
+    captions: [
+      "수치 확인하던 자리",
+      "결과 같이 본 화면",
+      "검진 받던 날",
+    ],
+  },
+  "상담 사진": {
+    photos: [
+      "상담실 데스크",
+      "생활습관 안내 차트",
+      "결과지 책상",
+      "진료실 입구",
+      "식단 관리 자료",
+    ],
+    captions: [
+      "평소 식습관 설명 받던 자리",
+      "수치 그래프 본 자리",
+      "원장님과 이야기 나눈 자리",
+    ],
+  },
+  "진료 사진": {
+    photos: [
+      "백신 접종실",
+      "주사 처치 자리",
+      "진료대",
+      "드레싱 자리",
+      "처치실 입구",
+    ],
+    captions: [
+      "접종 받던 자리",
+      "주사 맞던 자리",
+      "처치 받던 자리",
+    ],
+  },
+  "처방 사진": {
+    photos: [
+      "처방약 데스크",
+      "만성질환 관리 안내문",
+      "복용 일정표",
+      "영양제 처방",
+      "약 봉투",
+    ],
+    captions: [
+      "약 받던 자리",
+      "복용법 안내 받던 자리",
+      "처방전 챙긴 날",
+    ],
+  },
+  "일상 사진": {
+    photos: [
+      "약 챙겨먹는 식탁",
+      "동네 산책길",
+      "식단 관리 식탁",
+      "운동 시작한 자리",
+      "물 자주 마시던 컵",
+    ],
+    captions: [
+      "매일 챙기던 자리",
+      "평소 식단",
+      "산책 시작한 길",
+    ],
+  },
+};
+
+// ★ v2.1: 공통 모듈 위임 (회귀 0 — ortho v3.7.5 표준 박스 형식)
+function buildGeneralPhotoPlaceholder(altRaw) {
+  return _buildPhotoPlaceholder(altRaw, GENERAL_PHOTO_POOL);
+}
+
+// ★ v2.1: 박스 제외 글자수 (공통 모듈 위임)
+function calcGeneralCharCount(text) {
+  return _calcContentCharCount(text, calcCharCount);
+}
+
+// ============================================================
+// ★ v2.1: stripMarkdownForNaver — 공통 모듈 위임 (ortho v3.7.5 baseline 표준)
 // 목적: 사용자가 글 복사 후 #/##/### 마크다운 기호를 수동 제거하지 않도록
 // 네이버는 마크다운 렌더링 안 함 → 평문으로 변환 필요
 // 위치: 모든 후처리 끝난 뒤 마지막 단계 (응답 직전)
+// ★ v2.1: PHOTO_POOL 박스 변환을 strip 마지막 위치로 통일 (ortho 표준)
 // ============================================================
 function stripMarkdownForNaver(text) {
-  let t = text;
-
-  // ① 줄 시작 헤더 변환 (제목·섹션·하위섹션)
-  t = t.replace(/^#\s+(.+)$/gm, "$1");                    // # 제목 → 평문
-  t = t.replace(/^##\s+(.+)$/gm, "\n$1\n");              // ## 섹션 → 빈줄+텍스트+빈줄
-  t = t.replace(/^###\s+(.+)$/gm, "▶ $1");                // ### 변화(1일/1주) → ▶ 마커
-
-  // ② 인라인에 끼어있는 헤더 (줄바꿈 없이 본문 중간에 박힌 경우)
-  t = t.replace(/\s+##\s+([가-힣A-Za-z0-9])/g, "\n\n$1"); // " ## 제목" → 줄바꿈
-  t = t.replace(/\s+###\s+([가-힣A-Za-z0-9])/g, "\n▶ $1"); // " ### 1일" → 줄바꿈+마커
-
-  // ③ 굵게/이탤릭 마크다운 제거 (혹시 GPT가 출력했을 경우)
-  t = t.replace(/\*\*([^*]+)\*\*/g, "$1");                 // **굵게** → 평문
-  t = t.replace(/\*([^*]+)\*/g, "$1");                     // *이탤릭* → 평문
-
-  // ④ 연속 빈 줄 압축 (3줄 이상 → 2줄)
-  t = t.replace(/\n{3,}/g, "\n\n");
-
-  return t;
+  // ★ [OneClick] 이미지 마커 통일 — [이미지: alt] 표준 유지. 박스 변환 비활성.
+  //    QC의 boxCount=0 / plainNoBox==plain 은 정상(로그 전용, 차단 아님).
+  return _stripMarkdownForNaver(text, null);
 }
 
 // ============================================================
 // 메인 핸들러
 // ============================================================
+// ★ v2 관측 위임 스위치 — 내과 V2(정보형·비1인칭·5축) 사용.
+//    롤백: false 로 두면 아래 기존 v1(후기형) 코드로 복귀. v1 무수정 보존.
+const USE_GENERAL_V2 = true;
+
 export default async function handleGeneral(req, res) {
-  const { target, program, blogType, userRegion, userMemo, overrideTitle } = req.body;
+  if (USE_GENERAL_V2) {
+    return handleGeneralV2(req, res);
+  }
+  // ↓↓↓ 이하 기존 v1 코드 전부 무수정 보존 ↓↓↓
+  const { target, program, blogType, userRegion, userMemo, overrideTitle, storeId } = req.body;
 
   const subKw      = program.name || '';
   const region     = (userRegion || '강남').trim();
@@ -551,7 +652,7 @@ export default async function handleGeneral(req, res) {
   const _altOk  = _altAll.filter(a => /\[이미지:\s*(검사|상담|진료|처방|일상)\s*사진\]/.test(a));
   console.log(`[QC] alt 총 ${_altAll.length}개 / 정상 ${_altOk.length}개 / 비정상 ${_altAll.length - _altOk.length}개`);
 
-  const charCount = calcCharCount(assembled);
+  const charCount = calcGeneralCharCount(assembled);
   const seoScore  = diagnosePost(assembled, subKw);
 
   // ★ QC 로그
@@ -564,7 +665,7 @@ export default async function handleGeneral(req, res) {
   if (!hasExamValue) console.warn("[general] 검사 수치 미포함");
   if (repeatCount > 5) console.warn("[general] 키워드 " + repeatCount + "회 반복");
 
-  await autoSave({ assembled, charCount, subKw, region, seoScore, industry });
+  await autoSave({ assembled, charCount, subKw, region, seoScore, industry, storeId });
 
   const imageRegex = /\[이미지:\s*([^\]]+)\]/g;
   const images = [];
@@ -573,10 +674,14 @@ export default async function handleGeneral(req, res) {
   const lastLine = assembled.trimEnd().split('\n').pop() || '';
   const hashtagsArr = lastLine.startsWith('#') ? lastLine.split(/\s+/).filter(function(t) { return t.startsWith('#'); }) : [];
 
-  // ★★★ v2 패치: 네이버 블로그 복사용 평문 변환 ★★★
+  // ★★★ v2.1: 네이버 블로그 복사용 평문 변환 + ortho 표준 박스 변환 ★★★
   const assembledMarkdown = assembled;                         // 마크다운 원본 보존
-  const assembledPlain    = stripMarkdownForNaver(assembled);  // 네이버 복사용 평문
-  const charCountPlain    = calcCharCount(assembledPlain);
+  const assembledPlain    = stripMarkdownForNaver(assembled);  // 네이버 복사용 평문 (박스 포함)
+  const charCountPlain    = calcGeneralCharCount(assembledPlain); // 박스 제외 글자수
+
+  // ★ v2.1 — 박스 placeholder QC (ortho 표준 ┌─+┐ 패턴)
+  const _qc = _qcPhotoBoxes(assembledPlain, ["검사", "상담", "진료", "처방", "일상"]);
+  console.log(`[QC] PHOTO_POOL 박스 ${_qc.boxCount}개 / 평문 글자수(박스제외) ${charCountPlain}자`);
 
   return res.status(200).json({
     success: true, text: assembledPlain, textMarkdown: assembledMarkdown, hashtags: hashtagsArr,

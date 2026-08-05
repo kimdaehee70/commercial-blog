@@ -1,3 +1,11 @@
+// ╔══════════════════════════════════════════════════════════╗
+// ║ 🔒 FREEZE — 통증의학과 V2 · 2026-07-09                     ║
+// ║ 조사(Josa) 축 종료 후 FREEZE 확정. 엔진 4파일 자립 단위.  ║
+// ║ 수정 금지: 관측(survival) 완료 전까지 로직 변경 불가.     ║
+// ║ 다음 축(보류): pain-prompts 구조축 / pain-data 정교화 /   ║
+// ║              상담표현 clean — 모두 신규 세션에서 One Axis. ║
+// ╚══════════════════════════════════════════════════════════╝
+
 // ============================================================
 // pages/api/generatePain.js — 통증의학과 블로그 생성기 v3.6 (네이버 평문 패치)
 // mode 분기: personal(과정 기록형) / commercial(의료광고법 안전)
@@ -18,6 +26,21 @@
 import { PAIN_TREATMENTS }                       from "../../lib/pain-data";
 import { buildPainPrompt, PAIN_SYSTEM_PROMPT, getPainImageAlts } from "../../lib/pain-prompts";
 import { PAIN_FLOW_ENGINE }                        from "../../lib/pain-playConfig";
+
+// ============================================================
+// 조사(Josa) 헬퍼 — 받침 판정 후 조사 선택
+// word 마지막 글자 받침 유무로 a(받침O) / b(받침X) 반환
+// 한글 아닌 끝글자(영문/숫자/기호)는 보수적으로 받침없음(b) 처리
+// ============================================================
+function pickJosa(word, a, b) {
+  if (!word) return b;
+  const last = String(word).trim().slice(-1);
+  const code = last.charCodeAt(0);
+  // 한글 음절 범위 밖 → 받침없음 취급
+  if (code < 0xAC00 || code > 0xD7A3) return b;
+  const hasJong = (code - 0xAC00) % 28 !== 0;
+  return hasJong ? a : b;
+}
 
 // ============================================================
 // 기본 금지어 (호환용)
@@ -418,6 +441,9 @@ const PAIN_INFO_BLOCKS = {
 
 // ============================================================
 // EXAM_VALUES — 시술별 수치 데이터
+//   ⚠️ 참고 수치 박스는 verified:true 인 항목만 출력됨 (injectPainExamValue 게이트).
+//      근거(가이드라인·논문·내부 검증) 확인된 항목에만 verified:true 부여.
+//      플래그 없으면 자동 미출력 — 근거 없는 수치 노출 방지 / 병원군 공통 원칙.
 // ============================================================
 const PAIN_EXAM_VALUES = {
   lumbar_nerve_block:     { shot: "경막외 1회 주사", session: "2~4주 간격, 1~3회", recovery: "없음~1일", price: "상담 시 안내" },
@@ -854,6 +880,77 @@ function fixPainParticles(text) {
   t = t.replace(/도움이?\s*될\s*수\s*있다\.?/g, "실제 변화로 이어지는 경우가 있다.");
   t = t.replace(/도움이?\s*될\s*수\s*있음\.?/g, "실제 변화로 이어지는 경우가 있음.");
 
+  return t;
+}
+
+// ============================================================
+// ★ 시술 keyword 반복 분산 (7회 초과 시 변형으로 교체)
+// — region+industry는 spreadPainRegionKw가 담당. 이 함수는 시술명 자체 담당.
+// — 보호 영역: 첫 3회·마지막 1회·해시태그·인용구(' " 「」 『』) 안쪽
+// — 변형 후 조사 자동 교정 (받침 종성 기반)
+// ============================================================
+function spreadPainKeyword(text, keyword) {
+  if (!keyword) return text;
+  const escKw = String(keyword).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const kwReg = new RegExp(escKw, "g");
+  const matches = text.match(kwReg) || [];
+  if (matches.length <= 7) return text;
+
+  // 인용구 구간 [start, end) 사전 산출 — 변형 차단용
+  const quotedRanges = [];
+  const quoteReg = /'[^']*'|"[^"]*"|「[^」]*」|『[^』]*』/g;
+  let qm;
+  while ((qm = quoteReg.exec(text)) !== null) {
+    quotedRanges.push([qm.index, qm.index + qm[0].length]);
+  }
+  const isInQuote = (i) => quotedRanges.some(([s, e]) => i >= s && i < e);
+
+  const variants = ["이 치료", "해당 시술", "이 시술", "해당 치료", "이번 치료"];
+  let count = 0;
+  let vIdx = 0;
+  const limit = matches.length - 1; // 마지막 1회 보존
+  return text.replace(kwReg, (m, offset) => {
+    count++;
+    // 해시태그 직전 보존
+    if (offset > 0 && text[offset - 1] === "#") return m;
+    // 인용구 안쪽 보존
+    if (isInQuote(offset)) return m;
+    // 첫 3회 보존
+    if (count <= 3) return m;
+    // 마지막 1회 보존
+    if (count > limit) return m;
+    const v = variants[vIdx % variants.length];
+    vIdx++;
+    return v;
+  });
+}
+
+// ============================================================
+// ★ 변형 후 조사 자동 교정
+// — "이 치료은/이/을" → "이 치료는/가/를" 등 받침 없는 끝글자 보정
+// ============================================================
+function fixVariantParticles(text) {
+  const variants = ["이 치료", "해당 시술", "이 시술", "해당 치료", "이번 치료"];
+  let t = text;
+  // 마지막 글자 받침 유무 — variants 전부 끝이 "료" or "술" (모두 받침 있음)
+  // "치료" → 종성 없음(ㅛ), "시술" → 종성 ㄹ
+  // "치료" + 은/이/을 → 는/가/를 (받침 없음 처리)
+  // "시술" + 은/이/을 → 은/이/을 그대로 (받침 있음 — 원형 유지)
+  const fixes = [
+    // "치료" — 받침 없음 (료의 종성 없음): 은→는, 이→가, 을→를, 과→와, 으로→로
+    [/(이 치료|해당 치료|이번 치료)은(?![가-힣])/g, "$1는"],
+    [/(이 치료|해당 치료|이번 치료)이(?![가-힣])/g, "$1가"],
+    [/(이 치료|해당 치료|이번 치료)을(?![가-힣])/g, "$1를"],
+    [/(이 치료|해당 치료|이번 치료)과(?![가-힣])/g, "$1와"],
+    [/(이 치료|해당 치료|이번 치료)으로(?![가-힣])/g, "$1로"],
+    // "시술" — 받침 ㄹ (술의 종성 ㄹ): 는→은, 가→이, 를→을, 와→과, 로→으로 (단 ㄹ 받침은 '로' 허용)
+    [/(이 시술|해당 시술)는(?![가-힣])/g, "$1은"],
+    [/(이 시술|해당 시술)가(?![가-힣])/g, "$1이"],
+    [/(이 시술|해당 시술)를(?![가-힣])/g, "$1을"],
+    [/(이 시술|해당 시술)와(?![가-힣])/g, "$1과"],
+    [/(이 시술|해당 시술)으로(?![가-힣])/g, "$1로"],
+  ];
+  fixes.forEach(([pat, rep]) => { t = t.replace(pat, rep); });
   return t;
 }
 
@@ -1320,6 +1417,80 @@ function finalPainClean(text) {
     return v;
   });
 
+  // ─── Z. v4.1: photoContext scene 합성 잔존 정리 ─────────
+  // photoContext가 본문에 직접 인용되거나 메타 표현이 남았을 때 정리
+  t = t.replace(/사진을?\s*보면[,.]?\s*/g, "");
+  t = t.replace(/이미지에서는?\s*/g, "");
+  t = t.replace(/위\s*사진은?\s*/g, "");
+  t = t.replace(/사진\s*속(?:에서)?\s*(?=[가-힣])/g, "");
+
+  // 이중 조사·이중 어미
+  t = t.replace(/(됨|된다|확인됨|관찰됨)\.\s*을\s+/g, "$1. ");
+  t = t.replace(/([가-힣])이이(?=[\s,.])/g, "$1이");
+  t = t.replace(/([가-힣])가가(?=[\s,.])/g, "$1가");
+  t = t.replace(/([가-힣])은은(?=[\s,.])/g, "$1은");
+  t = t.replace(/([가-힣])는는(?=[\s,.])/g, "$1는");
+
+  // "사례도 있음.을~" 류 잘못된 문장 연결
+  t = t.replace(/사례도?\s*있음\.\s*을\s+/g, "사례도 있다. ");
+  t = t.replace(/경우도?\s*있음\.\s*을\s+/g, "경우도 있다. ");
+
+  // scene 메타 평가어 — photoContext에서 종종 새어나옴
+  t = t.replace(/체계적인?\s*(공간|환경|구조)으?로?\s*(보임|확인됨|관찰됨)\.?/g, "");
+  t = t.replace(/전문적인?\s*(공간|분위기|환경)으?로?\s*(보임|확인됨|관찰됨)\.?/g, "");
+
+  // 부위 혼용 잔존 — "허리 도수치료 ~ 무릎 ~" 식으로 부위가 한 문장에 2개 이상
+  // (별도 cleanPainText의 부위 락이 1차 처리 — 여기선 잔존만)
+
+  // ─── AA. v4.2 → v4.3: 설명문 dominance 완화 — 어미 동결 해제 ───
+  // "확인됨/관찰됨/정리됨/설명됨/평가됨/기록됨" 6개 어미가 너무 자주 반복되면
+  // 일부를 행동·관찰형으로 변환. 단 광고 표현이 아니라 어미만.
+  // ⚠️ 안전망: 처음 3개 보존 + 4번째부터 50%만 변환 (이전 30% → 50%로 상향)
+  {
+    const dominantEndings = /(확인됨|관찰됨|정리됨|설명됨|평가됨|기록됨)(?=[.\s,]|$)/g;
+    const variants = {
+      확인됨: ["확인된다", "확인된다", "기록된다"],
+      관찰됨: ["관찰된다", "관찰된다", "나타난다"],
+      정리됨: ["정리된다", "정리된다", "기록된다"],
+      설명됨: ["설명된다", "설명된다", "안내된다"],
+      평가됨: ["평가된다", "평가된다", "검토된다"],
+      기록됨: ["기록된다", "기록된다", "남는다"],
+    };
+    let dominantCount = 0;
+    let vIdx = 0;
+    t = t.replace(dominantEndings, (m, base) => {
+      dominantCount++;
+      // 처음 3개는 보존 (자연스러운 빈도)
+      if (dominantCount <= 3) return m;
+      // 4번째부터 50% 확률로 변환 (격번 변환)
+      if (vIdx++ % 2 !== 0) return m;
+      const pool = variants[base] || [m];
+      return pool[Math.floor(Math.random() * pool.length)];
+    });
+  }
+
+  // ─── AB. v4.3: timeline 어미 단조로움 완화 ───
+  // "체감된 상태였음 / 정리됨 / 관찰됨 / 기록된다" 같은
+  // timeline 안 보고서 어미가 너무 단조롭게 반복되는 부분 완화
+  // ### 1일 ~ ### 1개월 timeline 안에서만 작동
+  t = t.replace(
+    /(### (?:1일|1주|2주|1개월)[\s\S]*?)(?=###|$)/g,
+    (block) => {
+      // block 안의 "~경향이 정리됨" / "~흐름이 기록된다" 같은 패턴 일부 변형
+      let b = block;
+      let count = 0;
+      b = b.replace(/경향이?\s*(정리됨|기록됨)(?=[.\s,]|$)/g, (m) => {
+        count++;
+        return count >= 2 ? "경향이 이어진다" : m;
+      });
+      return b;
+    }
+  );
+
+  // 연속 공백·줄바꿈 정리 (Z 블록 마지막)
+  t = t.replace(/[ \t]{2,}/g, " ");
+  t = t.replace(/\n{3,}/g, "\n\n");
+
   return t;
 }
 
@@ -1734,10 +1905,32 @@ function cleanPainText(text, keyword, mode) {
     [/을를/g, "을"], [/이가/g, "이"], [/은는/g, "은"], [/와과/g, "와"],
     [/으로로/g, "으로"], [/에서서/g, "에서"], [/부터터/g, "부터"], [/까지지/g, "까지"],
     [/에게게/g, "에게"], [/하고고/g, "하고"],
+    // 중복 조사 (동일 조사 2회 연속) — 단어 뒤에 붙는 케이스만
+    [/([가-힣])이이(?![가-힣])/g, "$1이"],
+    [/([가-힣])은은(?![가-힣])/g, "$1은"],
+    [/([가-힣])을을(?![가-힣])/g, "$1을"],
+    [/([가-힣])가가(?![가-힣])/g, "$1가"],
+    [/([가-힣])는는(?![가-힣])/g, "$1는"],
+    [/([가-힣])를를(?![가-힣])/g, "$1를"],
     [/([가-힣])\1{2,}/g, "$1"],
     [/\.{4,}/g, "..."], [/!{2,}/g, "!"], [/\?{2,}/g, "?"],
   ];
   fixes.forEach(([pat, rep]) => { t = t.replace(pat, rep); });
+
+  // ★ 괄호 플레이스홀더 조사 치환 — GPT 잔여물(은(는)/이(가) 등)
+  // 앞 글자 받침 보고 하나 선택. 앞이 한글일 때만 동작(그 외 원문 유지).
+  const josaParen = [
+    ["은", "는"], ["이", "가"], ["을", "를"],
+    ["과", "와"], ["와", "과"], ["으로", "로"], ["로", "으로"],
+  ];
+  josaParen.forEach(([a, b]) => {
+    const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // 예: 신경차단술은(는) → 앞글자 받침 판정으로 하나만
+    const re = new RegExp("([가-힣])" + esc(a) + "\\(" + esc(b) + "\\)", "g");
+    t = t.replace(re, (m, prev) => prev + pickJosa(prev, a, b));
+  });
+  // 중복 괄호 조사: 가(가)/은(은)/를(를)/이(이)/는(는)/을(을)/와(와)/과(과) → 괄호 제거하고 하나만
+  t = t.replace(/([가-힣])(은|는|이|가|을|를|와|과)\(\2\)/g, "$1$2");
 
   // 같은 단어 인접 중복 제거
   t = t.replace(/([가-힣]{2,6})\s+\1\s+/g, "$1 ");
@@ -1809,6 +2002,10 @@ function insertPainInfoBlock(text, treatmentId) {
 function injectPainExamValue(text, treatmentId) {
   const ev = PAIN_EXAM_VALUES[treatmentId];
   if (!ev) return text;
+  // ── 근거 조건부 게이트 ──
+  //   ev.verified === true 인 항목만 참고 수치 박스 출력.
+  //   근거 미확인 항목은 자동 삽입하지 않음 (정보형 V2 정합 / 병원군 공통 재사용).
+  if (ev.verified !== true) return text;
   if (/\d+회|\d+샷|\d+ml|\d+유닛/.test(text)) return text;
   const inject =
     "\n\n> 💡 **참고 수치** | " +
@@ -1828,23 +2025,23 @@ function injectPainExamValue(text, treatmentId) {
 // insertPainTimeline — 1일/1주/2주/1개월 보강 (commercial 스킵)
 // ============================================================
 function insertPainTimeline(text, name, mode) {
-  if (mode === "commercial") {
-    // commercial은 별도 정보형 처리 — result 섹션 GPT가 알아서 함
-    return text;
-  }
-  // personal은 result 섹션 안에 ### 헤더가 있으면 통과, 없으면 보강
-  const hasTimeline = /###\s*1일/.test(text) && /###\s*1주/.test(text) &&
-                      /###\s*2주/.test(text) && /###\s*1개월/.test(text);
-  if (hasTimeline) return text;
+  // ── 시간축(1일/1주/2주/1개월) 코드 보강 전면 비활성 ──
+  //   commercial: 정보형 — result 섹션 GPT 처리, 코드 삽입 안 함.
+  //   personal:   V2 정보형 전환 — 후기형 시간축 코드 보강 금지 (차단).
+  //   ※ GPT가 생성한 시간축 잔여 표현 제거는 후처리 clean 축(별도)에서 처리.
   return text;
 }
 
 // ============================================================
 // runPainQC — BLOCK_MAP 기반 카테고리 카운트
 // ============================================================
-function runPainQC(text, keyword, fullKeyword, mode) {
+function runPainQC(text, keyword, fullKeyword, mode, treatmentId) {
   const validMode = ["commercial", "personal", "review"].includes(mode) ? mode : "personal";
-  const hasInfoBlock = text.includes("비교") && text.includes("vs");
+  // INFO_BLOCK 실제 삽입 여부로 판정 — title 매칭(정확) + 일반 비교 패턴 폴백
+  const _block = treatmentId ? PAIN_INFO_BLOCKS[treatmentId] : null;
+  const _titleHit = _block ? text.includes(_block.title) : false;
+  const _genericHit = text.includes("비교") && (text.includes("vs") || text.includes("VS"));
+  const hasInfoBlock = _titleHit || _genericHit;
   const hasExamValue = /\d+회|\d+샷|\d+ml|\d+유닛|\d+포인트|\d+가닥/.test(text);
   const kwCount      = (text.match(new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).length;
   const fullKwCount  = (text.match(new RegExp(fullKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).length;
@@ -1895,9 +2092,21 @@ async function callGPT(systemPrompt, userPrompt) {
 // ============================================================
 // ★ buildPainTitle — mode 분기 + 광고 어휘 자동 필터링
 // ============================================================
+// 제목 접미 다양화 — '정보 안내' 단일 고정 탈피.
+// tid 기반 결정적 선택(랜덤 아님 → 재현성 유지, 반복감은 시술 간 분산으로 해소).
+// 병원군 Title Pattern Spine 승격 시 이 세트를 공통 자산으로 추출.
+const PAIN_TITLE_SUFFIX = ["정보", "시술 정보", "비수술 치료", "치료 정보", "치료 안내", "알아보기", "정보 안내"];
+function pickPainSuffix(seed) {
+  const s = String(seed || "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return PAIN_TITLE_SUFFIX[h % PAIN_TITLE_SUFFIX.length];
+}
+// ============================================================
 function buildPainTitle(treatment, region, blogTypeId, mode) {
   const validMode = (mode === "commercial") ? "commercial" : "personal";
   const name = treatment.name;
+  const _suffix = pickPainSuffix(treatment.id || name);
 
   const titleIdx = Math.floor(Math.random() * (treatment.titlePatterns?.length || 1));
   let titleRaw = (treatment.titlePatterns?.[titleIdx] || "{region} {name} 후기")
@@ -1921,7 +2130,7 @@ function buildPainTitle(treatment, region, blogTypeId, mode) {
       titleRaw = region + " " + name + " 정보 안내";
     }
   } else {
-    // personal — 광고 어휘 자동 필터링
+    // personal — 정보형 제목으로 변환 (후기·진행사례·이야기 프레임 제거)
     const adWords = ["솔직", "추천", "만족", "꼭", "대박", "극복", "강력"];
     let hasAd = adWords.some(w => titleRaw.includes(w));
     if (hasAd) {
@@ -1935,7 +2144,18 @@ function buildPainTitle(treatment, region, blogTypeId, mode) {
       }
       // 여전히 광고어 있으면 단어 제거
       adWords.forEach(w => { titleRaw = titleRaw.replace(new RegExp(w, "g"), ""); });
-      titleRaw = titleRaw.replace(/\s+/g, " ").trim();
+    }
+    // 후기·경험담 프레임 → 정보형 치환 (data가 정보형이면 대부분 미발동 — 안전장치)
+    titleRaw = titleRaw
+      .replace(/진행\s*사례/g, _suffix)
+      .replace(/후기/g, _suffix)
+      .replace(/이야기/g, "안내")
+      .replace(/극복기/g, "안내")
+      .replace(/체험(기)?/g, "안내")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!titleRaw.includes("안내") && !titleRaw.includes("정보") && !titleRaw.includes("비교") && !titleRaw.includes("치료") && !titleRaw.includes("알아보기")) {
+      titleRaw = region + " " + name + " " + _suffix;
     }
   }
 
@@ -1978,8 +2198,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { program, userRegion, userMemo, subSite, mode } = req.body;
+  const { program, userRegion, userMemo, subSite, mode, photoContext } = req.body;
   const validMode = ["commercial", "personal", "review"].includes(mode) ? mode : "personal";
+
+  // photoContext (analyze.js 결과 — 사진 1~3장 scene 묘사)
+  const photoCtx = (photoContext && typeof photoContext === "string") ? photoContext.trim() : "";
+  if (photoCtx) {
+    console.log("[pain] photoContext 주입: " + photoCtx.length + "자");
+  }
 
   const region   = (userRegion || "강남").trim();
   const memo     = (userMemo || "").trim();
@@ -2070,13 +2296,14 @@ export default async function handler(req, res) {
   const focus = getDermaFocus(tid, detectedSite2);
 
   // 제목 교정
+  const _titleSuffix = pickPainSuffix(tid || keyword);
   let finalTitle = titleRaw.includes(activeKeyword)
     ? titleRaw
     : (validMode === "commercial"
         ? region + " 통증의학과 " + activeKeyword + " 정보 안내"
         : validMode === "review"
           ? region + " " + activeKeyword + " 후기｜" + titleRaw.replace(/^[^\s]+\s/, "")
-          : region + " " + activeKeyword + " 진행 사례｜" + titleRaw.replace(/^[^\s]+\s/, ""));
+          : region + " " + activeKeyword + " " + _titleSuffix + "｜" + titleRaw.replace(/^[^\s]+\s/, ""));
 
   finalTitle = finalTitle.replace(/(후기).*(후기)/, "$1");
 
@@ -2094,7 +2321,7 @@ export default async function handler(req, res) {
       if (pipeIdx !== -1) {
         const subtitle = finalTitle.slice(pipeIdx + 1);
         if (subtitle.includes(word)) {
-          finalTitle = finalTitle.slice(0, pipeIdx + 1) + activeKeyword + (validMode === "commercial" ? " 정보 안내" : validMode === "review" ? " 후기" : " 변화 정리");
+          finalTitle = finalTitle.slice(0, pipeIdx + 1) + activeKeyword + (validMode === "commercial" ? " 정보 안내" : validMode === "review" ? " 후기" : " 정보 안내");
         }
       }
     });
@@ -2119,35 +2346,48 @@ export default async function handler(req, res) {
   if (validMode === "commercial") {
     // ▶ commercial 시스템 프롬프트
     systemPrompt =
-      "당신은 " + region + " 통증의학과 " + activeKeyword + " 진료에 대한 정보를 3인칭 정보형으로 안내하는 작성자입니다. " +
-      "광고·후기 톤이 아닌 \"정보 안내\" 형식으로 작성합니다.\n\n" +
+      "당신은 " + region + " 통증의학과 " + activeKeyword + " 진료에 대한 정보를 정보형으로 안내하는 작성자입니다. " +
+      "광고·후기·경험담이 아닌 \"정보 안내 문서\" 형식으로 작성합니다.\n\n" +
+      "[🚨 글의 성격 — 가장 중요]\n" +
+      "  - 이 글은 '한 사람이 겪고→찾아보고→상담받고→결정한' 경험담(후기)이 아니라, 이 치료가 무엇이고 어떻게 진행되는지 설명하는 정보 문서입니다.\n" +
+      "  - 특정 인물('한 사람은/환자는/그는')을 주인공으로 세운 이야기 전개 금지.\n" +
+      "  - '~하게 되었다/~고민하게 되었다/~선택하게 된 과정/~진행 사례/~진행 기록' 같은 여정·후기 프레임 금지.\n" +
+      "  - 주어는 '이 치료는/해당 시술은/일반적으로'. 각 섹션은 검색자가 궁금해할 정보 항목을 설명하는 방식.\n\n" +
       "[톤 — 정보형 안내 (가장 중요)]\n" +
       "  - 1인칭 시점 절대 금지: \"저는/제가/내가/저도/저희/제 케이스\" 사용 금지\n" +
-      "  - 어미는 정보형: ~됩니다 / ~로 안내됩니다 / ~경우가 있습니다 / ~로 진행됩니다\n" +
+      "  - 어미 다양화(필수): 동일 어미 3회 이상 연속 금지. \"~됨/~확인됨/~관찰됨/~검토됨\" 반복 금지. \"~됩니다 / ~습니다 / ~ㄹ 수 있습니다 / ~것이 일반적입니다 / ~로 알려져 있습니다\" 섞어서.\n" +
       "  - 후기 어미 금지: \"~했어요/~더라고요/~거든요\"\n" +
       "  - 추천·CTA 금지: \"추천합니다/방문해보세요/꼭 받으세요/권해드립니다\" 일체 금지\n" +
       "  - 효과 단정 금지: \"확실히/100%/완치/사라짐/완벽\" → \"변화가 관찰될 수 있습니다\"\n" +
       "  - 가격 직접 표기 금지: \"비용은 상담 시 안내됩니다\"\n" +
-      "  - 병원·의료진 평가 금지: \"친절/전문/최고/믿음\" 어휘 사용 금지\n\n" +
+      "  - 병원·의료진 평가 금지: \"친절/전문/최고/믿음\" 어휘 사용 금지\n" +
+      "  - 지역명(" + region + ") 반복 최소화: 한 섹션당 1~2회면 충분. 이후 '해당 지역/인근/여기' 등으로 자연 치환.\n" +
+      "  - ⭐ 행동·공간 묘사 허용: 정보형 어미를 유지하면서 진료실 동선·검사 자세·치료실 풍경을 \"~한다/~움직인다\" 형태로 자연 삽입 가능. 단 특정 인물의 사연이 아니라 일반적 진료 장면으로 취급할 것.\n\n" +
       focusBlock +
       "\n[글 구조 — 순서 절대 유지]\n" +
-      "## 고민·증상 안내 (최소 220자)\n" +
-      "## 정보 탐색 안내 (최소 200자)\n" +
-      "## 상담 안내 (최소 250자)\n" +
-      "## 선택 시 일반 고려사항 (최소 200자)\n" +
-      "## 시간 흐름별 일반 경과 (최소 280자) — ### 1일 / ### 1주 / ### 2주 / ### 1개월\n" +
+      "## 어떤 경우에 고려되는가 (최소 220자)\n" +
+      "## 알아볼 때 확인하면 좋은 정보 (최소 200자)\n" +
+      "## 상담에서 다뤄지는 항목 (최소 250자)\n" +
+      "## 함께 검토되는 요소 (최소 200자)\n" +
+      "## 치료 과정과 일반적 경과 (최소 280자) — 치료 진행 방식 / 기대할 수 있는 일반적 경과 / 관리사항 (1일·1주·2주·1개월 시간표 나열 금지)\n" +
       "## 종합 안내 (최소 180자)\n\n" +
       "[필수 수치]\n" +
       "- 치료 횟수 / 간격 / 통증(10점 기준) / 비용은 상담 시 안내\n" +
-      "- 변화: 1일·1주·2주·1개월\n" +
+      "- 경과는 시간표(1일·1주·2주·1개월) 나열이 아니라 '치료 진행 → 기대할 수 있는 일반적 경과 → 관리사항' 정보형으로\n" +
       "- 본문 내 가격 직접 표기 절대 금지\n\n" +
       "[필수 비교]\n" +
       activeKeyword + " vs " + compare + " 일반 비교 1회 필수 (사실 기술 형식)\n\n" +
+      "[narrative 강제 — AI 보고서 톤 차단]\n" +
+      "- 행동·상황·반응 중심 문장 비율 30% 이상 (정적 설명만 나열 금지)\n" +
+      "- 설명형 어미만 4문장 이상 연속 금지 — 사이에 행동·관찰 문장 끼울 것\n" +
+      "- 동일 패턴 \"진행된다 / 작용한다 / 확인된다 / 설명한다\" 3회 이상 연속 금지\n" +
+      "- 어미 다양화: 동일 어미 2회 이상 연속 금지\n\n" +
       "[출력 형식]\n" +
       "마크다운 / 제목(# 시작) / 섹션(## 유지) / 마지막 해시태그\n\n" +
       "[금지]\n" +
       "❌ 같은 문단·구조 반복\n" +
       "❌ 치료 효과 방향 혼용\n" +
+      "❌ 특정 인물 여정 서사 / \"한 사람은/환자는 ~했다\"\n" +
       "❌ AI 느낌 문장 / \"드디어/결국 결심하고/마음이 편안해\"\n" +
       "❌ \"특히/또한/무엇보다\" 연속 나열\n";
   } else if (validMode === "review") {
@@ -2189,6 +2429,10 @@ export default async function handler(req, res) {
       "- 핵심 치료명(" + activeKeyword + ") 5회 이상 자연 분산\n" +
       "- \"" + region + " 통증의학과\" 3회 이상 포함\n" +
       "- 완전체 키워드(" + fullKeyword + ") 본문에 2~3회\n\n" +
+      "[narrative 강제 — 후기다움 유지]\n" +
+      "- 행동·상황·체감 중심 문장 비율 40% 이상\n" +
+      "- 동일 어미 2회 이상 연속 금지\n" +
+      "- 정보형 어미(~됩니다/~안내됩니다) 혼입 금지\n\n" +
       "[금지]\n" +
       "❌ 같은 문단·구조 반복\n" +
       "❌ 치료 효과 방향 혼용\n" +
@@ -2198,45 +2442,203 @@ export default async function handler(req, res) {
       "❌ 같은 어미 3번 연속 금지 (\"~었어요/~었어요/~었어요\")\n" +
       "❌ 줄바꿈은 반드시 실제 개행만 — 본문에 \"\\n\" 같은 백슬래시 출력 금지\n";
   } else {
-    // ▶ personal 시스템 프롬프트 (과정 기록형)
+    // ▶ personal 시스템 프롬프트 (정보형 안내 — V2)
     systemPrompt =
-      "당신은 " + region + " 통증의학과 " + activeKeyword + " 진료 사례 1건의 진행 과정을 3인칭 관찰자 시점으로 기록하는 작성자입니다. " +
-      "광고·후기 톤이 아닌 \"과정 기록\" 형식으로 작성합니다.\n\n" +
-      "[톤 — 과정 기록형 (가장 중요)]\n" +
-      "  - 1인칭 시점 절대 금지: \"저는/제가/내가/저도/저희/제 케이스\" 사용 금지\n" +
-      "  - 어미는 중립 기록형: ~됨 / ~된다 / ~되는 경우 / ~확인됨 / ~나타남 / ~로 진행됨\n" +
-      "  - 후기 어미 금지: \"~했어요/~더라고요/~거든요\"\n" +
-      "  - 광고 어휘 금지: \"솔직/추천/꼭/만족/후회 없음/다행\"\n" +
-      "  - CTA 금지: \"상담 받아보세요/방문해보세요/권해드려요\"\n" +
-      "  - 검색 의도 매칭 위해 \"후기\" 단어는 글 전체에서 1~2회까지만 사용 가능\n\n" +
+      "당신은 " + region + " 통증의학과 " + activeKeyword + " 진료에 대한 정보를 정보형으로 안내하는 작성자입니다. " +
+      "특정 인물의 경험담(후기)이나 사례 기록이 아니라, 이 치료가 무엇이고 어떻게 진행되는지 설명하는 \"정보 안내 문서\"로 작성합니다.\n\n" +
+      "[🚨 글의 성격 — 가장 중요]\n" +
+      "  - 이 글은 '한 사람이 겪고→찾아보고→상담받고→결정한' 경험담·사례 기록이 아니라, 이 치료를 설명하는 정보 문서입니다.\n" +
+      "  - 특정 인물('한 사람은/환자는/그는')을 주인공으로 세운 이야기 전개 금지.\n" +
+      "  - '~하게 되었다/~고민하게 되었다/~검토하게 되었다/~선택하게 된 과정/~진행 사례/~진행 기록' 같은 여정·후기 프레임 금지.\n" +
+      "  - '여러 곳 상담을 받아본 결과/여러 병원을 비교한 결과/선택에 영향을 줌' 같은 병원 선택 서사 금지.\n" +
+      "  - 주어는 '이 치료는/해당 시술은/일반적으로'. 각 섹션은 검색자가 궁금해할 정보 항목을 설명하는 방식.\n" +
+      "  - ✅ 기본 문형은 설명형 정의문: \"" + activeKeyword + pickJosa(activeKeyword, "은", "는") + " ~하는 비수술 치료입니다\" 처럼 치료명을 주어로 원리·대상·방식을 정의. '이 치료는 ~하는 것을 목표로 하는 치료입니다' 같은 공허한 자기지시 반복 대신 실제 작용·대상을 담을 것.\n\n" +
       focusBlock +
       "\n[절대 규칙]\n" +
       "- 병원 이름·특정 브랜드 언급 금지\n" +
-      "- 효과 단정 금지: \"확실히/완벽/100%/사라짐/완치\" → \"변화가 관찰됨/체감 변화가 있음\"\n" +
-      "- 가격 직접 표기 금지: \"비용은 상담 시 안내됨\"\n" +
+      "- 효과 단정 금지: \"확실히/완벽/100%/사라짐/완치\" → \"변화가 관찰될 수 있습니다\"\n" +
+      "- 가격 직접 표기 금지: \"비용은 상담 시 안내됩니다\"\n" +
       "- 병원·의료진 평가 금지: \"친절/전문/최고/믿음직\" 사용 금지\n" +
+      "- 지역명(" + region + ") 반복 최소화: 한 섹션당 1~2회면 충분. 이후 '해당 지역/인근/여기' 등으로 자연 치환.\n" +
       "- 전체 글자수 1800~2200자 (절대 2500자 초과 금지)\n\n" +
-      "[글 구조 — 순서 절대 유지]\n" +
-      "## 고민 (최소 220자)\n" +
-      "## 탐색 (최소 200자)\n" +
-      "## 상담 (최소 250자)\n" +
-      "## 결정 (최소 200자)\n" +
-      "## 치료 후 변화 (최소 280자) — ### 1일 / ### 1주 / ### 2주 / ### 1개월\n" +
-      "## 마무리 (최소 180자)\n\n" +
-      "[필수 수치]\n" +
-      "- 치료 횟수 / 간격 / 통증(10점 기준) / 비용은 상담 시 안내\n" +
-      "- 본문 내 가격 직접 표기 절대 금지\n\n" +
+      "\n[글 구조 — 순서 절대 유지 · 설명형 정의 골격]\n" +
+      "각 섹션은 '한 사람의 치료 여정 단계'가 아니라 '이 치료에 대한 정보 항목'이다. 상담실 설명이 아니라 사전 설명처럼 쓴다.\n" +
+      "## 어떤 경우에 고려되는가 (최소 220자) — 이 치료가 적용되는 증상·상황을 일반 정보로 정의\n" +
+      "## 치료 원리와 진행 방식 (최소 200자) — 무엇에 어떻게 작용하는지, 어떤 순서로 진행되는지 사실 기술\n" +
+      "## 확인하면 좋은 정보 (최소 250자) — 알아볼 때 기준이 되는 항목(작용 범위·진행 방식 차이 등)을 설명. '상담에서 무엇을 한다'가 아니라 정보 항목 자체를 서술\n" +
+      "## 다른 치료와의 차이 (최소 200자) — " + activeKeyword + pickJosa(activeKeyword, "이", "가") + " " + compare + " 등과 방식·침습도에서 어떻게 다른지 사실 비교 (근거 없는 '회복 빠름/널리 알려짐' 단정 금지)\n" +
+      "## 일반적 경과 (최소 280자) — 이 치료가 일반적으로 어떤 변화를 기대할 수 있는지. 개인 경과 일지·시간표(1일·1주·2주·1개월) 나열 금지, '회복 후반/재평가/꾸준한 관리' 관리 단계 서술 금지\n" +
+      "## 종합 안내 (최소 180자) — 이 치료가 어떤 증상 정보였는지 담담히 종합\n\n" +
+      "[수치·비용 처리 — 상담 위임 반복 금지]\n" +
+      "- 치료 횟수·간격·통증 점수·비용은 '진료 상담에서 안내되는 사항'으로 딱 1회만 언급. 구체 숫자(3~5회/1~2주/10점) 직접 명시 금지.\n" +
+      "- '개인의 상태에 따라 다르며 상담 시 안내됩니다' 류 문장을 섹션마다 반복하지 말 것 — 글 전체 1~2회면 충분.\n\n" +
       "[키워드 밀도]\n" +
       "- 핵심 치료명(" + activeKeyword + ") 5회 이상 자연 분산\n" +
-      "- \"" + region + " 통증의학과\" 3회 이상 포함\n" +
+      "- \"" + region + " 통증의학과\" 2~3회 포함 (과도 반복 금지)\n" +
       "- 완전체 키워드(" + fullKeyword + ") 본문에 2~3회\n\n" +
+      "[narrative 강제 — 보고서 단조로움 차단]\n" +
+      "- 행동·상황·관찰 중심 문장 비율 40% 이상\n" +
+      "- \"~됨\" 계열 어미 비율 30% 이하 — 나머지는 \"~된다 / ~나타난다 / ~ㄹ 수 있다 / ~로 진행된다\" 등 분산\n" +
+      "- 동일 어미 2회 이상 연속 금지\n" +
+      "- 설명형 어미만 4문장 이상 연속 금지 — 사이에 행동·장면 문장 끼울 것\n\n" +
       "[금지]\n" +
       "❌ 같은 문단·구조 반복\n" +
       "❌ 치료 효과 방향 혼용\n" +
+      "❌ 특정 인물 여정 서사 / \"한 사람은/환자는 ~했다\"\n" +
+      "❌ 병원 선택 서사 / \"여러 곳 상담을 받아본 결과\"\n" +
+      "❌ 상담실 문체: \"환자의 상태에 따라 / 개인 맞춤형 접근 / 치료 계획을 세우는 것이 중요 / 충분한 상담을 통해 / 전문의와의 상담을 통해 결정 / 신중한 접근이 필요 / 지속적인 관리\"\n" +
+      "❌ 근거 없는 일반화: \"회복이 빠르다 / 일상 복귀가 빠르다 / 즉각적인 통증 완화 / 널리 알려져 있다 / 많은 사람에게 고려\" (→ '~할 수 있습니다' 가능성 서술로)\n" +
+      "❌ 지역명+지시어 반복: \"" + region + " 이 치료 / " + region + " 해당 치료 / " + region + " 이번 치료\" 를 문단마다 반복 (지역명은 지시어 없이, 글 전체 2~3회)\n" +
+      "❌ 지시어(이 치료/해당 시술/이번 치료) 연속 반복 — 치료명 또는 실제 명사로 치환\n" +
       "❌ AI 느낌 문장 / \"드디어/결국 결심하고\"\n" +
       "❌ \"특히/또한/무엇보다\" 연속 나열\n" +
       "❌ \"인생이 바뀌\" / \"새로운 삶\" / \"미소를 되찾\"\n" +
+      "❌ 조사 누락 비문 (\"개인별 반응 차이 있을 수 있습니다\" → \"차이가 있을 수 있습니다\")\n" +
       "❌ 줄바꿈은 반드시 실제 개행만 — 본문에 \"\\n\" 같은 백슬래시 출력 금지\n";
+  }
+
+  // ──────────────────────────────────────────────
+  // ★ PHOTO_BLOCK — photoContext가 있을 때만 systemPrompt에 추가
+  //   통증의학과 맥락: 도수치료실 / 주사실 / 물리치료기기 / 검사실 / 대기실 / 재활실
+  //   * scene으로 녹일 것 — 정보 나열 ❌, 행동·상황 묘사 ⭕
+  // ──────────────────────────────────────────────
+  if (photoCtx) {
+    const PHOTO_BLOCK =
+      "\n\n[사진 기반 scene 묘사 — 필수 적용]\n" +
+      "다음은 글에 사용될 사진의 실제 장면 묘사입니다. 이 내용을 본문 scene에 반영하세요.\n\n" +
+      "──── 사진 분석 ────\n" +
+      photoCtx + "\n" +
+      "──────────────\n\n" +
+      "[적용 규칙]\n" +
+      "- 위 내용을 별도 단락으로 설명하지 말 것. 직접 인용·나열 금지.\n" +
+      "- '사진을 보면', '이미지에서', '위 사진은' 같은 메타 표현 금지.\n" +
+      "- scene으로 녹일 것 — 정보 나열 ❌, 행동·상황 묘사 ⭕.\n" +
+      "- ⭐ 최소 2~3개 단락에서 실제 공간 안에 있는 듯한 장면 묘사를 분산 배치할 것 (필수).\n" +
+      "  ▸ 단락마다 다른 디테일 선택: 검사실 / 상담실 / 도수치료실 / 주사실 / 물리치료실 / 재활실 / 대기실 / 기기 / 조명 / 동선 중 골고루\n" +
+      "  ▸ 예 (상담 섹션): \"진료실 책상에서 영상 자료를 함께 본다\"\n" +
+      "  ▸ 예 (치료 섹션): \"치료 베드 위로 기기 헤드가 천천히 움직인다\"\n" +
+      "  ▸ 예 (결정/경과 섹션): \"재활실 거울 앞에서 자세를 천천히 맞춰본다\"\n" +
+      "- 한 섹션에 scene 몰빵 금지 — 글 전체에 골고루 흩어 놓을 것.\n" +
+      "- 단, 모든 글에서 동일 패턴 반복 금지 — 사진마다 다른 디테일 선택.\n" +
+      "- 추상 표현 금지: '체계적인', '전문적인' 같은 평가어 ❌ / '창가 자리의 부드러운 조명' 같은 구체 묘사 ⭕.\n" +
+      "- 신체 부위(허리/어깨/무릎 등)가 사진에 보이면 본문 부위와 일치시킬 것. 부위 혼용 금지.\n";
+
+    systemPrompt += PHOTO_BLOCK;
+  }
+
+  // ──────────────────────────────────────────────
+  // ★ SCENE_POOL — photoCtx 없을 때 fallback + 섹션 루프에서도 재사용
+  //   카테고리별 3개씩 = 총 15개 풀
+  //   * 섹션-카테고리 매핑으로 한정된 섹션에만 hard 삽입 (3개 섹션)
+  //   * 나머지 섹션은 soft 가이드 (systemPrompt 안에)
+  // ──────────────────────────────────────────────
+  const SCENE_POOL_PAIN = {
+    이동: [
+      "시술은 별도의 치료실에서 진행된다",
+      "진료와 시술은 분리된 공간에서 이루어진다",
+      "치료 공간은 진료실과 구분되어 운영된다",
+    ],
+    자세: [
+      "가동 범위와 통증 위치를 기준으로 상태를 평가한다",
+      "부위별 통증 양상을 확인해 치료 계획에 반영한다",
+      "필요 시 신체 정렬 상태를 확인하며 경과를 평가한다",
+    ],
+    베드: [
+      "시술은 전용 베드에서 자세를 고정한 상태로 진행된다",
+      "기기를 이용해 부위에 일정하게 자극을 전달한다",
+      "치료 패드를 부위에 부착해 시술을 진행한다",
+    ],
+    상담: [
+      "영상자료와 검사 결과를 바탕으로 치료 계획을 설명한다",
+      "검사 영상을 근거로 통증 부위와 치료 방향을 안내한다",
+      "신경 경로와 압박 지점을 기준으로 치료 범위를 설명한다",
+    ],
+    재활: [
+      "회복 단계에서는 재활 동작을 병행할 수 있다",
+      "호흡과 자세 유지 중심의 재활 과정이 안내된다",
+      "경과 관찰과 함께 신체 정렬 상태를 점검한다",
+    ],
+  };
+
+  // ── 섹션-카테고리 매핑 (hard 삽입 대상 섹션만) ──
+  //   search   → 이동·상담 (병원 방문 동선 / 첫 대면)
+  //   consult  → 상담·자세 (의사 설명 + 체형 확인)
+  //   decision → 자세·이동 (체형 거울 / 진료실 동선)
+  //   result   → 베드·재활 (실제 치료 + 재활 동작) — timeline 안에 분산
+  //
+  //   ⚠️ closing은 의도적으로 제외 — 정리·일반화 톤이라 구체 행동 박히면
+  //      "AI가 장면을 만들려고 애쓴 흔적"이 남아 오히려 어색해짐.
+  //      scene density보다 scene 위치 적합성이 더 중요한 단계.
+  const SECTION_SCENE_MAP = {
+    search:   ["이동", "상담"],
+    consult:  ["상담", "자세"],
+    decision: ["자세", "이동"],
+    result:   ["베드", "재활"],
+  };
+
+  // ── pick 헬퍼 (섹션 루프에서도 사용) ──
+  //   부위 mismatch 방지: scene 안의 부위 토큰을 detectedSite2로 동적 치환
+  const pickScene = (categories) => {
+    const cat = categories[Math.floor(Math.random() * categories.length)];
+    const arr = SCENE_POOL_PAIN[cat] || [];
+    let s = arr[Math.floor(Math.random() * arr.length)] || "";
+    if (!s) return "";
+
+    // 본문 부위와 다른 부위 토큰이 scene에 박혀 있으면 치환
+    const site = detectedSite2 || detectedSite || "";
+    if (site) {
+      // "허리를 ~" / "어깨선을 ~" / "다리를 ~" 같은 부위 시작 토큰
+      const SCENE_SITE_TOKENS = ["허리", "어깨선", "어깨", "무릎", "목", "손목", "발목", "팔꿈치", "엉덩이", "다리"];
+      for (const tok of SCENE_SITE_TOKENS) {
+        if (s.includes(tok) && !site.includes(tok) && !tok.includes(site)) {
+          // 부위 mismatch → 본문 부위로 치환
+          // 단, "다리를 한쪽씩 들어 올리며" 같은 검사 동작은 허리·디스크와 어울리므로 보존
+          if (tok === "다리" && (site === "허리" || site === "엉덩이" || site === "골반")) continue;
+          s = s.replace(tok, site);
+          break;
+        }
+      }
+    }
+    return s;
+  };
+
+  if (!photoCtx) {
+    // 카테고리별 1개씩 랜덤 픽 → 5개 추출 (soft 가이드용)
+    const pickOne = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const picked = [
+      pickOne(SCENE_POOL_PAIN.이동),
+      pickOne(SCENE_POOL_PAIN.자세),
+      pickOne(SCENE_POOL_PAIN.베드),
+      pickOne(SCENE_POOL_PAIN.상담),
+      pickOne(SCENE_POOL_PAIN.재활),
+    ];
+    // 셔플 (순서 고착 방지)
+    for (let i = picked.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [picked[i], picked[j]] = [picked[j], picked[i]];
+    }
+
+    console.log("[pain] SCENE_POOL fallback 작동 (soft) — picked 5개 주입");
+
+    // ── 어조 강화: "선택적 활용" → "최소 1개 이상 자연 삽입 필수" ──
+    const SCENE_BLOCK =
+      "\n\n[scene 자연 삽입 — 행동·공간 디테일 필수]\n" +
+      "본문 전체에서 다음 행동·공간 디테일 중 최소 1~2개를 자연스럽게 녹여 쓸 것.\n" +
+      "(보고서 톤 회피 — 사람의 실제 움직임이 글에 들어가야 함)\n\n" +
+      "──── scene 후보 ────\n" +
+      picked.map((s, i) => "  " + (i + 1) + ". " + s).join("\n") + "\n" +
+      "──────────────\n\n" +
+      "[적용 규칙]\n" +
+      "- 위 문장을 그대로 복붙하지 말 것 — 본문 흐름에 맞춰 표현 변형.\n" +
+      "- 최소 1~2개 이상 자연 삽입 (필수). 단, 모든 후보를 다 넣지 말 것.\n" +
+      "- 서로 다른 단락에 분산 — 한 문단 몰빵 금지.\n" +
+      "- '사진처럼', '마치 그 공간에 있는 듯' 같은 메타 표현 금지.\n" +
+      "- 부위(허리/어깨/무릎 등)와 본문 부위 일치 — 무릎 글에 어깨 동작 금지.\n" +
+      "- 평가어 금지: '따뜻한', '전문적인', '깔끔한', '체계적인' ❌\n" +
+      "- 추상 묘사 금지: '편안한 분위기' ❌ / '의자에 천천히 앉는다' ⭕\n" +
+      "- 정보형 어미만 4문장 연속 금지 — 사이에 이런 행동·관찰 문장 끼울 것.\n";
+
+    systemPrompt += SCENE_BLOCK;
   }
 
   // 섹션별 이미지 ALT (mode 전달)
@@ -2290,6 +2692,37 @@ export default async function handler(req, res) {
         + "\n"
       : "";
 
+    // ── HARD SCENE 삽입 — search/consult/decision/result 4개 섹션 ──
+    //   photoCtx 있을 땐 PHOTO_BLOCK이 systemPrompt에 이미 강하게 박혀있으므로 hard 생략
+    //   photoCtx 없을 때만 섹션별 hard 주입
+    let sceneLine = "";
+    if (!photoCtx && SECTION_SCENE_MAP[sec.key]) {
+      const sceneText = pickScene(SECTION_SCENE_MAP[sec.key]);
+      if (sceneText) {
+        // result 섹션은 timeline 구조라 별도 위치 지정 필요
+        // result 섹션: 시간축 timeline 강제 제거 — 정보형 scene 1개만 (SYSTEM '시간표 금지' 골격 정합)
+        if (sec.key === "result") {
+          sceneLine =
+            "🎬 이 섹션에 치료 공간·진행 관련 장면 1개를 정보형으로 자연 삽입 (필수):\n" +
+            "   참고: \"" + sceneText + "\"\n" +
+            "   - '### 1일/### 1주/### 2주/### 1개월' 시간표 헤더·단계 나열 금지.\n" +
+            "   - '시술 직후→회복 후반→재평가' 같은 시간 흐름 서사 금지. 치료 자체의 진행 방식·일반적 경과만 설명.\n" +
+            "   - 위 문장을 그대로 복붙하지 말고 흐름에 맞게 한 문장으로 변형. 별도 단락으로 띄우지 말 것.\n" +
+            "   - 부위·치료와 어울리지 않으면 비슷한 행동·공간 디테일로 대체. 평가어('따뜻한/전문적인') 금지.\n\n";
+          console.log("[pain] result scene(정보형, timeline 제거) 주입: " + sceneText.slice(0, 25) + "...");
+        } else {
+          sceneLine =
+            "🎬 이 섹션에 행동·공간 장면 1개 자연 삽입 (필수):\n" +
+            "   참고: \"" + sceneText + "\"\n" +
+            "   - 위 문장을 그대로 복붙하지 말 것. 흐름에 맞게 변형.\n" +
+            "   - 한 문장으로 자연스럽게 녹일 것. 별도 단락으로 띄우지 말 것.\n" +
+            "   - 부위·치료와 어울리지 않으면 비슷한 행동·공간 디테일로 대체 가능.\n" +
+            "   - 평가어('따뜻한/전문적인') 금지.\n\n";
+          console.log("[pain] hard scene 주입 — " + sec.key + ": " + sceneText.slice(0, 30) + "...");
+        }
+      }
+    }
+
     const userPrompt =
       "치료명: " + activeKeyword + " | 지역: " + region + " | 비교치료: " + compare + "\n" +
       focusLine +
@@ -2297,6 +2730,7 @@ export default async function handler(req, res) {
       "글자수: " + targetMin + "~" + targetMax + "자.\n" +
       "🔒 집중 키워드: \"" + activeKeyword + "\" 으로만 서술. 다른 부위 혼용 금지.\n" +
       "🔒 복합 키워드 필수: \"" + fullKeyword + "\" 1~2회 자연스럽게 포함.\n\n" +
+      sceneLine +
       basePrompt;
 
     let content = await callGPT(systemPrompt, userPrompt);
@@ -2403,6 +2837,11 @@ export default async function handler(req, res) {
   // ★ 지역 키워드 반복 분산 (4회 초과 시 변형)
   result = spreadPainRegionKw(result, region);
 
+  // ★ 시술 keyword 반복 분산 (7회 초과 시 변형) — region 분산 직후 적용
+  result = spreadPainKeyword(result, keyword);
+  // ★ 변형 후 조사 자동 교정
+  result = fixVariantParticles(result);
+
   // ★ "관찰됨/확인됨" 반복 분산 (각 4회 초과 시 변형)
   result = spreadPainObservation(result);
 
@@ -2429,13 +2868,12 @@ export default async function handler(req, res) {
   // ----------------------------------------------------------
   // QC
   // ----------------------------------------------------------
-  const qc = runPainQC(result, keyword, fullKeyword, validMode);
+  const qc = runPainQC(result, keyword, fullKeyword, validMode, tid);
 
   // 완전체 키워드 부족 시 보충 (personal만)
   if (validMode === "personal" && qc.fullKwCount < 3) {
     const injectLine =
-      "\n\n" + region + " 통증의학과에서 " + activeKeyword + " 진행 시 " +
-      fullKeyword + " 진행 사례 정보가 참고될 수 있음.\n";
+      "\n\n" + fullKeyword + pickJosa(fullKeyword, "은", "는") + " 통증 양상과 진행 정도에 따라 진행 방식이 달라질 수 있으며, 정확한 방향은 진료 상담에서 안내됩니다.\n";
     const closingIdx = result.lastIndexOf("## 마무리");
     if (closingIdx !== -1) {
       result = result.slice(0, closingIdx) + injectLine + result.slice(closingIdx);
