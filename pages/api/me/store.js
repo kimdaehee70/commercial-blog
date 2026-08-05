@@ -15,7 +15,7 @@ import { hasServiceFields, normalizeDepartments } from "../../../lib/industry-tr
 // [v127] 지원 업종 — index.js INDUSTRY_TREATMENTS 배선 키와 동기화(SoT: 엔진 배선).
 //   catalog enabled와 무관하게 배선된 업종은 저장 허용(OWNER 관측 전 확정 경로 — SOP v4.2 PATCH-08).
 //   신규 업종 추가 시 index.js 배선과 함께 이 목록에도 반드시 추가(누락 시 INVALID_INDUSTRY 400).
-const INDUSTRY_KEYS = new Set([
+const INDUSTRY_KEYS = new Set([ 'shaman', 'pulmo', 'card', 'endo', 'radio',
   // 의료군
   "clinic", "dental", "ent", "oriental", "ortho", "urology",
   "pediatrics", "gastro", "general", "obgyn", "derma", "pain",
