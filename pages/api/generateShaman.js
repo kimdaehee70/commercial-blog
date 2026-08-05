@@ -195,6 +195,7 @@ export async function generateShaman(opts = {}) {
           menu,
           region,
           chars,
+          charCount: chars,            // ORBIT 관측 — 글자수 ↔ 순위·체류시간 상관분석용
           charTarget: SHAMAN_META.charTarget,
           charInRange: chars >= SHAMAN_META.charTarget[0] && chars <= SHAMAN_META.charTarget[1],
           photoCount: getPhotoCount(prompt.meta.specId),
