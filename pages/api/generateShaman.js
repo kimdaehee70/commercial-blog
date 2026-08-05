@@ -18,6 +18,7 @@ import {
   getPhotoCount,
   resolveEntry,
   requiresCaseInput,
+  resolveShamanTitle,
 } from "../../lib/shaman-data";
 // ※ INDUSTRY_CONFIG(index.js)가 플랫폼 SoT. 엔진 측 playConfig export는 두지 않는다.
 
@@ -63,13 +64,33 @@ async function callOpenAI({ system, user }) {
    2. 제목 / 본문 분리
    프롬프트가 첫 줄에 제목을 쓰게 지시함
    ═════════════════════════════════════════════ */
-function splitTitle(raw) {
+//
+// ★ 세션102 — 첫 줄을 무조건 제목으로 잘라내던 로직 제거.
+//   모델이 제목 줄을 빼면 본문 첫 문장이 제목이 되고, 그 문장은 본문에서도 사라졌다.
+//   이제: 첫 줄을 후보로만 보고 → 검증 → 실패하면 패턴에서 제목을 만들고 첫 줄은 본문에 되돌린다.
+function splitTitle(raw, titleCtx = {}) {
   const lines = String(raw).split("\n");
   let i = 0;
   while (i < lines.length && !lines[i].trim()) i++;
-  const title = (lines[i] || "").replace(/^#+\s*/, "").replace(/^["'\[]|["'\]]$/g, "").trim();
-  const body = lines.slice(i + 1).join("\n").trim();
-  return { title, body: body || String(raw).trim() };
+
+  const cand = (lines[i] || "")
+    .replace(/^#+\s*/, "")
+    .replace(/^제목\s*[:：]\s*/, "")
+    .replace(/^["'\[]|["'\]]$/g, "")
+    .trim();
+
+  const rest = lines.slice(i + 1).join("\n").trim();
+  const bodyFirst = (rest.split(/(?<=[.?!])\s|\n/)[0] || "").trim();
+
+  const r = resolveShamanTitle(cand, { ...titleCtx, bodyFirst });
+
+  // 모델 제목이 통과 → 첫 줄은 제목이었다. 본문에서 제외.
+  // 실패 → 첫 줄은 본문 문장이었다. 본문 앞에 되돌린다.
+  const body = r.source === "model"
+    ? (rest || String(raw).trim())
+    : [cand, rest].filter(Boolean).join("\n\n").trim();
+
+  return { title: r.title, body: body || String(raw).trim(), titleSource: r.source, titleFails: r.fails };
 }
 
 /* ═════════════════════════════════════════════
@@ -152,7 +173,12 @@ export async function generateShaman(opts = {}) {
 
   for (let n = 0; n <= maxRetry; n++) {
     const raw = await call({ system: prompt.system, user: userPrompt });
-    const { title, body } = splitTitle(raw);
+    const { title, body, titleSource, titleFails } = splitTitle(raw, {
+      axis: prompt.meta.axis,
+      situationId: prompt.meta.situationId || situationId,
+      specialtyId: menuDef.axis === "specialty" ? specialtyId : null,
+      specId: prompt.meta.specId,
+    });
 
     // 검사 + (통과 시에만) NOTICE 삽입 — 순서 고정
     const fin = finalizeShamanPost(body, noticeCtx);
@@ -174,6 +200,8 @@ export async function generateShaman(opts = {}) {
           photoCount: getPhotoCount(prompt.meta.specId),
           photoMarkers: (fin.text.match(/📷/g) || []).length,
           retried: n,
+          titleSource,                 // model | pattern | fallback — 관측용
+          titleFails: titleFails || [],
           model: MODEL,
         },
         attempts,
