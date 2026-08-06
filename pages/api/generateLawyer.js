@@ -372,6 +372,16 @@ export default async function handleLawyer(req, res) {
     const scenarioType = LAWYER_SCENARIO_TYPE[treatment.id] || "civil";
     const PHOTO_ALT = PHOTO_ALT_BY_SCENARIO[scenarioType] || PHOTO_ALT_BY_SCENARIO.civil;
 
+    // [PATCH-LAW-06 · 세션106] ★ buildTitle을 섹션 루프 앞으로 이동.
+    //   실측: buildTitle(region, treatment)은 본문·섹션 결과를 일절 참조하지 않는다.
+    //     titlePatterns 랜덤 픽 + {region} 치환뿐 → 이동 시 결과 동일(회귀 0).
+    //   이동 이유: 기존에는 제목이 본문보다 나중에 정해져, concern·firstMove가
+    //     '이 글이 어떤 제목으로 노출되는지'를 모른 채 메뉴 공통 문맥으로 생성됐다.
+    //     관측: 제목 '개인 재산까지 위험한지' → 첫 문단은 '회사 재정 악화'로 시작.
+    //     LAW-05로 제목 진폭이 6→8종으로 커지면서 어긋남이 더 자주 노출됐다.
+    //   ★ 아래 사용처(구 477행)는 이 선언을 그대로 쓴다. 재호출 금지(랜덤이므로 값이 달라진다).
+    const title = buildTitle(region, treatment);
+
     // ── 섹션 순차 생성 (prevSummary 사용 금지) ──
     const writtenSections = new Set();
     const sections = [];
@@ -380,7 +390,7 @@ export default async function handleLawyer(req, res) {
       if (writtenSections.has(sec.key)) continue;
       writtenSections.add(sec.key);
 
-      const userPrompt = buildUserPromptV2(region, treatment, sec.key);
+      const userPrompt = buildUserPromptV2(region, treatment, sec.key, title);
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
@@ -474,7 +484,7 @@ export default async function handleLawyer(req, res) {
     content = content.replace(/(^|\n)##\s*/g, "$1");
     content = content.replace(/\n{3,}/g, "\n\n").trim();
 
-    const title = buildTitle(region, treatment);
+    // [PATCH-LAW-06] title은 섹션 루프 앞에서 이미 확정됨. 재호출하면 값이 바뀐다.
     const imageAlts = getImageAlts(region, treatment);
 
     // ── QC 로그 ──
