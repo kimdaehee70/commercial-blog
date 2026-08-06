@@ -149,6 +149,11 @@ export default function MembersPage() {
   //   ※ members 자체계산 금지. 정본식(accounts-usage = check-quota 정합)만 빌려 표시.
   const [usageMap, setUsageMap] = useState({});
 
+  // 세션107: 상호(store_profiles.store_name) 표시용 Map. accounts-usage와 동일 병행로드 패턴.
+  //   ※ RPC(get_stores_admin) 무수정 · 신규 API 0. 연결키는 서버 반환 필드에 따라 2중 폴백:
+  //     1순위 account_id/user_id/owner_id/id ↔ accounts.id, 2순위 blog_account 일치.
+  const [storeMap, setStoreMap] = useState({ byId: {}, byBlog: {} });
+
   // 103차: blog_account 매핑 (accounts.js 91차 흡수)
   //   draftBlog: { [row.id]: 입력중인 값 } — 자유입력이라 즉시저장 X, 저장버튼/Enter 시에만 API.
   const [draftBlog, setDraftBlog] = useState({});
@@ -162,7 +167,7 @@ export default function MembersPage() {
 
   // v0.2: 검색 / 정렬 / 페이지
   const [q, setQ] = useState('');
-  const [sortKey, setSortKey] = useState('created_at'); // created_at|email|role|status|plan
+  const [sortKey, setSortKey] = useState('created_at'); // created_at|store|email|role|status|plan
   const [sortDir, setSortDir] = useState('desc');       // asc|desc
   const [page, setPage] = useState(1);
   const PER_PAGE = 25;
@@ -237,6 +242,31 @@ export default function MembersPage() {
         }
       } catch {
         setUsageMap({}); // usage 로드 실패 = quota 컬럼만 비움. 본기능 영향 없음.
+      }
+
+      // 세션107: 상호 병행 로드 (독립 try — 실패해도 회원목록/변경 기능 정상, 상호칸만 미등록 표시)
+      try {
+        const rs = await fetch('/api/admin/stores-list', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const js = await rs.json();
+        if (js.ok && Array.isArray(js.rows)) {
+          const byId = {};
+          const byBlog = {};
+          for (const st of js.rows) {
+            const nm = (st.store_name || '').trim();
+            if (!nm) continue;
+            const key = st.account_id ?? st.user_id ?? st.owner_id ?? st.id;
+            if (key != null && byId[key] == null) byId[key] = nm;
+            const ba = (st.blog_account || '').trim().toLowerCase();
+            if (ba && byBlog[ba] == null) byBlog[ba] = nm;
+          }
+          setStoreMap({ byId, byBlog });
+        } else {
+          setStoreMap({ byId: {}, byBlog: {} });
+        }
+      } catch {
+        setStoreMap({ byId: {}, byBlog: {} });
       }
     } catch (e) {
       setErr(e.message);
@@ -430,6 +460,16 @@ export default function MembersPage() {
   const NEAR_RATIO = 0.8;
   const usageAvailable = Object.keys(usageMap).length > 0;
 
+  // 세션107: 상호 조회 — id 매칭 → blog_account 매칭 순. 없으면 빈 문자열.
+  const storeNameOf = (m) => {
+    if (!m) return '';
+    const byId = storeMap.byId[m.id];
+    if (byId) return byId;
+    const ba = (m.blog_account || '').trim().toLowerCase();
+    if (ba && storeMap.byBlog[ba]) return storeMap.byBlog[ba];
+    return '';
+  };
+
   const filtered = rows.filter((r) => {
     if (fStatus !== 'all' && r.status !== fStatus) return false;
     if (fPlan === 'free' && r.plan !== 'free') return false;
@@ -444,7 +484,7 @@ export default function MembersPage() {
       if (fQuota === 'ok' && !(!over && (ratio == null || ratio < NEAR_RATIO))) return false;
     }
     if (qLower) {
-      const hay = `${r.email || ''} ${r.display_name || ''} ${r.blog_account || ''}`.toLowerCase();
+      const hay = `${storeNameOf(r)} ${r.email || ''} ${r.blog_account || ''}`.toLowerCase();
       if (!hay.includes(qLower)) return false;
     }
     return true;
@@ -456,6 +496,13 @@ export default function MembersPage() {
       av = ROLE_RANK[a.role] ?? 9; bv = ROLE_RANK[b.role] ?? 9;
     } else if (sortKey === 'created_at') {
       av = a.created_at || ''; bv = b.created_at || '';
+    } else if (sortKey === 'store') {
+      // 세션107: 상호 정렬. 미등록은 항상 뒤로(방향 무관).
+      const as = storeNameOf(a), bs = storeNameOf(b);
+      if (!as && !bs) return 0;
+      if (!as) return 1;
+      if (!bs) return -1;
+      av = as.toLowerCase(); bv = bs.toLowerCase();
     } else {
       av = (a[sortKey] || '').toString().toLowerCase();
       bv = (b[sortKey] || '').toString().toLowerCase();
@@ -521,7 +568,7 @@ export default function MembersPage() {
         <input
           value={q}
           onChange={(e) => { setQ(e.target.value); setPage(1); }}
-          placeholder="이메일 / 이름 / 블로그계정 검색"
+          placeholder="상호 / 이메일 / 블로그계정 검색"
           style={{ ...inputStyle, width: 220, marginRight: 6 }}
         />
         {['all', 'active', 'pending', 'suspended'].map((s) => (
@@ -577,8 +624,8 @@ export default function MembersPage() {
                   style={S.chk}
                 />
               </Th>
+              <SortTh label="상호"   sortKey="store"      active={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortTh label="이메일" sortKey="email"      active={sortKey} dir={sortDir} onSort={toggleSort} />
-              <Th>이름</Th>
               <SortTh label="권한"   sortKey="role"       active={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortTh label="상태"   sortKey="status"     active={sortKey} dir={sortDir} onSort={toggleSort} />
               <SortTh label="플랜"   sortKey="plan"        active={sortKey} dir={sortDir} onSort={toggleSort} />
@@ -612,10 +659,17 @@ export default function MembersPage() {
                       )}
                     </Td>
                     <Td>
+                      {(() => {
+                        const sn = storeNameOf(m);
+                        return sn
+                          ? <span style={S.storeName}>{sn}</span>
+                          : <span style={S.storeNone}>(상호 미등록)</span>;
+                      })()}
+                    </Td>
+                    <Td>
                       <div>{m.email || '—'}</div>
                       {ownerRow && <div style={S.ownerTag}>운영자 · 읽기전용</div>}
                     </Td>
-                    <Td>{m.display_name || '—'}</Td>
 
                     {/* 권한 */}
                     <Td>
@@ -977,6 +1031,8 @@ const S = {
     background: T.surfaceAlt, border: `1px solid ${T.borderStrong}`, borderRadius: 5,
     padding: '3px 8px', fontSize: 12, color: T.text, width: 120, outline: 'none', fontFamily: T.mono,
   },
+  storeName: { fontWeight: 600 },
+  storeNone: { color: T.textMuted, opacity: 0.6 },
   blogLock: { opacity: 0.6, fontFamily: T.mono, fontSize: 12, color: T.textMuted },
 
   modalBg: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 },
