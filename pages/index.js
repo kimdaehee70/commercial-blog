@@ -7767,6 +7767,23 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
           <div style={{ fontSize: 14.5, fontWeight: 700, color: "#444", textAlign: "center", marginTop: 26 }}>
             광고를 멈추면 노출도 멈춥니다. 검색 자산은 계속 쌓입니다.
           </div>
+          {/* ★ [S111] 서비스 제공기간·자동갱신 고지 — 전자상거래법 및 PG(KG이니시스) 심사 모니터링 항목.
+              심사관이 요금제 화면에서 직접 확인한다. 요금·한도 변경 시 PLANS / lib/billing/plans.js /
+              lib/policies/refund.js 건당 단가와 함께 갱신할 것(이중 관리 지점). */}
+          <div style={{
+            maxWidth: 900, margin: "22px auto 0", padding: "16px 18px",
+            background: "#fafafd", border: "1px solid #e8e4f0", borderRadius: 12,
+            fontSize: 12.5, color: "#5a5a6a", lineHeight: 1.75,
+          }}>
+            <div style={{ fontWeight: 900, color: "#4A148C", fontSize: 13, marginBottom: 6 }}>
+              서비스 제공기간 및 이용 안내
+            </div>
+            · 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.<br />
+            · 자동갱신 — 월 정기결제이며 매 결제일에 동일 플랜으로 자동 갱신됩니다. 해지 시 다음 결제일부터 청구되지 않으며, 이미 결제된 이용기간은 만료일까지 이용할 수 있습니다.<br />
+            · 발행 한도 — 각 플랜의 월 발행 건수는 결제 주기 시작 시 초기화되며 다음 달로 이월되지 않습니다.<br />
+            · 청약철회 및 환불 — 환불정책에 따르며, 사용한 발행 건수만큼 공제 후 잔액을 환불합니다.<br />
+            · 이용요금은 부가세 포함 금액입니다.
+          </div>
           <div style={{ fontSize: 11, color: "#bbb", textAlign: "center", marginTop: 8 }}>
             결제 연동은 준비 중입니다. 업그레이드 시 안내 화면으로 이동합니다.
           </div>

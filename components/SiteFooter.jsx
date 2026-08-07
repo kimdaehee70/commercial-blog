@@ -71,7 +71,7 @@ export default function SiteFooter({ onDoc }) {
       {sep}
       <span>통신판매업신고 2023-서울노원-0233</span>
       {sep}
-      <span>서울특별시 노원구 화랑로 465, 지층 B01-1호</span>
+      <span>서울특별시 노원구 화랑로 465, 지층 B01-1호 (공릉동, 엘네스트빌 오피스텔)</span>
       {sep}
       <span>support@ai-post.ai</span>
       {sep}
