@@ -158,19 +158,19 @@ const LAWYER_SCENARIO_TYPE = {
 const PHOTO_ALT_BY_SCENARIO = {
   accident: {
     concern: "사고현장 안내", firstMove: "사고상담 안내", mistake: "절차 안내",
-    consult: null, documents: "사고자료 안내", process: null, closing: "사무소 안내",
+    consult: null, documents: "사고자료 안내", process: null, closing: null,   // [세션113] 신뢰축 사진 SoT = proVisitBlock 단일화. 본문 closing 외관 사진 제거(중복 해소)
   },
   investigation: {
     concern: "조사대응 안내", firstMove: "진술준비 안내", mistake: "절차 안내",
-    consult: null, documents: "조사자료 안내", process: null, closing: "사무소 안내",
+    consult: null, documents: "조사자료 안내", process: null, closing: null,   // [세션113] 신뢰축 사진 SoT = proVisitBlock 단일화. 본문 closing 외관 사진 제거(중복 해소)
   },
   family: {
     concern: "가사상담 안내", firstMove: "관계자료 안내", mistake: "절차 안내",
-    consult: null, documents: "가사서류 안내", process: null, closing: "사무소 안내",
+    consult: null, documents: "가사서류 안내", process: null, closing: null,   // [세션113] 신뢰축 사진 SoT = proVisitBlock 단일화. 본문 closing 외관 사진 제거(중복 해소)
   },
   civil: {
     concern: "분쟁상담 안내", firstMove: "분쟁자료 안내", mistake: "절차 안내",
-    consult: null, documents: "민사서류 안내", process: null, closing: "사무소 안내",
+    consult: null, documents: "민사서류 안내", process: null, closing: null,   // [세션113] 신뢰축 사진 SoT = proVisitBlock 단일화. 본문 closing 외관 사진 제거(중복 해소)
   },
 };
 
