@@ -160,6 +160,7 @@ const CATALOG_COUNT = (() => {
 })();
 import RestaurantSelector from "../components/RestaurantSelector"; // ← restaurant 전용 4단 select UI
 import MainHero from "../components/MainHero";
+import SiteFooter from "../components/SiteFooter";
 
 // ============================================================
 // [howto-video] 사용방법 영상 가이드 — 좌측 목차(HowtoScreen) + 중앙 재생(HowtoVideoPanel)
@@ -12276,7 +12277,10 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
         `}</style>
       </Head>
 
-      <div style={{ height: "100vh", display: "flex", overflow: "hidden", background: "#f7f7f8" }}>
+      {/* [PG] 최상위 세로 래퍼 — 좌우 분할(위) + 전체 폭 푸터(아래).
+          기존 100vh 가로 flex는 아래 flex:1 자식으로 그대로 이동. 내부 레이아웃 무변경. */}
+      <div style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden", background: "#f7f7f8" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden", background: "#f7f7f8" }}>
 
         {/* [v7] 오버레이 폐기 — 네비형 초기 메시지 + Intent Layer가 대체. 렌더 비활성. */}
         {false && authChecked && !authUserId && showExp && (
@@ -13955,11 +13959,17 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
               )}
             </div>
 
-
-
           </div>
 
         </div>
+      </div>
+
+      {/* [PG] 전체 폭 한 줄 푸터 — 좌우 공용. KG이니시스 심사 요건(사업자정보 상시 노출).
+          좌측 사이드바 정책 링크는 navOpen 기본값 false(접힘)이라 첫 화면에서 안 보인다. */}
+      <SiteFooter
+        onDoc={(id) => { setHelpTab(null); setResultTab("nav"); setNavView("doc:" + id); }}
+      />
+
       </div>
 
       {/* ───────────────────────────────────────────────── */}
