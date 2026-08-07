@@ -4269,7 +4269,7 @@ function LoginCard({ onAuthed, onExplore }) {
         {err && <div style={L.err}>{err}</div>}
       </div>
 
-      <div style={{ width: "100%", maxWidth: 340, marginTop: 22 }}>
+      <div style={{ width: "100%", maxWidth: 460, marginTop: 22 }}>
         {/* ★ [훅] 업종 탐색 유도 — catalog SoT 자동 집계(업종 추가 시 숫자 자동 반영) */}
         <div style={{
           borderRadius: 14, padding: "16px 16px 14px",
@@ -4285,42 +4285,42 @@ function LoginCard({ onAuthed, onExplore }) {
 
           {/* [v-cl 2026-07-27] 3타일 → 4타일(C안). 총 규모 유지 + Construction/Living 분리 노출.
               상단 2칸 = 플랫폼 총량(강조) / 하단 2칸 = 업종군 축(보조). 카테고리 확장 시 타일만 추가. */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 12 }}>
             <div style={{
-              background: "#fff", borderRadius: 10, padding: "12px 10px",
+              background: "#fff", borderRadius: 10, padding: "12px 6px",
               textAlign: "center", border: "1px solid #ecdff9",
             }}>
-              <div style={{ fontSize: 26, fontWeight: 900, color: "#7B1FA2", lineHeight: 1 }}>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#7B1FA2", lineHeight: 1 }}>
                 {CATALOG_COUNT.industries}
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#8a7a9a", marginTop: 4 }}>총 업종</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#8a7a9a", marginTop: 4, whiteSpace: "nowrap" }}>총 업종</div>
             </div>
             <div style={{
-              background: "#fff", borderRadius: 10, padding: "12px 10px",
+              background: "#fff", borderRadius: 10, padding: "12px 6px",
               textAlign: "center", border: "1px solid #ecdff9",
             }}>
-              <div style={{ fontSize: 26, fontWeight: 900, color: "#7B1FA2", lineHeight: 1 }}>
+              <div style={{ fontSize: 22, fontWeight: 900, color: "#7B1FA2", lineHeight: 1 }}>
                 {CATALOG_COUNT.menus}+
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#8a7a9a", marginTop: 4 }}>총 메뉴</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#8a7a9a", marginTop: 4, whiteSpace: "nowrap" }}>총 메뉴</div>
             </div>
             <div style={{
-              background: "#fff", borderRadius: 10, padding: "12px 10px",
+              background: "#fff", borderRadius: 10, padding: "12px 6px",
               textAlign: "center", border: "1px solid #ecdff9",
             }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: "#9C4DCC", lineHeight: 1 }}>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#9C4DCC", lineHeight: 1 }}>
                 {CATALOG_COUNT.construction}
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#8a7a9a", marginTop: 4 }}>🏗️ 건설·시공</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#8a7a9a", marginTop: 4, whiteSpace: "nowrap" }}>🏗️ 건설·시공</div>
             </div>
             <div style={{
-              background: "#fff", borderRadius: 10, padding: "12px 10px",
+              background: "#fff", borderRadius: 10, padding: "12px 6px",
               textAlign: "center", border: "1px solid #ecdff9",
             }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: "#9C4DCC", lineHeight: 1 }}>
+              <div style={{ fontSize: 20, fontWeight: 900, color: "#9C4DCC", lineHeight: 1 }}>
                 {CATALOG_COUNT.living}
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#8a7a9a", marginTop: 4 }}>🏠 생활서비스</div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#8a7a9a", marginTop: 4, whiteSpace: "nowrap" }}>🏠 생활서비스</div>
             </div>
           </div>
 

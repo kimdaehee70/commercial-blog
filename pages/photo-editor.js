@@ -77,15 +77,21 @@ export default function PhotoEditor({ onRequireAuth, isAuthed } = {}) {
   // ★ [PATCH v2.9] 임베드/단독 모두 대응: root의 실제 top 위치 기준으로 viewport에 딱 맞게 높이 계산
   const [rootHeight, setRootHeight] = useState("calc(100vh - 140px)");
   useEffect(() => {
+    // ★ [S111] 공통 푸터(SiteFooter) 도입분 반영. 푸터 높이를 빼지 않으면 root가 푸터를 밀어내며
+    //   하단(사진 페이지 번호)이 잘린다. footer 태그 우선, 없으면 문서 오버플로 실측으로 대체.
     const calc = () => {
       if (!rootRef.current) return;
       const rect = rootRef.current.getBoundingClientRect();
-      const h = window.innerHeight - rect.top - 8; // 8px 하단 여유
+      const ft = document.querySelector("footer, [data-site-footer]");
+      let sub = ft ? ft.getBoundingClientRect().height : 0;
+      if (!sub) sub = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const h = window.innerHeight - rect.top - sub - 8; // 8px 하단 여유
       setRootHeight(`${Math.max(500, h)}px`);
     };
     calc();
+    const raf = requestAnimationFrame(calc); // 푸터 렌더 후 1회 재측정
     window.addEventListener("resize", calc);
-    return () => window.removeEventListener("resize", calc);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", calc); };
   }, []);
 
   const t1 = () => theme1.replace(/[·\s\/\\:*?"<>|]/g, "") || "사진";
@@ -172,8 +178,8 @@ export default function PhotoEditor({ onRequireAuth, isAuthed } = {}) {
     const img = await loadImage(photoData[idx].preview);
     // ★ [PATCH v2.5] 부모 컨테이너 크기 기준으로 동적 확장 — 미리보기 크게
     const parent = canvas.parentElement;
-    const maxW = Math.max(400, (parent?.clientWidth  || 800) - 12);
-    const maxH = Math.max(300, (parent?.clientHeight || 600) - 12);
+    const maxW = Math.max(320, (parent?.clientWidth  || 800) - 12);
+    const maxH = Math.max(220, (parent?.clientHeight || 600) - 12);
     let w = img.width, h = img.height;
     const ratio = Math.min(maxW / w, maxH / h, 1);
     w = Math.round(w * ratio); h = Math.round(h * ratio);
@@ -422,7 +428,13 @@ export default function PhotoEditor({ onRequireAuth, isAuthed } = {}) {
                 <div style={S.stepTitle}>🎥 사용방법 영상 <span style={{ fontSize: 11, fontWeight: 600, color: "#78909c" }}>— 폴더 정리 · 캡션 작성까지 한 번에</span></div>
 
                 <div style={{
-                  marginTop: 10, flex: 1, minHeight: 0, borderRadius: 12, overflow: "hidden",
+                  marginTop: 10, flex: 1, minHeight: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                <div style={{
+                  aspectRatio: "16 / 9", width: "100%", height: "auto",
+                  maxWidth: "100%", maxHeight: "100%",
+                  borderRadius: 12, overflow: "hidden",
                   border: "2px solid #90caf9", background: "#000",
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}>
@@ -440,6 +452,7 @@ export default function PhotoEditor({ onRequireAuth, isAuthed } = {}) {
                       준비 중인 영상입니다.
                     </div>
                   )}
+                </div>
                 </div>
 
                 <div style={{ marginTop: 8, fontSize: 11, color: "#78909c", lineHeight: 1.5, flexShrink: 0 }}>
@@ -533,9 +546,9 @@ export default function PhotoEditor({ onRequireAuth, isAuthed } = {}) {
               {/* 미리보기 — 크게 (남는 공간 전부 차지) */}
               <div style={{ ...S.stepCard, padding: 8, flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
                 <div style={{ ...S.stepTitle, marginBottom: 6, flexShrink: 0 }}>👁️ 미리보기 {photoData.length > 0 && <span style={{ fontSize: 12, fontWeight: 600, color: "#78909c" }}>— {previewIdx+1} / {photoData.length}</span>}</div>
-                <div style={{ flex: 1, textAlign: "center", background: "#f0f4f8", borderRadius: 12, padding: 6, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0, overflow: "hidden" }}>
+                <div style={{ flex: 1, textAlign: "center", background: "#f0f4f8", borderRadius: 12, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0, overflow: "hidden" }}>
                   {photoData.length > 0 ? (
-                    <canvas ref={previewCanvasRef} style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", borderRadius: 10, border: "1px solid #e0e0e0", boxShadow: "0 2px 12px rgba(0,0,0,.08)" }} />
+                    <canvas ref={previewCanvasRef} style={{ width: "100%", height: "auto", maxHeight: "100%", objectFit: "contain", borderRadius: 10, border: "1px solid #e0e0e0", boxShadow: "0 2px 12px rgba(0,0,0,.08)" }} />
                   ) : (
                     <div style={{ color: "#90a4ae", fontSize: 14 }}>👈 좌측에 사진을 업로드하세요</div>
                   )}
