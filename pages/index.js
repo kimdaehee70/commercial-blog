@@ -1717,15 +1717,19 @@ function isSubLevelRegion(t) {
 //     → 생활권 미입력 시에만 대표지역 fallback(지역 공백 방지).
 //   visit  : 기존 동작 100% 유지(소재지 = 검색지).
 //   ★ strategy 미전달 시 visit 규칙 — 기존 호출부 회귀 0.
+// [v125 · S113] 축A 정합성 — 대표지역+생활권 자동 결합 폐지.
+//   근거: 대표지역=업체 기준(신뢰축) / 생활권=사용자가 노출을 원하는 검색 기준(검색축).
+//     두 축은 페이로드에 이미 분리되어 있다(repRegion / userRegion). 결합이 이 분리를 깨뜨렸다.
+//   실측(S113): region='노원구' + sub_region='중화동' → '노원구 중화동'(비존재 행정구역)이
+//     제목·본문 강제 3회·closing·해시태그 3종 전체로 전파.
+//   결합 유지 시 동↔구 매핑 DB가 필요하고 법정동·행정동·읍면 개편까지 영구 유지 대상이 된다.
+//   ★ 구 service 규칙을 전 업종 공통으로 승격. 매핑표 0 · 비존재 행정구역 0.
+//   ※ 정합성 수정이며 신뢰축 설계(축B)가 아니다. 축B는 별도 관측 프로젝트.
+//   strategy 인자는 시그니처 호환용 잔존(호출부 무수정).
 function composeRegion(rep, subPick, strategy) {
   const r = String(rep || "").trim();
   const s = String(subPick || "").trim();
-  if (strategy === "service") return s || r;   // 출동형 — 생활권만
-  if (!s) return r;
-  if (s === r) return r;
-  if (isSubLevelRegion(s)) return `${r} ${s}`.trim();   // 하위 → 결합
-  if (isSameLevelRegion(s)) return s;                   // 동급 이상 → 대체
-  return s;                                             // 불명(상권·신도시) → 대체
+  return s || r;   // 생활권 우선 · 미입력 시 대표지역
 }
 
 // [v123] 생활권 순번 회전 선택 — 콤마 입력 목록에서 idx 위치 1개를 고른다(라운드로빈).
