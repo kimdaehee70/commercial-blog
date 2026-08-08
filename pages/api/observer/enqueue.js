@@ -134,6 +134,31 @@ export default async function handler(req, res) {
       intentStatus = intentKeyword ? 'pending' : 'unavailable';
     }
 
+    // 4-2) ORBIT-OBS-02b · 제목 전문 index check
+    //   목적: "순위 밖(out_of_range)"과 "색인 안 됨(not_indexed)"의 분리.
+    //   조건: LIVE + Core 미발견 + Intent out_of_range — 셋 다일 때만 1회 추가 검색.
+    //   ⚠ LIVE 가드 필수: 더미 모드 URL(verify/0)은 매칭 불가라 전건 not_indexed로 오염된다.
+    //   ★ 제목 정규화·재작성 금지 — 생성된 제목 그대로 검색한다.
+    //   competitor_env 무접촉(캐시 저장·조회 없음). Core 축·스키마 무영향.
+    if (
+      process.env.OBSERVER_SCRAPE_LIVE === 'true' &&
+      relRank == null &&
+      intentStatus === 'out_of_range'
+    ) {
+      try {
+        const titleQuery = (post.title || '').trim();
+        if (titleQuery) {
+          const titleTop10 = await scrapeNaverTop10(titleQuery);
+          const tloc = locateMyPost(titleTop10, post.naver_post_url);
+          if (!tloc.relRank) intentStatus = 'not_indexed';
+          // 발견되면 out_of_range 유지 — 색인은 됐고 순위만 밖이다.
+        }
+      } catch (te) {
+        // 실패는 판정을 뒤집지 않는다. out_of_range 유지.
+        console.error('[observer/indexcheck]', te?.message || te);
+      }
+    }
+
     await supabase.from('survival_log').insert({
       publish_id: post.id,
       rel_rank: relRank,             // null = 10위 밖/미발견
