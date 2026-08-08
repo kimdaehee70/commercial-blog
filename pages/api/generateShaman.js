@@ -110,6 +110,7 @@ export async function generateShaman(opts = {}) {
     situationId = null,
     specialtyId = null,
     region = "",
+    address = "",                 // ★ 세션114 주소축 — 📍 상담소 위치 전용(검색축 region과 분리)
     caseInput = null,
     visitInfo = null,
     storeFields = null,
@@ -162,7 +163,8 @@ export async function generateShaman(opts = {}) {
   const noticeCtx = {
     situationId: menuDef.axis === "situation" ? situationId : null,
     specialtyId: menuDef.axis === "specialty" ? specialtyId : prompt.meta.specId,
-    region,                                  // 후단 📍 블록에 사용 (본문 주소 금지)
+    region,                                  // 검색축(생활권) — 본문 지역 표기
+    address,                                 // 주소축(업체 실주소) — 후단 📍 블록 전용
     visitInfo: opts.visitInfo || null,       // visit_info 객체
     storeFields: opts.storeFields || null,   // req.body 평면 필드(전화·영업시간·주차·교통)
   };
@@ -178,6 +180,7 @@ export async function generateShaman(opts = {}) {
       situationId: prompt.meta.situationId || situationId,
       specialtyId: menuDef.axis === "specialty" ? specialtyId : null,
       specId: prompt.meta.specId,
+      region,                      // ★ 세션114 Title Policy V2 Pilot — 생활권 단독(대표지역 결합 금지)
     });
 
     // 검사 + (통과 시에만) NOTICE 삽입 — 순서 고정
@@ -242,7 +245,12 @@ export default async function handler(req, res) {
   // 선택된 메뉴는 req.body.program.name(메뉴 라벨)에 담긴다 — treatmentId 아님.
   // resolveEntry가 id·메뉴명 양쪽을 해석하므로 라벨을 그대로 전달한다.
   const treatmentId = b.treatmentId || program.name || null;
-  const region = b.region || b.address || "";
+  // ★ 세션114 — 지역축 분리(배선 결함 수정)
+  //   검색축: index.js 페이로드 키는 userRegion(= A축 생활권 단독). b.region은 존재하지 않던 키라
+  //           전량 b.address(업체 실주소)로 폴백되어 제목·본문이 실주소를 소비하고 있었다.
+  //   주소축: 업체 실주소. 📍 상담소 위치 전용. 대표지역 자동 결합 금지.
+  const region  = b.userRegion || "";           // 검색축 = 생활권 단독
+  const address = b.address || b.region || "";  // 주소축 = 업체 실주소
 
   // 방문정보 — 라우터가 방문형 업종이면 이미 비워둔 상태로 도착한다(stripVisitFieldsIfNoStore).
   // 무속은 매장형이므로 값이 그대로 온다. 없는 항목은 후단 블록에서 자동 생략된다.
@@ -251,7 +259,7 @@ export default async function handler(req, res) {
 
   try {
     // NOTE: quota 차감 · 로그 적재는 상위 공통 미들웨어에서 처리. 여기서 중복 처리하지 않는다.
-    const out = await generateShaman({ treatmentId, menu, situationId, specialtyId, region, caseInput, visitInfo, storeFields });
+    const out = await generateShaman({ treatmentId, menu, situationId, specialtyId, region, address, caseInput, visitInfo, storeFields });
 
     if (!out.ok) {
       const status = out.code === "FORBIDDEN_FINAL" ? 422 : 400;
