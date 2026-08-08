@@ -40,7 +40,7 @@ export default async function handler(req, res) {
     // 1) published 글 메타 읽기 (publish_history 읽기 전용)
     const { data: post, error: postErr } = await supabase
       .from('publish_history')
-      .select('id, full_keyword, active_keyword, keyword, industry, region, naver_post_url, publish_status')
+      .select('id, full_keyword, active_keyword, keyword, industry, region, naver_post_url, publish_status, title')
       .eq('id', publish_id)
       .single();
 
@@ -103,6 +103,34 @@ export default async function handler(req, res) {
 
     // 4) survival_log — 내 글이 그 자리에서 살아있나
     const { relRank, isAlive } = locateMyPost(top10, post.naver_post_url);
+
+    // 4-1) ORBIT-OBS-02A · Intent 축 (생존축)
+    //   Core(full_keyword) = 상업 경쟁키워드 진입 여부 = 성과축.
+    //   Intent(제목 앞 Search Intent 절) = 글이 검색에서 살아있는지 = 생존축.
+    //   두 축은 섞지 않는다. Core 로직·캐시·competitor_env 무접촉.
+    //   ⚠ 제목 전문 index check / not_indexed 판정은 이 축에 없다(OBS-02b 분리).
+    let intentKeyword = null;
+    let intentRank = null;
+    let intentStatus = 'unavailable';   // 구형 제목(Intent 절 부재) 기본값
+    try {
+      intentKeyword = deriveIntentKeyword(post.title);
+      if (intentKeyword) {
+        // Intent는 캐시 미적용 — competitor_env 캐시 키(Core)를 오염시키지 않는다.
+        const intentTop10 = await scrapeNaverTop10(intentKeyword);
+        const loc = locateMyPost(intentTop10, post.naver_post_url);
+        if (loc.relRank) {
+          intentRank = loc.relRank;
+          intentStatus = 'ranked';
+        } else {
+          intentStatus = 'out_of_range';   // 수집 범위(Top10) 내 미발견
+        }
+      }
+    } catch (ie) {
+      // Intent 실패는 Core 기록을 막지 않는다.
+      console.error('[observer/intent]', ie?.message || ie);
+      intentStatus = intentKeyword ? 'pending' : 'unavailable';
+    }
+
     await supabase.from('survival_log').insert({
       publish_id: post.id,
       rel_rank: relRank,             // null = 10위 밖/미발견
@@ -110,15 +138,37 @@ export default async function handler(req, res) {
       fossil_flag: false,            // 추이 누적 후 관측방이 판정 (v1은 false 고정)
       rank_basis: RANK_BASIS,
       note: cacheHit ? 'cache_hit' : 'fresh',
+      intent_keyword: intentKeyword,
+      intent_rank: intentRank,
+      intent_status: intentStatus,
       // observed_at = DEFAULT now()
     });
 
-    return res.status(200).json({ ok: true, keyword, cacheHit, relRank, isAlive });
+    return res.status(200).json({
+      ok: true, keyword, cacheHit, relRank, isAlive,
+      intentKeyword, intentRank, intentStatus,
+    });
   } catch (e) {
     // 발행 영향 0. 조용히 삼킨다.
     console.error('[observer/enqueue]', e?.message || e);
     return res.status(204).end();
   }
+}
+
+// ORBIT-OBS-02A · 제목 → Intent 검색어 자동 파생.
+// 제목 구조: `[Search Intent] - [생활권] [서비스어]`
+//   - 구분자 ' - ' 첫 출현 기준 좌측만 절취. 우측(생활권+서비스어)은 Core 축이다.
+//   - 좌측이 없거나 비면 null → intent_status='unavailable' (구형 제목)
+//   ★ 정규화·재작성 금지. 조사 보정·부호 제거·어순 변경 전부 금지.
+//     사람이 검색어를 새로 지으면 관측이 아니라 실험 조작이 된다.
+//   ⚠ 구분자는 ASCII '-' + 양쪽 공백만 인정. 대시 변형(–, —)은 현재 제목 생성기에서
+//     쓰지 않는다는 실측 전제. 변형이 확인되면 그때 별도 축으로 추가한다.
+function deriveIntentKeyword(title) {
+  if (!title || typeof title !== 'string') return null;
+  const i = title.indexOf(' - ');
+  if (i <= 0) return null;
+  const left = title.slice(0, i).trim();
+  return left || null;
 }
 
 // 내 post URL이 top10 중 몇 위인지
