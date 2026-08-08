@@ -8,6 +8,7 @@ import { useStore } from "../contexts/StoreContext";
 import { getActiveContext } from "../lib/contextSpine";
 import { getPhotoPolicy, photoDescLine } from "../lib/photoPolicyRegistry";
 import { getRegionStrategySafe } from "../lib/spine/regionStrategyRegistry";  // [v-region] 지역 전략(visit/service) 조회 — 미등록 업종은 visit 축퇴
+import { buildCoreKeyword } from "../lib/spine/serviceAxis";  // [S117] Core 관측축 — region + catalog.name. full_keyword(소재축)와 분리
 import { CLINIC_TARGETS, ALL_TREATMENTS as CLINIC_TREATMENTS, CLINIC_BLOG_TYPES } from "../lib/clinic-data";
 import { DENTAL_TREATMENTS, DENTAL_META } from "../lib/dental-data";
 // [ent v2 승격 2026-07-13] 이비인후과 V2 Purpose — v1(ent-data 20종·후기형) → v2(14종·정보형) 교체.
@@ -8670,6 +8671,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               content:        p.content || "",
               active_keyword: p.active_keyword,
               full_keyword:   p.full_keyword,
+              core_keyword:   buildCoreKeyword(p.region, p.industry),  // [S117] Core 관측축(상업 경쟁키워드). 생성물 역산 금지
               region:         p.region,
               treatment_id:   p.treatment_id,
               treatment_name: p.treatment_name,

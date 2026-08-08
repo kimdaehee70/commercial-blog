@@ -40,7 +40,7 @@ export default async function handler(req, res) {
     // 1) published 글 메타 읽기 (publish_history 읽기 전용)
     const { data: post, error: postErr } = await supabase
       .from('publish_history')
-      .select('id, full_keyword, active_keyword, keyword, industry, region, naver_post_url, publish_status, title')
+      .select('id, core_keyword, full_keyword, active_keyword, keyword, industry, region, naver_post_url, publish_status, title')
       .eq('id', publish_id)
       .single();
 
@@ -48,8 +48,11 @@ export default async function handler(req, res) {
     if (post.publish_status !== 'published') return res.status(204).end();
     if (!post.naver_post_url) return res.status(204).end();
 
-    // 검색 키워드: full_keyword → active_keyword → keyword 폴백
-    const keyword = (post.full_keyword || post.active_keyword || post.keyword || '').trim();
+    // 검색 키워드(Core축): core_keyword → full_keyword → active_keyword → keyword 폴백
+    //   [S117] core_keyword = region + serviceAxis(catalog.name). 상업 경쟁키워드.
+    //   full_keyword는 소재축(_kwBase 파생)이라 Core가 아니다 — 신규 발행부터 core 우선.
+    //   기존 행은 core_keyword NULL → full_keyword 폴백으로 무손상.
+    const keyword = (post.core_keyword || post.full_keyword || post.active_keyword || post.keyword || '').trim();
     if (!keyword) return res.status(204).end();
 
     const industry = post.industry || null;
@@ -105,7 +108,7 @@ export default async function handler(req, res) {
     const { relRank, isAlive } = locateMyPost(top10, post.naver_post_url);
 
     // 4-1) ORBIT-OBS-02A · Intent 축 (생존축)
-    //   Core(full_keyword) = 상업 경쟁키워드 진입 여부 = 성과축.
+    //   Core(core_keyword) = 상업 경쟁키워드 진입 여부 = 성과축.
     //   Intent(제목 앞 Search Intent 절) = 글이 검색에서 살아있는지 = 생존축.
     //   두 축은 섞지 않는다. Core 로직·캐시·competitor_env 무접촉.
     //   ⚠ 제목 전문 index check / not_indexed 판정은 이 축에 없다(OBS-02b 분리).

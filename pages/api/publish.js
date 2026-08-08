@@ -41,6 +41,7 @@ export default async function handler(req, res) {
       // 선택 (있으면 저장)
       active_keyword,
       full_keyword,
+      core_keyword,
       region,
       treatment_id,
       treatment_name,
@@ -106,6 +107,7 @@ export default async function handler(req, res) {
     };
     if (active_keyword != null)    row.active_keyword    = active_keyword;
     if (full_keyword != null)      row.full_keyword      = full_keyword;
+    if (core_keyword != null)      row.core_keyword      = core_keyword;
     if (region != null)            row.region            = region;
     if (treatment_id != null)      row.treatment_id      = treatment_id;
     if (treatment_name != null)    row.treatment_name    = treatment_name;
