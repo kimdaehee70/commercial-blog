@@ -230,8 +230,11 @@ export default async function handleFuneral(req, res) {
     const fullKeyword = `${region} 상조`;
     const systemPrompt = SYSTEM_PROMPT
       .replace(/\{region\}/g, region)
-      // [C-1] 화자 지역·시설 정합 — hallName이 있으면 화자를 해당 장례식장 안내자로 고정.
-      .replace(/\{hallSpeaker\}/g, hallName ? `${hallName} ` : "");
+      // [WIRING-01B-α] 화자축 분리 — hallName을 화자에 주입하지 않는다.
+      //   「{hallName} 장례지도사」는 한국어에서 해당 시설 소속으로 읽힌다(소속 오인).
+      //   장례식장은 '정보 대상'이지 화자의 소속이 아니다. 화자는 항상 중립 고정.
+      //   ⚠ 정보축(제목·본문 실명·hallRule·alt·태그)은 무접촉 — hallName 그대로 유지.
+      .replace(/\{hallSpeaker\}/g, "");
     // [C-3-2] 시설 데이터 매칭 — 완전 일치 1건만. 미일치 시 null(일반 안내로 생성).
     const hallFacts = matchFuneralHall(req, hallName);
     console.log("[C-3-2] hallFacts:", hallFacts ? `matched(${hallFacts.name})` : "none");

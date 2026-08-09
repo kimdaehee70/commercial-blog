@@ -10313,7 +10313,7 @@ export default function Home() {
     } catch (_) {} finally { setDiagLoading(false); }
   };
 
-  const generate = async (treatmentId, region, blogType = "review", targetId = "consult", overrideTitle = null, treatmentName = "") => {
+  const generate = async (treatmentId, region, blogType = "review", targetId = "consult", overrideTitle = null, treatmentName = "", hallName = "") => {
     if (isGenerating.current) return;
 
     // [v60] quota spine — 생성 시작 전 차단 (정책: quota는 '생성 횟수' 기준이므로 발행이 아닌 생성 진입에서 막아야 함)
@@ -10458,6 +10458,10 @@ export default function Home() {
       const { ok: _genOk, data } = await generateApi.postGenerate(_genToken, {
           target, program: treatment, blogType: blogTypeObj,
           userRegion: region, userMemo: "", overrideTitle,
+          // [WIRING-01C] 장례식장명 — funeral(cat="장례식장")에서만 값 존재. 그 외 전 업종 "".
+          //   서버 generateFuneral.js:200 hallName 수신부는 기존 구현 그대로(백엔드 무수정).
+          //   빈 문자열이면 splitRegionHall 폴백 → 현행 동작과 동일.
+          hallName,
           // [v103] 실사업장 4필드 — 정보형 생성/발행 게이트용
           storeName:    _storeName,
           // [v77] 제목 끝 상호 표시 토글 — store_profiles.title_suffix_on. 서버(핸들러)가 resolveTitleSuffix로 방어.
@@ -10789,14 +10793,22 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
   const picked0 = pickSubRegion(storeRep, storeSub, subRotIdx, currentIndustry);  // [v-region] 업종 전략 주입
   const combinedRegion = picked0.region || storeRep;
   const hasRegion = combinedRegion.length > 0;
-  const canGo = !!picked && hasRegion;
+  // [WIRING-01C] 장례식장명 입력 — funeral + cat="장례식장" 카드 선택 시에만 노출·필수.
+  //   ⚠ 게이트 기준을 cat으로 잡는 이유: 백엔드 resolveFuneralIntent(funeral-prompts.js:137
+  //     HALL_INTENT_CATS=["장례식장"])와 동일 기준. id 기준으로 잡으면 프론트/백엔드 축이 갈라진다.
+  //   ⚠ 다른 funeral 9종·타 업종은 isHall=false → 입력칸 미렌더 + hallName="" → 현행 출력 무변화.
+  const [hallInput, setHallInput] = useState("");
+  const isHall = currentIndustry === "funeral" && picked?.cat === "장례식장";
+  const hallOk = !isHall || hallInput.trim().length > 0;   // 필수 입력 강제
+  const canGo = !!picked && hasRegion && hallOk;
   const complete = () => {
     if (!canGo) return;
     // 회전 인덱스 확정·증가(증가 전 값으로 region 재산출 — 미리보기와 동일 보장).
     let useIdx = subRotIdx;
     if (subRotList.length > 1) { try { useIdx = bumpSubRotIndex(subRotKey); } catch {} }
     const finalRegion = pickSubRegion(storeRep, storeSub, useIdx, currentIndustry).region || storeRep;  // [v-region]
-    if (onComplete) onComplete(picked, finalRegion);
+    // [WIRING-01C] 3번째 인자 = 사용자 입력 장례식장명(SoT). 비대상이면 항상 "".
+    if (onComplete) onComplete(picked, finalRegion, isHall ? hallInput.trim() : "");
   };
 
   // [v144] 업종별 항목 라벨 — lex().itemWord 단일 출처. restaurant=메뉴/legal=업무/의료=시술 자동.
@@ -10863,6 +10875,30 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
             );
           })}
         </div>
+
+        {/* ── [WIRING-01C] 장례식장명 — cat="장례식장" 선택 시에만 노출·필수 ── */}
+        {isHall && (
+          <>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "#E65100", margin: "18px 2px 8px" }}>
+              🏛️ 장례식장명 <span style={{ color: "#d32f2f", fontWeight: 900 }}>필수</span>
+            </div>
+            <div style={{ background: "#fff", borderRadius: 12,
+              border: hallInput.trim() ? "1.5px solid #e0d0f0" : "1.5px solid #FFB300",
+              padding: "14px 16px" }}>
+              <input
+                value={hallInput}
+                onChange={(e) => setHallInput(e.target.value)}
+                placeholder="예: 서울의료원 장례식장"
+                style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px",
+                  borderRadius: 8, border: "1.5px solid #e8e8ed", fontSize: 13.5,
+                  fontFamily: "inherit", color: "#1a1a2e", outline: "none" }}
+              />
+              <div style={{ marginTop: 8, fontSize: 11.5, color: "#8a5a00", lineHeight: 1.5 }}>
+                검색해 찾아오는 시설명입니다. 제목·본문에 그대로 안내됩니다. 지역명은 빼고 시설명만 입력하세요.
+              </div>
+            </div>
+          </>
+        )}
 
         {/* ── [v99] 발행지역 — 업체정보 자동 적용(읽기전용). 1계정=1지역전략이므로 입력 제거. ── */}
         <div style={{ fontSize: 12.5, fontWeight: 800, color: picked ? "#E65100" : "#bbb",
@@ -10984,7 +11020,9 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
               color: canGo ? "#fff" : "#aaa", fontSize: 13.5, fontWeight: 900,
               cursor: canGo ? "pointer" : "default", fontFamily: "inherit" }}>
             {canGo ? `${picked.name} 글 작성하기`
-              : !picked ? `${L_ITEM}을 먼저 선택하세요` : "업체정보에서 지역을 설정하세요"}
+              : !picked ? `${L_ITEM}을 먼저 선택하세요`
+              : !hasRegion ? "업체정보에서 지역을 설정하세요"
+              : "장례식장명을 입력하세요"}
           </button>
           )}
         </div>
@@ -12034,6 +12072,9 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
     //   재파싱(newParsed)은 채팅 자유입력 등 parsed.id가 없는 경로의 폴백으로만 사용.
     const finalTreatment = parsed.treatmentId  || newParsed.treatmentId;
     const finalName      = parsed.treatmentName || newParsed.treatmentName;
+    // [WIRING-01C] 장례식장명 = 사용자가 명시 입력한 사실값. 검색어 재파싱(newParsed) 결과가 아니다.
+    //   → parsed 단일 소스에서만 읽고, newParsed 폴백을 두지 않는다(삭제·변경 불가).
+    const finalHallName  = (parsed.hallName || "").trim();
     const autoBlogType   = s.type === "비교형" ? "compare"
                          : s.type === "후기형" ? "review"
                          : parseBlogTypeFromText(text);
@@ -12093,7 +12134,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
     addMsg({ role: "user", text: userMsgText });
     addMsg({ role: "assistant", text: `${displayTitle}\n${BLOGTYPE_LABEL[autoBlogType]} 글로 작성합니다.` });
     setStage("generating");
-    generate(finalTreatment, finalRegion, autoBlogType, autoTarget, overrideTitle, finalName);
+    generate(finalTreatment, finalRegion, autoBlogType, autoTarget, overrideTitle, finalName, finalHallName);
   };
 
   // ─────────────────────────────────────────────────────────
@@ -13600,12 +13641,13 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     }
                     setStage("treatment");
                   }}
-                  onComplete={(t, region) => {
+                  onComplete={(t, region, hallName) => {
                     // [v111] 페이지 전환 없이 버튼만 '작성 중'으로 변환 → 보드를 계속 마운트 유지.
                     //   showTreatmentSelect/calendarPrefill은 result 진입 시 정리(아래 useEffect). 여기선 stage만 generating으로.
                     setPendingTreatment(null);
                     addMsg({ role: "user", text: `${region} ${t.name}` });
-                    analyzeKeyword({ treatmentId: t.id, treatmentName: t.name, region }, t.name);
+                    // [WIRING-01C] hallName = 사용자 입력 SoT. parsed에 실어 handleAnalysisSelect까지 무손실 전달.
+                    analyzeKeyword({ treatmentId: t.id, treatmentName: t.name, region, hallName: hallName || "" }, t.name);
                   }}
                 />
               ) : stage === "analysis" && analysisData ? (
