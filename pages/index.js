@@ -4655,7 +4655,6 @@ const HELP_CONTENT = {
       ]},
       { h: "꼭 알아두세요", items: [
         "‘발행 N건’은 생성기에서 글을 만드는 횟수 기준입니다(발행 여부 무관).",
-        "결제 연동은 준비 중 — 업그레이드 시 안내 화면으로 이동합니다.",
       ]},
     ],
     banner: {
@@ -7749,7 +7748,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                     </div>
                   ) : (
                     <button className="planCta"
-                      onClick={() => { if (!isLoggedIn) { onLogin && onLogin(); } else { alert("결제 연동은 준비 중입니다. 곧 안내드리겠습니다."); } }}
+                      onClick={() => { if (!isLoggedIn) { onLogin && onLogin(); } else { alert("플랜 변경 안내를 위해 support@ai-post.ai 로 문의해 주세요."); } }}
                       style={{ width: "100%", padding: "9px 0", borderRadius: 10,
                         cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800,
                         border: p.highlight ? "none" : "1.5px solid #E8E0F4",
@@ -7788,9 +7787,6 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             · 발행 한도 — 각 플랜의 월 발행 건수는 결제 주기 시작 시 초기화되며 다음 달로 이월되지 않습니다.<br />
             · 청약철회 및 환불 — 환불정책에 따르며, 사용한 발행 건수만큼 공제 후 잔액을 환불합니다.<br />
             · 이용요금은 부가세 포함 금액입니다.
-          </div>
-          <div style={{ fontSize: 11, color: "#bbb", textAlign: "center", marginTop: 8 }}>
-            결제 연동은 준비 중입니다. 업그레이드 시 안내 화면으로 이동합니다.
           </div>
         </div>
       );
