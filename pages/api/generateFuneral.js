@@ -68,7 +68,9 @@ function buildHashtags(region, hallName) {
   const tags = [];
   const r = nospace(region);
   const h = nospace(hallName);
-  if (h) { tags.push(h); if (r) tags.push(`${r}${h}`); }
+  // [HASHTAG-01] region×hallName 결합 제거 — region은 검색 생활권, hallName은 실제 시설.
+  //   두 축을 붙이면 "#먹골역경희의료원장례식장"처럼 시설 소재지를 오표기한다.
+  if (h) tags.push(h);
   if (r) tags.push(`${r}상조`, `${r}장례식장`);
   tags.push("장례절차", "가족장", "장례비용");
   return Array.from(new Set(tags.filter(Boolean))).map((t) => `#${t}`).join(" ");
@@ -296,7 +298,7 @@ export default async function handleFuneral(req, res) {
       region,
       treatment: treatment.id,
       // [T-1] 제목 뒤 「｜상호」 부착. 상호 없음·길이 초과 시 원문 유지(제목 절단 없음).
-      title: appendBrandSuffix(pickTitle(treatment, region, hallName), storeName, "funeral"),
+      title: appendBrandSuffix(pickTitle(treatment, region, hallName, hallFacts), storeName, "funeral"),
       // [정합] 프론트(index.js)는 data.text / data.textMarkdown 을 본문으로 읽는다.
       //   content만 반환 시 결과화면·복사·저장 0자 (lawyer v143 동일 버그 방지).
       text:         out,
@@ -310,8 +312,24 @@ export default async function handleFuneral(req, res) {
   }
 }
 
-function pickTitle(treatment, region, hallName) {
-  const pats = treatment.titlePatterns || [];
+// [TITLE-01A] 비용형 제목 자격 — funeral_hall 한정.
+//   ★ parkingFee는 주차 요금이지 장례비용 Facts가 아니다. 자격 없음.
+//   ★ 현행 hallFacts 스키마에 검증된 장례비용 필드가 0개 → 사실상 비활성.
+//     미래 필드명을 임의로 만들지 않는다. 정식 비용 필드가 추가될 때 아래 배열에만 등록한다.
+const _COST_FACT_FIELDS = [];   // 비어 있음 = 비용형 제목 미발급
+
+function _costTitleEligible(hallFacts) {
+  if (!hallFacts || typeof hallFacts !== "object") return false;
+  return _COST_FACT_FIELDS.some((f) => String(hallFacts[f] || "").trim());
+}
+
+function pickTitle(treatment, region, hallName, hallFacts = null) {
+  let pats = treatment.titlePatterns || [];
+  // [TITLE-01A] funeral_hall만 조건화. 타 메뉴 무접촉.
+  if (treatment?.id === "funeral_hall" && !_costTitleEligible(hallFacts)) {
+    const filtered = pats.filter((t) => !/비용/.test(t));
+    if (filtered.length) pats = filtered;   // 전멸 시에는 원본 유지(제목 없음 방지)
+  }
   const t = pats[Math.floor(Math.random() * pats.length)] || "{region} 상조 장례 안내";
   return t
     .replace(/\{region\}/g, region)
