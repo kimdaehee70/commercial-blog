@@ -294,19 +294,25 @@ const pickRepRank = (r) => {
   const adminSeen = (r?.observation_count || 0) > 0;
   const userSeen = (r?.user_rank_count || 0) > 0;
   const src = r?.rep_src || (adminSeen ? 'admin' : (userSeen ? 'user' : null));
+  // [OBS-REP-POLICY-01] 대표 성과 등급 — 메인창 노출 > 관련도 순위 > 미노출 > 미관측.
+  //   메인창에 있으면 그것이 최고 성과다. 관련도 숫자는 버리지 않고 relValue 로 병행 보존한다.
+  //   ⚠ 가짜 순위(0위 등) 생성 금지. value=null + main=true 로만 표현한다(저장값 무접촉).
   if (src === 'admin') {
+    const rel = r?.observed_rank ?? null;
+    const isMain = r?.view_ok === true;
     return {
-      value: r?.observed_rank ?? null, src: 'admin', seen: true,
-      main: r?.view_ok === true, notFound: !!r?.admin_not_found,
+      value: isMain ? null : rel, relValue: rel, src: 'admin', seen: true,
+      main: isMain, notFound: !!r?.admin_not_found,
     };
   }
   if (src === 'user') {
+    const rel = r?.user_latest_rank ?? null;
     return {
-      value: r?.user_latest_rank ?? null, src: 'user', seen: true,
+      value: rel, relValue: rel, src: 'user', seen: true,
       main: false, notFound: !!r?.user_not_found,
     };
   }
-  return { value: null, src: null, seen: false, main: false, notFound: false };
+  return { value: null, relValue: null, src: null, seen: false, main: false, notFound: false };
 };
 
 // [세션84] 「밖」은 관련도 순위에만 쓰는 말이다. 메인창에 있는데 「밖」이라 적으면 읽는 사람이 모순을 본다.
@@ -336,11 +342,13 @@ const RankCell = ({ r }) => {
 };
 
 const rankTitle = (r) => {
-  const { value, src, seen, main } = pickRepRank(r);
+  const { value, relValue, src, seen, main } = pickRepRank(r);
   const head = !seen
     ? '미관측'
     : value == null
-      ? (r?.view_ok ? '메인창 노출 (순위 미측정)' : `순위 밖 (${src === 'user' ? '사용자' : '관리자'})`)
+      ? (main
+          ? `메인창 노출${relValue != null ? ` · 관련도 ${relValue}위도 확인됨` : ' (관련도 순위 없음)'}`
+          : `순위 밖 (${src === 'user' ? '사용자' : '관리자'})`)
       : `관련도 ${value}위${main ? ' · 메인창 노출' : ''} (${src === 'user' ? '사용자 등록' : '관리자 관측'})`;
   return (
     `${head}\n` +
@@ -1558,19 +1566,21 @@ export default function AdminPublish() {
                   <div style={S.repRow}>
                     <div style={S.repMain}>
                       <span style={S.repLabel}>대표 상태</span>
+                      {/* [OBS-REP-POLICY-01] 메인창 노출이 최고 성과 — rank 분기보다 먼저 판정한다.
+                          관련도 숫자는 버리지 않고 보조문구로 병기(Timeline 원본 무접촉). */}
                       {src == null ? (
                         <span style={S.repNone}>미관측</span>
+                      ) : mainOn ? (
+                        <span style={{ ...S.repState, color: T.ok }}>메인창 노출</span>
                       ) : rank != null ? (
                         <span style={{ ...S.repNum, color: src === 'user' ? T.accent : T.text }}>
                           관련도 {rank}<span style={S.repUnit}>위</span>
                         </span>
-                      ) : mainOn ? (
-                        <span style={{ ...S.repState, color: T.ok }}>메인창 노출</span>
                       ) : (
                         <span style={{ ...S.repState, color: T.textMuted }}>미노출</span>
                       )}
-                      {rank != null && mainOn && <span style={S.repSub}>메인창에도 노출</span>}
-                      {rank == null && mainOn && <span style={S.repSub}>관련도 순위 없음</span>}
+                      {mainOn && rank != null && <span style={S.repSub}>관련도 {rank}위도 확인됨</span>}
+                      {mainOn && rank == null && <span style={S.repSub}>관련도 순위 없음</span>}
                     </div>
                     <div style={S.repSide}>
                       <div style={S.repMeta}>

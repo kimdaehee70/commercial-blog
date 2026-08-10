@@ -52,8 +52,8 @@
 // 55차 v0.2: Bearer 토큰 검증 + OWNER_UID 가드
 // 48차 v0.1: publish_metrics 단일 spine 통일
 
-import { supabaseAdmin } from '../../../lib/supabaseAdmin';
-import { requireOwner } from '../../../lib/guards';
+import { supabaseAdmin } from '../../lib/supabaseAdmin';
+import { requireOwner } from '../../lib/guards';
 
 // ── 전량 조회 헬퍼 ────────────────────────────────────────────────────────
 // builder 는 매 호출 새 쿼리를 반환해야 한다(range 누적 방지).
@@ -79,7 +79,7 @@ async function fetchAll(builder) {
 const hasUrl = (r) => !!String(r?.naver_post_url || '').trim();
 
 const SORTS = new Set(['recent', 'oldest', 'published_recent', 'obs_recent', 'rank_desc', 'rank_asc', 'queue']);
-const STATUSES = new Set(['all', 'published', 'draft', 'observed', 'unobserved', 'user_only', 'rank_out', 'due', 'user_notfound']);
+const STATUSES = new Set(['all', 'published', 'draft', 'observed', 'unobserved', 'user_only', 'rank_out', 'due']);
 
 // ── Queue(E-1) ───────────────────────────────────────────────────────────
 // 관측 주기는 데이터의 성질에서 나온다. 관측자의 의지에서 나오지 않는다(문서05 §4).
@@ -87,7 +87,9 @@ const DAY = 864e5;
 const DUE_LIMIT = 20;                 // 하루 due 총량 상한. 초과분은 익일 이월.
 const SLOT_NEW = 10;                  // 신규(due) 슬롯 — 지연 재고가 큐를 독점하는 것을 막는다
 const SLOT_OVER = 10;                 // 지연(overdue) 슬롯
-const QUEUE_WINDOW = 30;              // 운영 Queue 창(일). 초과분은 archived — 조회·분석은 계속 가능
+const QUEUE_WINDOW = 30;
+const MISS_CLOSE = 3;                 // 관측 종료 조건 ① 미노출 연속 회차
+const MISS_MIN_DAYS = 7;              // 관측 종료 조건 ② 발행 후 최소 경과일 — ①과 AND 조건              // 운영 Queue 창(일). 초과분은 archived — 조회·분석은 계속 가능
 const STEPS = [1, 2, 5, 7];           // 주기 사다리 — 급변 시 1단계 앞당김
 const dayOf = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
@@ -158,6 +160,17 @@ export default async function handler(req, res) {
       if (!userLatestMap[pid]) userLatestMap[pid] = u;
     }
 
+
+    // [세션86] 미노출 연속 회차 — 「1회 미노출 = 소멸」 판정을 막는다.
+    //   발행 직후 미노출은 색인 지연일 수 있다. 저장값(fossil)은 그대로 두고 Queue 해석만 완화한다.
+    const missStreak = {}, streakSealed = {};
+    for (const o of obs) {
+      const pid = o.publish_id;
+      if (streakSealed[pid]) continue;
+      if (o.alive_status === 'fossil') missStreak[pid] = (missStreak[pid] || 0) + 1;
+      else streakSealed[pid] = true;
+    }
+
     // 4. baseline 흡수 — published.source_post_id 가 가리키는 baseline 행 제거.
     const absorbed = new Set();
     for (const r of data) if (r.source_post_id) absorbed.add(r.source_post_id);
@@ -180,26 +193,7 @@ export default async function handler(req, res) {
           observation_count: cnt,
           user_rank_count: uCnt,
           obs_total: cnt + uCnt,
-          // [v0.11] 사용자 「미발견」 정규화 — 저장값이 null 이든 0 이든 순위 축에 넣지 않는다.
-          //   0위로 읽히면 평균순위·1페이지 집계가 통째로 오염된다. 미발견은 별도 축이다.
-          user_latest_rank: (um && um.rank != null && um.rank !== 0) ? um.rank : null,
-          user_not_found: !!(um && (um.rank == null || um.rank === 0)),
-          // [v0.12] 관리자 미발견 — 관측은 했는데 순위도 메인창도 없다. 사용자 「찾지 못했어요」와 같은 뜻이다.
-          //   입력 주체가 달라도 사실은 하나다: 「봤는데 없었다」. 축을 나누면 검증 대상이 두 곳으로 흩어진다.
-          admin_not_found: cnt > 0 && (m?.observed_rank ?? null) == null
-            && m?.view_ok !== true && m?.related_ok !== true,
-          // [v0.13] 대표값 = 최신 입력 우선 (DEC-006 유지 · 저장 축은 그대로 분리).
-          //   운영에서 진실은 「가장 최근에 검색한 결과」다. 관리자 값이 오래됐는데도 사용자의
-          //   오늘 검색 결과를 덮는다면, 화면은 과거를 보여주면서 현재라고 말하게 된다.
-          //   src 는 출처 표시(운영자 전용). 저장 위치를 바꾸는 값이 아니다.
-          rep_src: (() => {
-            const aT = m?.observed_date ? new Date(m.observed_date).getTime() : null;
-            const uT = um?.checked_at ? new Date(um.checked_at).getTime() : null;
-            if (aT == null && uT == null) return null;
-            if (aT == null) return 'user';
-            if (uT == null) return 'admin';
-            return uT > aT ? 'user' : 'admin';   // 동시각이면 관리자(확정 관측)를 대표로 둔다
-          })(),
+          user_latest_rank: um?.rank ?? null,
           user_latest_keyword: um?.keyword || null,
           user_latest_at: um?.checked_at || null,
           status: m?.alive_status || null,
@@ -233,10 +227,16 @@ export default async function handler(req, res) {
 
       const pubAt = r.published_at || r.created_at;
       if (!hasUrl(r) || !pubAt) continue;                  // 미발행 → Queue 밖
-      if (r.status === 'fossil') { r.queue_state = 'closed'; continue; }  // 관측 종료
+      const src = r.source_post_id || null;
 
       const lastObs = r.latest_observed_at ? new Date(r.latest_observed_at).getTime() : null;
       const elapsed = (NOW - new Date(pubAt).getTime()) / DAY;
+
+      // 관측 종료 — 미노출 연속 3회 「그리고」 발행 후 7일 경과. 둘 다 충족해야 닫는다.
+      //   한쪽만으로 닫으면 색인 지연을 소멸로 오기록한다. 생존 기간이 실제보다 짧게 남는다.
+      const streak = (missStreak[r.id] != null ? missStreak[r.id] : (src ? missStreak[src] : 0)) || 0;
+      r.miss_streak = streak;
+      if (streak >= MISS_CLOSE && elapsed >= MISS_MIN_DAYS) { r.queue_state = 'closed'; continue; }
 
       // 운영 창 밖 — 큐에서만 뺀다. 관측 이력·분석 대상에서 제외하는 것이 아니다.
       if (elapsed > QUEUE_WINDOW) { r.queue_state = 'archived'; continue; }
@@ -306,13 +306,6 @@ export default async function handler(req, res) {
     const status = STATUSES.has(qp.status) ? qp.status : 'all';
     const kw = String(qp.q || '').trim().toLowerCase();
     const industry = String(qp.industry || '').trim();
-    // [v0.10] 대분류 조회 — industries=a,b,c (industry 단일값과 병용 가능, OR 결합).
-    //   화면(대분류 select)이 카탈로그 category → 코드 목록을 풀어 보낸다.
-    //   서버는 카탈로그를 모른다. 분류 체계는 화면 SoT(lib/industry-catalog.js) 하나로 유지한다.
-    const industrySet = new Set(
-      String(qp.industries || '').split(',').map((v) => v.trim()).filter(Boolean)
-    );
-    if (industry) industrySet.add(industry);
     const from = qp.from ? new Date(qp.from).getTime() : null;
     const to = qp.to ? new Date(qp.to).getTime() + 864e5 - 1 : null;
 
@@ -324,18 +317,12 @@ export default async function handler(req, res) {
       if (status === 'user_only' && !(r.user_rank_count > 0 && r.observation_count === 0)) return false;
       // 화면에는 due 만 노출한다. 전체 목록을 매일 보여주면 Queue 의 의미가 사라진다(문서05 §3-3).
       if (status === 'due' && !(r.queue_state === 'due' || r.queue_state === 'overdue')) return false;
-      // 「봤는데 없었다」 — 사용자 확인분 + 관리자 관측분 둘 다. 엔진 검증 1순위 대상이다.
-      if (status === 'user_notfound') {
-        const nf = r.rep_src === 'admin' ? r.admin_not_found
-          : r.rep_src === 'user' ? r.user_not_found : false;
-        if (!nf) return false;
-      }
       if (status === 'rank_out') {
         const seen = r.observation_count > 0 || r.user_rank_count > 0;
         const val = r.observation_count > 0 ? r.observed_rank : r.user_latest_rank;
         if (!seen || val != null) return false;
       }
-      if (industrySet.size > 0 && !industrySet.has(r.industry)) return false;
+      if (industry && r.industry !== industry) return false;
       if (kw) {
         const hay = `${r.title || ''} ${r.industry || ''} ${r.region || ''} ${r.treatment_name || ''} ${r.observed_keyword || ''} ${r.id}`.toLowerCase();
         if (!hay.includes(kw)) return false;
@@ -353,12 +340,23 @@ export default async function handler(req, res) {
     const sort = SORTS.has(qp.sort) ? qp.sort : 'recent';
     const ts = (v) => (v ? new Date(v).getTime() : 0);
     const repRank = (r) => (r.observation_count > 0 ? r.observed_rank : (r.user_rank_count > 0 ? r.user_latest_rank : null));
+    // [OBS-REP-POLICY-01] 성과등급 — 메인창 노출 > 관련도 순위 > 미노출 > 미관측.
+    //   정렬 전용 파생값. observed_rank 에 가짜 숫자(0위 등)를 넣지 않는다(저장값 무접촉).
+    //   tier 1(관련도) 내부에서만 기존 숫자 비교를 유지한다.
+    const repTier = (r) => {
+      if (r.view_ok === true) return 0;                              // 메인창 노출
+      if (repRank(r) != null) return 1;                              // 관련도 순위 있음
+      if ((r.observation_count || 0) + (r.user_rank_count || 0) > 0) return 2; // 관측했으나 미노출
+      return 3;                                                      // 미관측
+    };
     const cmp = {
       recent: (a, b) => ts(b.created_at) - ts(a.created_at),
       oldest: (a, b) => ts(a.created_at) - ts(b.created_at),
       published_recent: (a, b) => ts(b.published_at || b.created_at) - ts(a.published_at || a.created_at),
       obs_recent: (a, b) => ts(b.latest_observed_at) - ts(a.latest_observed_at),
       rank_desc: (a, b) => {
+        const at = repTier(a), bt = repTier(b);
+        if (at !== bt) return at - bt;                 // 메인 → 관련도 → 미노출 → 미관측
         const av = repRank(a), bv = repRank(b);
         if (av == null && bv == null) return ts(b.created_at) - ts(a.created_at);
         if (av == null) return 1;
@@ -372,6 +370,8 @@ export default async function handler(req, res) {
         return String(a.next_due_at || '9999').localeCompare(String(b.next_due_at || '9999'));
       },
       rank_asc: (a, b) => {
+        const at = repTier(a), bt = repTier(b);
+        if (at !== bt) return at - bt;                 // 메인 → 관련도 → 미노출 → 미관측
         const av = repRank(a), bv = repRank(b);
         if (av == null && bv == null) return ts(b.created_at) - ts(a.created_at);
         if (av == null) return 1;
@@ -390,68 +390,13 @@ export default async function handler(req, res) {
 
     const industries = Array.from(new Set(merged.map((r) => r.industry).filter(Boolean))).sort();
 
-    // [v0.10] 업종별 집계 — 필터 적용 후(filtered) 기준. 대분류로 좁힌 뒤 어느 업종이 문제인지 바로 본다.
-    //   노출 판정 = 메인창 노출(view_ok) 또는 순위 존재. 관측 없는 글은 분모에서 제외한다.
-    //   대표 순위 = 관리자 관측 우선, 없으면 사용자 관측(목록/상세와 동일 규칙).
-    // 대표 순위·대표 미발견 — 전부 rep_src(최신 입력) 기준. 화면·통계가 같은 규칙을 쓴다.
-    const rankOf = (r) => (r.rep_src === 'admin' ? r.observed_rank
-      : r.rep_src === 'user' ? r.user_latest_rank : null);
-    const notFoundOf = (r) => (r.rep_src === 'admin' ? !!r.admin_not_found
-      : r.rep_src === 'user' ? !!r.user_not_found : false);
-    const statMap = {};
-    for (const r of filtered) {
-      const key = r.industry || '(미지정)';
-      const st = statMap[key] || (statMap[key] = {
-        industry: key, total: 0, published: 0, observed: 0,
-        exposed: 0, rank_out: 0, not_found: 0, top1: 0, page1: 0, _rankSum: 0, _rankCnt: 0,
-      });
-      st.total += 1;
-      if (hasUrl(r)) st.published += 1;
-      if (notFoundOf(r)) st.not_found += 1;
-      if (r.obs_total > 0) {
-        st.observed += 1;
-        const rk = rankOf(r);
-        // 노출 판정도 대표 축 기준. 관리자 view_ok 는 관리자가 대표일 때만 유효하다.
-        const seen = rk != null || (r.rep_src === 'admin' && (r.view_ok === true || r.related_ok === true));
-        if (seen) st.exposed += 1; else st.rank_out += 1;
-        if (typeof rk === 'number') {
-          st._rankSum += rk; st._rankCnt += 1;
-          if (rk === 1) st.top1 += 1;
-          if (rk <= 10) st.page1 += 1;
-        }
-      }
-    }
-    const industry_stats = Object.values(statMap).map((st) => {
-      const { _rankSum, _rankCnt, ...rest } = st;
-      return {
-        ...rest,
-        avg_rank: _rankCnt > 0 ? Math.round((_rankSum / _rankCnt) * 10) / 10 : null,
-        exposure_rate: st.observed > 0 ? Math.round((st.exposed / st.observed) * 1000) / 10 : null,
-      };
-    }).sort((a, b) => b.total - a.total);
-    // 합계 — 대분류 단위 건강도. 업종 행의 단순 합이며 별도 재계산이 아니다.
-    const industry_total = industry_stats.reduce((acc, st) => ({
-      total: acc.total + st.total, published: acc.published + st.published,
-      observed: acc.observed + st.observed, exposed: acc.exposed + st.exposed,
-      rank_out: acc.rank_out + st.rank_out, not_found: acc.not_found + st.not_found,
-      top1: acc.top1 + st.top1, page1: acc.page1 + st.page1,
-    }), { total: 0, published: 0, observed: 0, exposed: 0, rank_out: 0, not_found: 0, top1: 0, page1: 0 });
-    industry_total.exposure_rate = industry_total.observed > 0
-      ? Math.round((industry_total.exposed / industry_total.observed) * 1000) / 10 : null;
-
     return res.status(200).json({
       ok: true,
       rows,
       summary,
       page: { page, size, total: filtered.length, total_pages: totalPages },
-      filters: {
-        status, sort, q: qp.q || '', industry,
-        industries: Array.from(industrySet),
-        from: qp.from || '', to: qp.to || '',
-      },
+      filters: { status, sort, q: qp.q || '', industry, from: qp.from || '', to: qp.to || '' },
       industries,
-      industry_stats,
-      industry_total,
       scope: { source_rows: data.length, merged_rows: merged.length, absorbed: absorbed.size },
       verified: { auth_user_id: authUserId, is_owner: true },
     });
@@ -460,3 +405,5 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 }
+
+export async function getServerSideProps() { return { props: {} }; }
