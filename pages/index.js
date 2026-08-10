@@ -10590,6 +10590,11 @@ export default function Home() {
         if (data?.error === "MENU_MAPPING_FAILED") {
           throw new Error(data.message || "선택한 메뉴를 인식하지 못했습니다. 메뉴를 다시 선택해 주세요.");
         }
+        // [MISMATCH-GUARD-01] 장례식장 실명 요청 미매칭(422) → 영문 코드 노출 금지, message만 표시.
+        //   MENU_MAPPING_FAILED와 동형. catch가 removeLoading/stage/버튼잠금 복구 처리.
+        if (data?.error === "HALL_FACTS_NOT_FOUND") {
+          throw new Error(data.message || "등록된 장례식장 정보와 입력하신 이름이 일치하지 않습니다. 업체정보에 등록한 이름과 똑같이 입력해 주세요.");
+        }
         throw new Error(data.error || "생성 중 오류가 발생했습니다.");
       }
 

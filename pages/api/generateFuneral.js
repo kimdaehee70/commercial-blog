@@ -247,6 +247,39 @@ export default async function handleFuneral(req, res) {
     // [C-3-2] 시설 데이터 매칭 — 완전 일치 1건만. 미일치 시 null(일반 안내로 생성).
     const hallFacts = matchFuneralHall(req, hallName);
     console.log("[C-3-2] hallFacts:", hallFacts ? `matched(${hallFacts.name})` : "none");
+
+    // ───────── [MISMATCH-GUARD-01] 실명 시설 요청의 fail-open 차단 ─────────
+    // 문제: hallFacts=null이면 _flowHall 무Facts 지시 / 범용 판단자산 재주입 /
+    //   service_hall 정적 FAQ(미검증 화장예약·이송비용) 부활 — 잠금 3개가 동시에 풀린다.
+    //   그런데 hallRule·pickTitle·buildHashtags는 hallName 조건이라 실명은 그대로 살아남는다.
+    //   결과 = 실명이 붙은 미검증 글. 무명 일반글보다 나쁘다. → GPT 호출 전 차단.
+    // 게이트 3조건(㉯만 정확히 차단):
+    //   ① bodyHallName — 사용자가 명시 입력한 값만. _split.hall 자동 승격(㉰)은 대상 아님
+    //      (사용자가 입력한 적 없는 값으로 차단하면 원인을 설명할 수 없다).
+    //   ② funeralHalls.length > 0 — 시설 미등록 계정(㉮)은 차단 대상 아님.
+    //      등록이 0건이면 애초에 매칭 대상이 없다. 차단하면 funeral_hall 메뉴가 전면 불능이 된다.
+    //   ③ hallFacts === null — 등록은 돼 있는데 이름이 어긋난 경우.
+    // ★ 422 코드를 보존하는 이유: 미매칭 발생 자체가 aliases[] 설계의 실측 근거다.
+    //   어떤 이름이 얼마나 어긋나는지 모르면 별칭에 무엇을 넣을지 결정할 수 없다.
+    const _guardHalls = req?.storeRuntime?.store?.visit_info?.funeralHalls;
+    if (
+      String(bodyHallName || "").trim() &&
+      Array.isArray(_guardHalls) && _guardHalls.length > 0 &&
+      hallFacts === null
+    ) {
+      console.warn("[MISMATCH-GUARD-01] blocked:", {
+        input: hallName,
+        registered: _guardHalls.map((h) => h && h.name).filter(Boolean),
+      });
+      return res.status(422).json({
+        error: "HALL_FACTS_NOT_FOUND",
+        message:
+          `등록된 장례식장 정보와 입력하신 「${hallName}」이(가) 일치하지 않습니다.\n` +
+          `등록된 이름: ${_guardHalls.map((h) => h && h.name).filter(Boolean).join(" / ")}\n` +
+          `업체정보에 등록한 이름과 똑같이 입력해 주세요.`,
+      });
+    }
+
     const userPrompt = buildPrompt({ treatment, region, storeName, hallName, hallFacts });
 
     // ── GPT 호출 (단일 호출 — funeral-prompts 설계 그대로. 섹션 루프 미이식) ──
