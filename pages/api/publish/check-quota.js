@@ -100,6 +100,10 @@ export default async function handler(req, res) {
     //   → URL 등록/발행 여부 무관. 생성 시점(created_at)에 차감/차단.
     //   helper countGeneratedInPeriod(baseline + created_at) 사용. fallback도 동일 기준.
     //   (구: countPublishedInPeriod / published + published_at — 생성을 못 막던 원인. 폐기)
+    // [세션135 · QUOTA-SOFTDELETE-POLICY-01 확정] deleted_at 을 의도적으로 필터하지 않는다.
+    //   삭제된 글도 사용량에 계속 포함된다(정본 countGeneratedInPeriod / 아래 fallback 모두 동일).
+    //   삭제를 quota 복구로 인정하면 생성 → 삭제 → 재생성 우회가 열린다. 산식 변경 금지.
+    //   보상은 삭제가 아니라 별도 크레딧으로 → QUOTA-CREDIT-01 (결제 후).
     // [B-3] 기간 산정 — 구독 우선, 없으면 KST 캘린더 월 폴백.
     //   resolveBillingPeriod 내부 조회 실패 시에도 캘린더 폴백을 돌려주므로
     //   fail-open(quota 열림)이 발생하지 않는다.
@@ -120,6 +124,8 @@ export default async function handler(req, res) {
       // fallback: helper 장애 시 quota 시스템 생존용 직접 쿼리.
       // [v138] 정본(countGeneratedInPeriod) 기준과 1:1 통일 — baseline + created_at.
       //   helper 장애 시에도 생성 글을 정확히 세어 fail-open(quota 열림) 방지.
+      //   [세션135] deleted_at 미필터 — 정본과 동일. 여기에만 필터가 들어가면
+      //   helper 장애 시에만 quota 가 소급 복구되는 간헐 결함이 된다.
       const { count, error: cntErr } = await supabase
         .from('publish_history')
         .select('id', { count: 'exact', head: true })
