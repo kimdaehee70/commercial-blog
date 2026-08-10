@@ -1,4 +1,16 @@
 // pages/api/admin/dashboard.js
+// v1.1 (세션134): ADMIN-BASELINE-ROWCAP-01 — 이 파일의 무제한 SELECT 전량 제거.
+//   - S133에서 published 축만 .eq로 좁혀 막았고, baseline 축(rawPosts)은 상한에 걸린 채 이월됐다.
+//     baseline 1620행 > 1000 → draft_count(917 오표시) / quota gen_monthly 과소집계.
+//   - baseline은 .eq만으로는 1000을 못 넘긴다(모집단 자체가 1620). 두 축으로 분해한다:
+//     · draft_count = head count(exact) — 행을 아예 가져오지 않는다. 상한 무관.
+//     · gen_monthly = publish_status='baseline' AND created_at >= monthStart 로 DB에서 좁힌다.
+//       "이번 달 생성"이 원래 모집단이므로 이건 상한 회피가 아니라 정의 교정이다.
+//   - 남은 전량 SELECT(accounts / published / metrics)는 fetchAll 페이지네이션으로 통일.
+//     ★ .range(0,9999) 같은 고정 상한 확장이 아니라 소진까지 수집이다(accounts-usage.js v0.7 동일 패턴).
+//     metrics가 1000을 넘는 순간 observedCount가 잘려 S133에서 고친 unobserved_count가 다시 음수가 된다.
+//     같은 결함 계열을 반쪽만 막지 않는다.
+//   - rawPosts 변수 제거. 스키마·응답 키 무변경. 추가 쿼리 +1(head count).
 // v1.0 (세션78): 발행/quota 축 분리. 발행 KPI = published, quota 사용량 = baseline.
 //   - publish_history 는 글 1건 = 2행(baseline 생성 / published URL등록). 실측 1475 : 114 : 2.
 //   - 발행 실적(total/monthly/today_posts·최근발행·관측 대상)은 published 만. baseline·test 제외.
@@ -45,6 +57,21 @@ import { requireOwner } from '../../../lib/guards';
 
 const RECENT_LIMIT = 10;
 
+// [ADMIN-BASELINE-ROWCAP-01] PostgREST 기본 1000행 상한 회피 — 소진까지 수집.
+//   빌더를 매 회차 새로 만든다(같은 빌더 재사용 시 range가 누적돼 조용히 틀린다).
+const PAGE = 1000;
+async function fetchAll(buildQuery) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
@@ -67,11 +94,12 @@ export default async function handler(req, res) {
     ).toISOString();
 
     // 1. accounts 전체
-    const { data: accounts, error: accErr } = await supabaseAdmin
-      .from('accounts')
-      .select('id, email, display_name, plan, role, status, created_at')
-      .order('id', { ascending: true });
-    if (accErr) throw accErr;
+    const accounts = await fetchAll(() =>
+      supabaseAdmin
+        .from('accounts')
+        .select('id, email, display_name, plan, role, status, created_at')
+        .order('id', { ascending: true })
+    );
 
     // 2. publish_history — 발행 기준 정합 (세션78)
     //   publish_history 는 글 1건을 2행으로 남긴다: baseline(생성) → published(URL 등록).
@@ -79,11 +107,27 @@ export default async function handler(req, res) {
     //   지금까지 전 행을 세어 발행 KPI·quota 사용량이 10배 이상 부풀려져 있었다.
     //   → '발행' = publish_status==='published' 하나로 고정. baseline·test 는 집계에서 제외.
     //   (회원 「최근발행」·admin/publish 목록과 동일 기준)
-    const { data: rawPosts, error: pErr } = await supabaseAdmin
+    //   [세션134 · ADMIN-BASELINE-ROWCAP-01] 조건 없는 전량 SELECT(rawPosts) 제거.
+    //   이 쿼리의 유일한 용도는 baseline 축 2개(draft_count / gen_monthly)였고,
+    //   1620행이 1000행 상한에 잘려 draft_count 917 오표시 + quota 과소집계를 만들고 있었다.
+    //   행이 필요 없는 것은 count로, 이번 달만 필요한 것은 DB에서 기간으로 좁힌다.
+    const { count: draftCountRaw, error: dErr } = await supabaseAdmin
       .from('publish_history')
-      .select('id, account_id, title, industry, region, treatment_name, created_at, publish_status')
-      .order('created_at', { ascending: false });
-    if (pErr) throw pErr;
+      .select('id', { count: 'exact', head: true })
+      .eq('publish_status', 'baseline');
+    if (dErr) throw dErr;
+    const draftCount = draftCountRaw || 0;
+
+    //   quota 축 — 이번 달 생성분만. 전량을 받아 JS에서 거르던 것을 DB 조건으로 옮긴다.
+    //   모집단이 "이번 달 baseline"이므로 상한을 만들 일 자체가 없어진다(현재 149건 규모).
+    const baselineMonthRows = await fetchAll(() =>
+      supabaseAdmin
+        .from('publish_history')
+        .select('account_id, created_at')
+        .eq('publish_status', 'baseline')
+        .gte('created_at', monthStart)
+        .order('id', { ascending: true })
+    );
 
     // 2-b. published 축 분리 조회 (세션133 · ADMIN-UNOBSERVED-NEGATIVE-01)
     //   위 rawPosts 는 조건 없는 전량 SELECT 라 PostgREST 기본 1000행 상한에 걸린다.
@@ -91,25 +135,29 @@ export default async function handler(req, res) {
     //   「잘린 1000행 안에서 published 필터」가 되어 분모만 축소됐다(실측: published 135 → 83).
     //   분자 observedCount 는 publish_metrics 정본(135)이므로 83-135 = -52.
     //   → published 는 DB 단계에서 .eq 로 좁혀 상한 자체를 만들지 않는다. 고정 상한 확장(.range)은 재발 예약이라 채택하지 않는다.
-    //   ⚠ baseline 축(draftCount / quota gen_monthly)은 이번 패치 범위 밖 — rawPosts 그대로 유지.
-    //      baseline 1620행도 동일 상한에 걸려 있음. 별도 축(ADMIN-BASELINE-ROWCAP-01)으로 이월.
-    const { data: publishedPosts, error: pubErr } = await supabaseAdmin
-      .from('publish_history')
-      .select('id, account_id, title, industry, region, treatment_name, created_at, publish_status')
-      .eq('publish_status', 'published')
-      .order('created_at', { ascending: false });
-    if (pubErr) throw pubErr;
-
-    const posts = publishedPosts || [];
-    const draftCount = (rawPosts || []).filter((p) => p.publish_status === 'baseline').length;
+    //   ※ S133이 남긴 baseline 이월분은 세션134에서 CLOSE(위 2번 블록).
+    //   [세션134] published도 언젠가 1000을 넘는다. .eq는 지금 유효할 뿐 영구 방어가 아니다.
+    const posts = await fetchAll(() =>
+      supabaseAdmin
+        .from('publish_history')
+        .select('id, account_id, title, industry, region, treatment_name, created_at, publish_status')
+        .eq('publish_status', 'published')
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+    );
 
     // 3. publish_metrics 전체
-    const { data: metrics, error: mErr } = await supabaseAdmin
-      .from('publish_metrics')
-      .select('publish_id, observed_date, alive_status, observed_rank, observed_keyword, days_since_publish, created_at, rank_detail')
-      .order('observed_date', { ascending: false })
-      .order('created_at', { ascending: false });
-    if (mErr) throw mErr;
+    //   [세션134] 무제한 SELECT였다. metrics가 1000을 넘으면 observedCount가 잘리고
+    //   S133에서 고친 unobserved_count가 다시 음수가 된다(분자만 축소되는 대칭 결함).
+    //   id 보조정렬 — 동일 observed_date/created_at 다건에서 페이지 경계가 흔들리지 않게 한다.
+    const metrics = await fetchAll(() =>
+      supabaseAdmin
+        .from('publish_metrics')
+        .select('id, publish_id, observed_date, alive_status, observed_rank, observed_keyword, days_since_publish, created_at, rank_detail')
+        .order('observed_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+    );
 
     // 4. 계정별 집계 — 축이 둘이다(세션78).
     //   · quota 사용량 = baseline(생성) — check-quota v138 정본과 동일 기준.
@@ -123,11 +171,10 @@ export default async function handler(req, res) {
       }
       return acctStats[aid];
     };
-    // quota 축 — baseline 기준
-    for (const p of rawPosts || []) {
-      if (!p.account_id || p.publish_status !== 'baseline') continue;
-      const s = touch(p.account_id);
-      if (p.created_at && p.created_at >= monthStart) s.gen_monthly += 1;
+    // quota 축 — baseline 기준. [세션134] 기간 필터는 이미 DB에서 적용됨(baselineMonthRows).
+    for (const p of baselineMonthRows) {
+      if (!p.account_id) continue;
+      touch(p.account_id).gen_monthly += 1;
     }
     // 발행 축 — published 기준
     for (const p of posts || []) {
