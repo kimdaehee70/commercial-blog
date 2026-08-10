@@ -1702,25 +1702,37 @@ export default function AdminPublish() {
                           {fmtDate(t.recorded_at)}
                         </span>
                       </div>
-                      {(t.observed_rank != null || t.rank_detail) && (
-                        <div style={S.tlNote}>
-                          {t.observed_rank != null && (
-                            <strong>
-                              {isUser ? '관련도 ' : '대표 '}{t.observed_rank}위
-                            </strong>
-                          )}
-                          {trend && (
-                            <span style={{ ...S.trendBadge, color: trend.color }}>
-                              {trend.icon} {trend.label}
-                            </span>
-                          )}
-                          {t.rank_detail && (
-                            <span style={{ color: T.textMuted, marginLeft: 6 }}>
-                              {rankDetailSummary(t.rank_detail)}
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      {/* [OBS-TIMELINE-SUMMARY-01] 저장된 관측 결과를 그대로 문구화한다.
+                          기존 조건은 rank_detail 이 {} 여도 truthy 라 빈 줄만 남았고, view_ok 는
+                          아예 표시되지 않았다 → memo 없는 관측은 날짜만 보였다.
+                          ⚠ 새 데이터·새 로직 없음. 이미 저장된 값 읽기만. 저장 스키마·서버 무접촉. */}
+                      {(() => {
+                        const rk = t.observed_rank;
+                        const main = !isUser && t.view_ok === true;
+                        const out = !isUser && t.alive_status === 'fossil';
+                        const label = isUser
+                          ? (rk != null ? `관련도 ${rk}위` : '순위 등록')
+                          : main ? '메인창 노출'
+                          : rk != null ? `관련도 ${rk}위`
+                          : out ? '미노출' : '미노출';
+                        const detail = rankDetailSummary(t.rank_detail);
+                        return (
+                          <div style={S.tlNote}>
+                            <strong style={{ color: main ? T.ok : T.textSoft }}>{label}</strong>
+                            {main && rk != null && (
+                              <span style={{ color: T.textMuted, marginLeft: 6 }}>관련도 {rk}위</span>
+                            )}
+                            {trend && (
+                              <span style={{ ...S.trendBadge, color: trend.color }}>
+                                {trend.icon} {trend.label}
+                              </span>
+                            )}
+                            {detail && (
+                              <span style={{ color: T.textMuted, marginLeft: 6 }}>{detail}</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {isUser && t.observed_keyword && (
                         <div style={S.tlMemo}>키워드 {t.observed_keyword}</div>
                       )}
