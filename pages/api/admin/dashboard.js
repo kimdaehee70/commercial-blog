@@ -188,9 +188,16 @@ export default async function handler(req, res) {
     }
 
     // 5. publish_id별 최신 metric 1건
+    // [세션135 · ADMIN-MAXUNOBS-DAYS-01] publish_metrics 는 baseline/test 행에도 붙는다(실측 baseline 4 / test 20 / published 338).
+    //   전량으로 분자를 만들면 published 모집단 밖 pid 가 섞여 observedCount 가 부풀고,
+    //   unobserved_count = 135 − 135 = 0 이 되어 실제 미관측 3건이 사라진다(집합 일치가 아니라 개수 우연).
+    //   실측: distinct pid 전량 135 / published 교집합 132 / published 총 135.
+    //   → 관측 분자는 published id 집합과 교집합한 뒤 만든다. (baseline id 폴백 가설은 실측 0건으로 기각)
+    const publishedIdSet = new Set((posts || []).map(p => p.id));
+    const metricsPub = (metrics || []).filter(m => m.publish_id && publishedIdSet.has(m.publish_id));
+
     const latestMetricByPid = {};
-    for (const m of metrics || []) {
-      if (!m.publish_id) continue;
+    for (const m of metricsPub) {
       if (!latestMetricByPid[m.publish_id]) latestMetricByPid[m.publish_id] = m;
     }
 
@@ -240,7 +247,8 @@ export default async function handler(req, res) {
     // 8. 최근 관측 N건
     const postById = {};
     for (const p of posts || []) postById[p.id] = p;
-    const recentObservations = (metrics || []).slice(0, RECENT_LIMIT).map(m => {
+    // [세션135] metricsPub — baseline/test 관측이 title=null 로 섞이던 것도 함께 제거
+    const recentObservations = metricsPub.slice(0, RECENT_LIMIT).map(m => {
       const p = postById[m.publish_id] || null;
       return {
         publish_id: m.publish_id,
@@ -266,7 +274,7 @@ export default async function handler(req, res) {
     // fossil 최근 7일: publish_metrics 중 alive_status='fossil' & observed_date 최근 7일 (publish_id 중복 제거)
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const fossilRecentPids = new Set();
-    for (const m of metrics || []) {
+    for (const m of metricsPub) {
       if (m.alive_status !== 'fossil') continue;
       const od = m.observed_date ? new Date(m.observed_date) : null;
       if (od && !Number.isNaN(od.getTime()) && od >= sevenDaysAgo) {
