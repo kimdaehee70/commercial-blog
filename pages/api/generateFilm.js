@@ -194,6 +194,12 @@ export default async function handleFilm(req, res) {
       workScope: String(workScope || "").replace(/\s+/g, " ").trim(),
       existingCondition: String(existingCondition || "").replace(/\s+/g, " ").trim(),
     };
+    // ★ [세션136 재수술/②] 제목을 섹션 루프 '앞'에서 확정한다.
+    //   QA FAIL 원인: 제목이 루프 뒤에 생성돼 프롬프트가 제목을 몰랐고, 제목 INTENT 가 본문을 지배하지 못했다.
+    //   buildTitle 자체는 무수정(titleEngine.js 무접촉). 생성 시점만 앞당긴다.
+    const title = buildTitle(region, treatment, site);
+    ctx.title = title;
+
     const systemPrompt = buildSystemPrompt(region, treatment, ctx);
 
     const writtenSections = new Set();
@@ -251,8 +257,7 @@ export default async function handleFilm(req, res) {
     // 위치블록 후단 1줄 (PATCH-07) — 출장업종 빈값 → 미삽입
     content = insertLocationBeforeHashtags(content, _locStore);
 
-    // ② 제목 3단 분기
-    const title = buildTitle(region, treatment, site);
+    // ② 제목 3단 분기 — 위 루프 전에서 이미 확정됨(재수술/②)
     const imageAlts = getImageAlts(region, treatment);
 
     // ── QC 로그 ──
@@ -266,6 +271,7 @@ export default async function handleFilm(req, res) {
     // [세션136/A] Facts 모드 — QA 판정 기준. facts=false 인데 본문에 목격 서술이 있으면 회귀다.
     console.log(`[QC][film] 범위: ${ctx.workScope || "미입력"} / 기존상태: ${ctx.existingCondition || "미입력"}`);
     console.log(`[QC][film] Facts 모드: ${hasFacts(ctx) ? "사례형(FACTS)" : "정보형(NO-FACTS)"}`);
+    console.log(`[QC][film] 제목 선확정: ${title}`);
     console.log(`[QC][film] 문장잘림 의심: ${countBrokenSentences(content)}건 (0이어야 정상)`);
 
     return res.status(200).json({
