@@ -6340,7 +6340,9 @@ const HUB_IDS = HUB_TABS.filter(t => !t.ext).map(t => t.id); // [v95] ext 탭은
 //   제목은 사용자가 입력하지 않는다 — 버튼이 곧 제목이고, 문구는 서버(lib/supportKinds)가 소유한다.
 //   ★ 별도 컴포넌트인 이유: 패널 렌더는 긴 삼항 체인 안이라 훅을 쓸 수 없다(AccountLeaveButton 과 동일 사정).
 // ──────────────────────────────────────────────────────────
-function SupportForm({ kind, compact = false }) {
+// [S132] btnLabel/placeholder 는 표시 전용 선택 인자다.
+//   kind 와 서버 제목(kindTitle)은 건드리지 않는다 — 같은 게시판에 다른 입구를 내는 용도.
+function SupportForm({ kind, compact = false, btnLabel, placeholder }) {
   const meta = SUPPORT_KINDS[kind] || {};
   const [open, setOpen] = useState(false);
   const [content, setContent] = useState("");
@@ -6392,17 +6394,17 @@ function SupportForm({ kind, compact = false }) {
             border: "none", fontFamily: "inherit", fontSize: 13.5, fontWeight: 800, color: "#fff",
             background: "linear-gradient(135deg,#7B1FA2,#9C27B0)",
             boxShadow: "0 6px 16px rgba(123,31,162,.22)" }}>
-          {meta.title || "신청하기"}
+          {btnLabel || meta.title || "신청하기"}
         </button>
       ) : (
         <div style={{ padding: "14px", background: "#fff", border: "1px solid #ece7f6", borderRadius: 12 }}>
           <div style={{ fontSize: 13.5, fontWeight: 900, color: "#2b2340", marginBottom: 8 }}>
-            {meta.title || "접수"}
+            {btnLabel || meta.title || "접수"}
           </div>
           <textarea
             value={content}
             onChange={(e) => { setContent(e.target.value); if (err) setErr(""); }}
-            placeholder="내용을 자유롭게 적어주세요."
+            placeholder={placeholder || "내용을 자유롭게 적어주세요."}
             rows={5}
             style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px",
               border: "1px solid #e0d5ef", borderRadius: 10, fontSize: 13, lineHeight: 1.7,
@@ -13077,16 +13079,17 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                   );
                 })()
               ) : (resultTab === "nav" && navView === "sujung") ? (
-                // [S132] 좌측 코치창 = 콘텐츠 오류·수정 안내(이미지 2장 /sujung-1~2.png). 교체는 파일만.
-                //   ★ 접수 버튼(SupportForm kind="content")은 support_requests.kind CHECK 확장 승인 후 연결.
+                // [S132] 좌측 코치창 = 콘텐츠 오류·수정 안내(이미지 1장 /sujung-1.png). 교체는 파일만.
                 <div style={{ padding: "12px 10px 24px", overflowY: "auto" }}>
-                  {[1, 2].map((n) => (
-                    <img key={"sj" + n} src={"/sujung-" + n + ".png"} alt={"콘텐츠 오류·수정 안내 " + n}
-                      onError={(e) => { e.currentTarget.style.display = "none"; }}
-                      style={{ width: "100%", height: "auto", display: "block", borderRadius: 12,
-                        border: "1px solid #ece7f6", marginTop: n === 1 ? 0 : 12 }} />
-                  ))}
-                  {/* [S132] 접수 버튼 자리 — CHECK 제약 확장 후 <SupportForm kind="content" compact /> */}
+                  <img src="/sujung-1.png" alt="콘텐츠 오류·수정 안내"
+                    onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    style={{ width: "100%", height: "auto", display: "block", borderRadius: 12,
+                      border: "1px solid #ece7f6" }} />
+                  {/* [S132] 접수 = 기존 불편사항 게시판(kind=issue)에 합류. 신규 kind/테이블 없음.
+                       버튼 문구만 콘텐츠 오류 맥락으로 바꾼다(표시 전용 — 서버 제목은 불편사항 문의). */}
+                  <SupportForm kind="issue" compact
+                    btnLabel="콘텐츠 오류·수정 요청"
+                    placeholder="수정이 필요하다고 생각되는 문장이나 내용을 그대로 붙여 넣어 주세요.&#10;가능하시면 어떤 부분이 잘못되었는지, 어떻게 수정하면 좋을지도 함께 적어주세요." />
                 </div>
               ) : (resultTab === "nav" && navView === "upjong") ? (
                 // [v-upjong] 좌측 코치창 = 내 업종 안내(이미지 2장). 교체는 파일만.
