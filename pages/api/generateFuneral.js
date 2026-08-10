@@ -71,7 +71,14 @@ function buildHashtags(region, hallName) {
   // [HASHTAG-01] region×hallName 결합 제거 — region은 검색 생활권, hallName은 실제 시설.
   //   두 축을 붙이면 "#먹골역경희의료원장례식장"처럼 시설 소재지를 오표기한다.
   if (h) tags.push(h);
-  if (r) tags.push(`${r}상조`, `${r}장례식장`);
+  // [HALL-REGION-01] 실명 시설이 있는 글에서는 "{생활권}장례식장" 태그를 만들지 않는다.
+  //   region=상조 서비스 생활권 / hallName=실제 시설 소재지 — 두 지역의 의미가 다르다.
+  //   "#중화동장례식장"은 경희의료원이 중화동에 있다는 사실 오표기가 된다.
+  //   ★ "{생활권}상조"는 유지 — 상조업체의 활동 지역이지 시설 소재지 주장이 아니다.
+  if (r) {
+    tags.push(`${r}상조`);
+    if (!h) tags.push(`${r}장례식장`);
+  }
   tags.push("장례절차", "가족장", "장례비용");
   return Array.from(new Set(tags.filter(Boolean))).map((t) => `#${t}`).join(" ");
 }
