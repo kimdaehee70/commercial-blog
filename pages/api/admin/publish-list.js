@@ -52,8 +52,8 @@
 // 55차 v0.2: Bearer 토큰 검증 + OWNER_UID 가드
 // 48차 v0.1: publish_metrics 단일 spine 통일
 
-import { supabaseAdmin } from '../../lib/supabaseAdmin';
-import { requireOwner } from '../../lib/guards';
+import { supabaseAdmin } from '../../../lib/supabaseAdmin';
+import { requireOwner } from '../../../lib/guards';
 
 // ── 전량 조회 헬퍼 ────────────────────────────────────────────────────────
 // builder 는 매 호출 새 쿼리를 반환해야 한다(range 누적 방지).
