@@ -1,5 +1,14 @@
 // pages/api/account/me.js
-// v0.5 — 80차 추가 (blog_accounts 응답 / publish_history GROUP BY)
+// v0.6 — 세션131 ME-USAGE-BASIS-01 (quota 블록 = 차단 미러)
+//
+// 변경 (v0.5 → v0.6):
+//   1) 사용량 분자: countPublishedInPeriod → countGeneratedInPeriod
+//   2) 기간: getMonthlyPeriodKST(자체계산·삭제) → resolveBillingPeriod (구독 우선/캘린더 폴백)
+//   3) 분모: 구독행 plan_id → accounts.plan (check-quota.js 차단 정본과 동일)
+//      · free plan 직접 SELECT 제거 → getPlan 단일화 (DB 쿼리 -1)
+//   4) quota 응답에 period_basis / bypass 추가 (가산 — 기존 키 전부 유지)
+//   5) 불일치 감지 로그 2종: accounts.plan 미등록 / subscriptions.plan_id ≠ accounts.plan
+//   ★ plan · subscription 응답 필드는 S130 계약(구독행 기준) 그대로 — 용도가 다르다
 //
 // 변경 (v0.4 → v0.5):
 //   1) blog_accounts 응답 신규 추가 (8.5 블록)
@@ -32,37 +41,52 @@
 // 호출처: pages/account.js v0.6 (79차 G3 가드 추가)
 
 import { createClient } from '@supabase/supabase-js';
-import { getActiveSubscription } from '../../../lib/billing/subscription';
-import { countPublishedInPeriod } from '../../../lib/billing/usage';
+// [ME-USAGE-BASIS-01] 기간 SoT 정정 — 자체 계산 폐기, check-quota와 동일 진입점 사용.
+import {
+  getActiveSubscription,
+  resolveBillingPeriod,
+  calendarMonthPeriod,
+} from '../../../lib/billing/subscription';
+// [ME-USAGE-BASIS-01] 사용량 SoT 정정.
+//   구: countPublishedInPeriod(published + published_at) — 차단 정본과 기준이 다르다.
+//   정본은 check-quota.js가 쓰는 countGeneratedInPeriod(baseline + created_at).
+//   기존 기준이면 사용자는 0/30을 보는데 생성 차단은 이미 진행된다.
+import { countGeneratedInPeriod } from '../../../lib/billing/usage';
 // [ME-SUBSCRIPTION-CONTRACT-01] plan 해석 SoT 통일.
 //   check-quota.js / admin/accounts-usage.js / me/subscription.js 3파일이 이미 getPlan을 쓴다.
 //   75차 "plans.js dependency 추가 없이 직접 SELECT" 결정은 free plan 조회 한정으로 남기고,
 //   구독 plan 해석은 정본(getPlan)으로 맞춘다. 동기 함수 — DB 쿼리 추가 없음.
-import { getPlan } from '../../../lib/billing/plans';
+import { getPlan, DEFAULT_PLAN_ID } from '../../../lib/billing/plans';
+import { OWNER_UID } from '../../../lib/constants';
 import { requireAuth } from '../../../lib/guards';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// KST 기준 달력 월 범위 산출
-// 반환: { period_start: ISOString, period_end: ISOString }
-//   period_start = 이번달 1일 00:00 KST
-//   period_end   = 다음달 1일 00:00 KST (배타)
-function getMonthlyPeriodKST(now = new Date()) {
-  // KST = UTC+9 — UTC 기준으로 이번달 1일 15:00Z (전일) = KST 이번달 1일 00:00
-  const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const y = kstNow.getUTCFullYear();
-  const m = kstNow.getUTCMonth(); // 0~11
+// [ME-USAGE-BASIS-01] getMonthlyPeriodKST 제거.
+//   자체 달력월 계산은 유료 구독기간(예: 8/20~9/20)을 무시했다.
+//   기간 산정은 lib/billing/subscription.resolveBillingPeriod 단일 진입점으로 이관
+//   (check-quota.js와 동일 함수 — 표시와 차단이 같은 경계를 쓴다).
 
-  // 이번달 1일 00:00 KST = UTC 전월 말일 15:00Z
-  const startUTC = new Date(Date.UTC(y, m, 1, 0, 0, 0) - 9 * 60 * 60 * 1000);
-  // 다음달 1일 00:00 KST = UTC 이번달 말일 15:00Z
-  const endUTC = new Date(Date.UTC(y, m + 1, 1, 0, 0, 0) - 9 * 60 * 60 * 1000);
+// 구독행의 current_period_* 가 null인 비정상 행 방어.
+//   usage.js는 문자열이 아니면 throw → quota 전체가 null이 되어 화면에서 사라진다.
+//   그 경우 캘린더 폴백으로 내려 표시를 살리고 basis를 낮춘다.
+function normalizePeriod(period) {
+  const ok =
+    typeof period?.start === 'string' &&
+    typeof period?.end === 'string' &&
+    !isNaN(new Date(period.start).getTime()) &&
+    !isNaN(new Date(period.end).getTime()) &&
+    new Date(period.start) < new Date(period.end);
 
-  return {
-    period_start: startUTC.toISOString(),
-    period_end: endUTC.toISOString(),
-  };
+  if (ok) return { start: period.start, end: period.end, basis: period.basis };
+
+  console.error(
+    '[me.js] invalid billing period, falling back to calendar:',
+    JSON.stringify({ start: period?.start, end: period?.end, basis: period?.basis })
+  );
+  const cal = calendarMonthPeriod();
+  return { start: cal.start, end: cal.end, basis: 'calendar' };
 }
 
 export default async function handler(req, res) {
@@ -136,45 +160,53 @@ export default async function handler(req, res) {
       console.error('[me.js] getActiveSubscription failed:', subErr.message);
     }
 
-    // 8) quota 계산 (helper — 74차 FREEZE)
-    //    달력 월 KST 기준
-    //    limit: subscription 있으면 plan.monthly_quota, 없으면 free plan(id='free') 조회
+    // ───────── 8) quota 계산 [ME-USAGE-BASIS-01] ─────────
+    // 원칙: quota 블록은 "차단(check-quota.js)이 내릴 판정"을 그대로 비춘다.
+    //   화면 숫자와 차단 숫자가 다르면 사용자는 0/30을 보면서 차단당한다.
+    //   따라서 분자·분모·기간 3개를 모두 check-quota.js와 같은 정본으로 맞춘다.
+    //     분자 = countGeneratedInPeriod (baseline + created_at)
+    //     분모 = accounts.plan → getPlan   ★ 구독행 plan_id 아님
+    //     기간 = resolveBillingPeriod (구독 우선 / 캘린더 폴백)
+    //
+    // ★ 분모가 accounts.plan인 이유: check-quota.js가 그것으로 차단한다.
+    //   구독행 plan_id로 표시하면 "보이는 한도"와 "막히는 한도"가 갈라진다.
+    //   둘이 어긋나는 상황 자체가 데이터 결함이므로 숨기지 않고 로그로 드러낸다.
+    //   (응답의 plan / subscription 필드는 구독 정보 표시용으로 그대로 유지 — 용도가 다르다)
     let quota = null;
     try {
-      const { period_start, period_end } = getMonthlyPeriodKST();
-      const used = await countPublishedInPeriod(account.id, period_start, period_end);
+      const period = normalizePeriod(await resolveBillingPeriod(account.id));
+      const used = await countGeneratedInPeriod(account.id, period.start, period.end);
 
-      // limit 결정
-      let limit = null;
-      let plan_id = null;
+      // 분모 — 차단 정본과 동일
+      const planId = account.plan || DEFAULT_PLAN_ID;
+      const quotaPlan = getPlan(planId);
 
-      if (plan?.monthly_quota != null) {
-        // 활성 구독 있음 → 해당 plan 사용
-        limit = plan.monthly_quota;
-        plan_id = plan.id;
-      } else {
-        // 구독 없음 → free plan 직접 조회 (75차 결정: plans.js dependency 추가 없이 직접 SELECT)
-        const { data: freePlan, error: planErr } = await supabase
-          .from('plans')
-          .select('id, monthly_quota')
-          .eq('id', 'free')
-          .maybeSingle();
-
-        if (planErr) {
-          console.error('[me.js] free plan select failed:', planErr.message);
-        }
-        if (freePlan) {
-          limit = freePlan.monthly_quota;
-          plan_id = freePlan.id;
-        }
+      // getPlan은 미등록 ID를 free로 조용히 폴백시킨다(null 아님) → 무음 강등 감지
+      if (account.plan && quotaPlan.id !== account.plan) {
+        console.error(
+          '[me.js] accounts.plan not found in plans:', account.plan,
+          '→ fallback', quotaPlan.id
+        );
       }
+      // 구독행 plan_id와 accounts.plan 불일치 = 지급/결제 반영 누락. 표시는 차단 기준을 따른다.
+      if (subscription?.plan_id && subscription.plan_id !== quotaPlan.id) {
+        console.error(
+          '[me.js] plan mismatch — subscriptions.plan_id:', subscription.plan_id,
+          '/ accounts.plan:', quotaPlan.id, '(quota는 accounts.plan 기준)'
+        );
+      }
+
+      // owner는 check-quota.js에서 무제한 통과 → 표시도 동일하게 알린다(가산 필드)
+      const isOwner = account.role === 'owner' || auth_user_id === OWNER_UID;
 
       quota = {
         used,
-        limit,
-        period_start,
-        period_end,
-        plan_id,
+        limit: quotaPlan.monthly_quota,
+        period_start: period.start,
+        period_end: period.end,
+        period_basis: period.basis, // 'subscription' | 'calendar'
+        plan_id: quotaPlan.id,
+        bypass: isOwner,            // true = 한도 미적용(owner)
       };
     } catch (quotaErr) {
       console.error('[me.js] quota calc failed:', quotaErr.message);

@@ -1,4 +1,14 @@
 // pages/api/admin/accounts-usage.js
+// 세션131 v0.8: BOARD-PERIOD-SYNC-01 — 계정별 청구기간 반영 (달력월 고정 해제)
+// - subscriptions 1회 일괄 조회 → accountId별 period map → 없으면 calendarMonthPeriod 폴백
+//   (resolveBillingPeriod 계정별 호출 = N+1. 쿼리 증가는 +1 고정으로 묶는다)
+// - 집계 루프(monthly)에 계정별 기간 적용 — map 생성과 적용을 같은 축에서 완결
+// - ★ 기간 비교를 ISO 문자열 사전순 → epoch(Date.parse)로 전환.
+//   created_at('+00:00')과 경계값('Z')은 형식이 달라 사전순 비교가 경계에서 어긋난다.
+// - 캘린더식 인라인 재구현 제거 → lib/billing/subscription.calendarMonthPeriod 단일 진입점
+// - 응답 가산: rows[].period_start/period_end/period_basis, summary.subscription_period_accounts
+// - 기존 키(month_start / monthly_posts / over_quota 등) 100% 유지
+//
 // 세션74 v0.7: publish_history 전량 조회 페이지네이션 (1000행 상한 → 회원목록 이번달 0 오표시 수정)
 // 세션73 v0.6: quota 집계 기준 정본 통일 (published → baseline)
 // - 정본 = check-quota.js / lib/billing/usage.countGeneratedInPeriod
@@ -39,6 +49,22 @@ import {
   _debugPlansSource,
 } from '../../../lib/billing/plans';
 import { requireOwner } from '../../../lib/guards';
+// [BOARD-PERIOD-SYNC-01] 캘린더 폴백식을 인라인 재구현하지 않는다.
+//   check-quota.js / me.js와 같은 함수를 써야 세 화면의 경계가 갈라지지 않는다.
+import { calendarMonthPeriod } from '../../../lib/billing/subscription';
+
+// getActiveSubscription과 동일한 유효 구독 정의(정의부 기준).
+const VALID_SUB_STATUSES = ['active', 'canceled'];
+
+// 기간 값 방어 — current_period_* 가 null/파손이면 캘린더로 내린다.
+function toPeriodMs(startIso, endIso, basis, fallback) {
+  const s = Date.parse(startIso);
+  const e = Date.parse(endIso);
+  if (!Number.isNaN(s) && !Number.isNaN(e) && s < e) {
+    return { startMs: s, endMs: e, start: startIso, end: endIso, basis };
+  }
+  return fallback;
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -82,29 +108,74 @@ export default async function handler(req, res) {
       if (chunk.length < PAGE) break;
     }
 
-    // 3. 월 경계 — 121차 §1: check-quota.js 정본식 1:1 복사 (KST 1일 00:00 기준)
-    //    변경 전: new Date(now.getFullYear(), now.getMonth(), 1) = 서버 로컬타임존 월초 (KST 아님)
-    //    변경 후: KST 월초/월말 UTC 환산 + [start,end) lt 상한 (created_at 비교는 ISO 문자열 사전순=시간순 동일)
+    // ───────── 3. 계정별 청구기간 [BOARD-PERIOD-SYNC-01] ─────────
+    // 변경 전: 전 계정 달력월 고정 → 유료 구독기간(예 8/20~9/20) 계정은
+    //   관리자가 고객 화면(me.js) / 차단(check-quota.js)과 다른 숫자를 봤다.
+    //
+    // ★ N+1 회피 — resolveBillingPeriod를 계정별로 부르면 계정 수만큼 쿼리가 늘어난다.
+    //   subscriptions를 1회 일괄 조회해 accountId → period map을 만들고,
+    //   없으면 calendarMonthPeriod로 폴백한다. 쿼리 증가는 +1 고정.
+    //   유효 구독 정의는 getActiveSubscription과 동일:
+    //     status in ('active','canceled') AND now < current_period_end,
+    //     다건이면 current_period_end가 가장 늦은 것(desc 정렬 → 먼저 들어온 것이 승자).
     const now = new Date();
-    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const monthStartKst = new Date(
-      Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), 1, 0, 0, 0)
-    );
-    const monthStart = new Date(monthStartKst.getTime() - 9 * 60 * 60 * 1000).toISOString();
-    const nextMonthKst = new Date(
-      Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth() + 1, 1, 0, 0, 0)
-    );
-    const monthEnd = new Date(nextMonthKst.getTime() - 9 * 60 * 60 * 1000).toISOString();
+    const cal = calendarMonthPeriod(now);
+    const calendarPeriod = {
+      startMs: Date.parse(cal.start),
+      endMs: Date.parse(cal.end),
+      start: cal.start,
+      end: cal.end,
+      basis: 'calendar',
+    };
+    // 기존 응답 키 month_start 보존(전역 달력 기준값 — UI 호환)
+    const monthStart = cal.start;
+    const monthEnd = cal.end;
 
-    // 4. account_id별 집계 — monthly는 [monthStart, monthEnd) 범위만 (정본 lt 상한 정합)
+    const periodByAccount = new Map();
+    {
+      const { data: subs, error: sErr } = await supabaseAdmin
+        .from('subscriptions')
+        .select('account_id, plan_id, status, current_period_start, current_period_end')
+        .in('status', VALID_SUB_STATUSES)
+        .gt('current_period_end', now.toISOString())
+        .order('current_period_end', { ascending: false });
+
+      if (sErr) {
+        // fail-safe: 조회 실패 시 전 계정 캘린더 폴백(기존 동작). 보드가 죽지 않는다.
+        console.error('[accounts-usage] subscriptions lookup failed:', sErr.message);
+      } else {
+        for (const s of subs || []) {
+          if (!s.account_id || periodByAccount.has(s.account_id)) continue; // desc 첫 행이 승자
+          periodByAccount.set(
+            s.account_id,
+            toPeriodMs(
+              s.current_period_start,
+              s.current_period_end,
+              'subscription',
+              calendarPeriod
+            )
+          );
+        }
+      }
+    }
+    const periodOf = aid => periodByAccount.get(aid) || calendarPeriod;
+
+    // 4. account_id별 집계 — monthly는 계정별 [period.start, period.end) 범위만
+    //    (구독 계정=구독기간 / 그 외=달력월. 정본 lt 상한 정합)
     const stats = {};
     for (const p of posts || []) {
       if (!p.account_id) continue;
       const aid = p.account_id;
       if (!stats[aid]) stats[aid] = { total: 0, monthly: 0, published: 0, latest: null };
 
-      const inMonth =
-        !!p.created_at && p.created_at >= monthStart && p.created_at < monthEnd;
+      // [BOARD-PERIOD-SYNC-01] 기간을 계정별로 적용 — 반쪽 수정 금지(map만 만들고 안 쓰면 무의미).
+      // ★ 비교를 문자열 사전순 → epoch로 전환.
+      //   created_at은 DB에서 '+00:00' 형식, 경계값은 toISOString()의 'Z' 형식으로 온다.
+      //   형식이 다른 두 ISO 문자열의 사전순 비교는 경계에서 어긋난다(같은 시각도 대소가 갈림).
+      //   구독기간이 월초가 아닌 임의 시각이 되면서 경계 충돌 확률이 올라가므로 같은 축에서 정리.
+      const per = periodOf(aid);
+      const tMs = p.created_at ? Date.parse(p.created_at) : NaN;
+      const inMonth = !Number.isNaN(tMs) && tMs >= per.startMs && tMs < per.endMs;
 
       // quota 축 — 생성(baseline). check-quota 정본과 1:1.
       if (p.publish_status === 'baseline') {
@@ -128,6 +199,7 @@ export default async function handler(req, res) {
       const planId = a.plan || DEFAULT_PLAN_ID;
       const plan = getPlan(planId);
       const ratio = quotaUsageRatio(planId, s.monthly);
+      const per = periodOf(a.id); // [BOARD-PERIOD-SYNC-01] 이 행의 숫자가 어느 기간인지 명시
       return {
         id: a.id,
         email: a.email,
@@ -145,6 +217,10 @@ export default async function handler(req, res) {
         over_quota: s.monthly >= plan.monthly_quota, // 91차: 차단 truth(check-quota: publish < quota)와 일치 — 10/10도 over 표시
         created_at: a.created_at,
         plan_source: planSourceInfo.source, // 87차: 'db' | 'fallback'
+        // BOARD-PERIOD-SYNC-01 신규(가산 — 기존 키 무변경)
+        period_start: per.start,
+        period_end: per.end,
+        period_basis: per.basis, // 'subscription' | 'calendar'
       };
     });
 
@@ -179,6 +255,9 @@ export default async function handler(req, res) {
       monthly_posts_all: rows.reduce((sum, r) => sum + r.monthly_posts, 0),
       published_total_all: rows.reduce((sum, r) => sum + r.published_posts, 0), // 세션73
       usage_basis: 'generated_baseline', // 세션73: 집계 기준 명시(정본=check-quota)
+      // BOARD-PERIOD-SYNC-01: 달력월이 아닌 구독기간으로 집계된 계정 수.
+      //   0이면 전 계정이 캘린더 기준 = 이전 동작과 동일하다는 뜻(회귀 판단용).
+      subscription_period_accounts: rows.filter(r => r.period_basis === 'subscription').length,
       over_quota_count: rows.filter(r => r.over_quota).length,
       // 87차 추가
       plans_source: planSourceInfo.source, // 'db' | 'fallback'
@@ -189,7 +268,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       observed_at: now.toISOString(),
-      month_start: monthStart,
+      month_start: monthStart, // 전역 달력 기준(기존 키 보존). 계정별 기간은 rows[].period_*
+      month_end: monthEnd,     // BOARD-PERIOD-SYNC-01 가산
       summary,
       rows,
       verified: { auth_user_id: authUserId, is_owner: true },
