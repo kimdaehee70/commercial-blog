@@ -12498,6 +12498,34 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
               })()}
               {/* [v-editguide] 업종센터(업종 선택) ↔ 글 수정 가이드(작성 도움) 성격 분리선 */}
               <div style={{ height: 1, background: "rgba(255,255,255,.10)", margin: "6px 10px", flexShrink: 0 }} />
+              {/* [S132] 좌측 세로띠 '🛡 콘텐츠 오류·수정' — 글 수정 가이드 바로 위.
+                   이미지 2장(/sujung-1~2.png). 재클릭 = 닫기. 우측 작업화면 유지. */}
+              {(() => {
+                const sjActive = (resultTab === "nav" && navView === "sujung");
+                const openSj = () => {
+                  if (navView === "sujung") { setNavView(null); setResultTab("blog"); return; }
+                  setHelpTab(null);
+                  setResultTab("nav");
+                  setNavView("sujung");
+                };
+                return (
+                  <button type="button" onClick={openSj}
+                    title="콘텐츠 오류·수정" aria-label="콘텐츠 오류·수정"
+                    style={{ display: "flex", alignItems: "center", gap: navOpen ? 12 : 0,
+                      justifyContent: navOpen ? "flex-start" : "center",
+                      width: "100%", height: 42, borderRadius: 10, cursor: "pointer", flexShrink: 0,
+                      border: "none", fontFamily: "inherit", padding: navOpen ? "0 14px" : "0",
+                      fontSize: 13.5, fontWeight: sjActive ? 800 : 600,
+                      color: sjActive ? "#fff" : "#9a9ab5",
+                      background: sjActive ? "rgba(156,39,176,.28)" : "transparent",
+                      transition: "background .15s" }}
+                    onMouseOver={e => { if (!sjActive) e.currentTarget.style.background = "rgba(156,39,176,.12)"; }}
+                    onMouseOut={e => { if (!sjActive) e.currentTarget.style.background = "transparent"; }}>
+                    <span style={{ fontSize: 17, lineHeight: 1, flexShrink: 0 }}>🛡</span>
+                    {navOpen && <span style={{ whiteSpace: "nowrap" }}>콘텐츠 오류·수정</span>}
+                  </button>
+                );
+              })()}
               {/* [v-editguide] 좌측 세로띠 '✏️ 글 수정 가이드' — 클릭 → 좌측 코치창에 가이드 표시.
                    우측 작업화면은 그대로 둔다(보면서 수정). 재클릭 = 닫기. */}
               {(() => {
@@ -13048,6 +13076,18 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     </div>
                   );
                 })()
+              ) : (resultTab === "nav" && navView === "sujung") ? (
+                // [S132] 좌측 코치창 = 콘텐츠 오류·수정 안내(이미지 2장 /sujung-1~2.png). 교체는 파일만.
+                //   ★ 접수 버튼(SupportForm kind="content")은 support_requests.kind CHECK 확장 승인 후 연결.
+                <div style={{ padding: "12px 10px 24px", overflowY: "auto" }}>
+                  {[1, 2].map((n) => (
+                    <img key={"sj" + n} src={"/sujung-" + n + ".png"} alt={"콘텐츠 오류·수정 안내 " + n}
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      style={{ width: "100%", height: "auto", display: "block", borderRadius: 12,
+                        border: "1px solid #ece7f6", marginTop: n === 1 ? 0 : 12 }} />
+                  ))}
+                  {/* [S132] 접수 버튼 자리 — CHECK 제약 확장 후 <SupportForm kind="content" compact /> */}
+                </div>
               ) : (resultTab === "nav" && navView === "upjong") ? (
                 // [v-upjong] 좌측 코치창 = 내 업종 안내(이미지 2장). 교체는 파일만.
                 <div style={{ padding: "12px 10px 24px", overflowY: "auto" }}>
