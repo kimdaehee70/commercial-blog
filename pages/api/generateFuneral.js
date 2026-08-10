@@ -332,6 +332,14 @@ function _costTitleEligible(hallFacts) {
 
 function pickTitle(treatment, region, hallName, hallFacts = null) {
   let pats = treatment.titlePatterns || [];
+  // [HALL-REGION-01] 실명 시설이 있는 글에서는 "{생활권} 장례식장 …" 제목을 만들지 않는다.
+  //   region=상조 서비스 생활권 / hallName=실제 시설 소재지 — 의미가 다르다.
+  //   실측: hallName="경희의료원 장례식장"(동대문구)인 글에 "하계동 장례식장 빈소 이용 안내" 발생.
+  //   ★ titlePatterns 원본 무수정 — 소비 시점 필터. 무hallName 글은 {region} 패턴 그대로 사용.
+  if (hallName) {
+    const _noRegion = pats.filter((t) => !/\{region\}/.test(t));
+    if (_noRegion.length) pats = _noRegion;   // 전멸 시 원본 유지(제목 없음 방지)
+  }
   // [TITLE-01A] funeral_hall만 조건화. 타 메뉴 무접촉.
   if (treatment?.id === "funeral_hall" && !_costTitleEligible(hallFacts)) {
     const filtered = pats.filter((t) => !/비용/.test(t));
