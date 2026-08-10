@@ -1,4 +1,8 @@
 // pages/api/admin/publish-list.js
+// v1.0 (세션134) — 작성자 축 추가. 목록 rows 에 account_id / author_email / author_name.
+//   운영자가 「이 글 누가 썼나」를 목록에서 못 봤다. 전 계정 글이 한 화면에 섞여 있는데
+//   구분 축이 없으면 삭제·재발행 판단이 계정 확인 없이 이뤄진다(선택삭제 도입 전 필수 선행).
+//   accounts 는 1회 일괄 조회 → id map. 계정별 N+1 없음. 스키마 무변경(ALTER 0).
 // v0.9 (세션86) — Queue starvation 방어. 실측: 큐 20건이 전부 5~6월 테스트 발행분(+55일)이었다.
 //   overdue 우선 정렬 + 단일 상한 구조에서는 재고가 큐를 영구 점유해 신규 발행이 관측되지 않는다.
 //   ① 운영 창(30일) — 발행 30일 초과분은 일상 Queue 대상에서 제외(archived). 데이터는 닫지 않는다.
@@ -117,6 +121,7 @@ export default async function handler(req, res) {
         .select(`
           id, title, industry, region, treatment_name,
           naver_post_url, publish_status, source_post_id,
+          account_id,
           created_at, published_at, deleted_at
         `)
         .is('deleted_at', null)   // [세션85] Soft Delete — 삭제 행은 목록에서 숨긴다
@@ -161,6 +166,16 @@ export default async function handler(req, res) {
     }
 
 
+    // 3-b. accounts — 작성자 표시용. [세션134]
+    //   행마다 조회하지 않는다(N+1). id → {email, display_name} map 1회.
+    const accs = await fetchAll(() =>
+      supabaseAdmin
+        .from('accounts')
+        .select('id, email, display_name')
+        .order('id', { ascending: true })
+    );
+    const accMap = new Map(accs.map((a) => [a.id, a]));
+
     // [세션86] 미노출 연속 회차 — 「1회 미노출 = 소멸」 판정을 막는다.
     //   발행 직후 미노출은 색인 지연일 수 있다. 저장값(fossil)은 그대로 두고 Queue 해석만 완화한다.
     const missStreak = {}, streakSealed = {};
@@ -188,8 +203,14 @@ export default async function handler(req, res) {
         const uCnt = (userCountMap[uKey] || 0) + (uSrcKey ? userCountMap[uSrcKey] || 0 : 0);
         const um = userLatestMap[uKey] || (uSrcKey ? userLatestMap[uSrcKey] : null) || null;
 
+        // [세션134] 작성자 — baseline 흡수 후에도 account_id 는 살아남는 published 행의 값이다.
+        //   짝 없는 baseline 은 자기 account_id 를 그대로 쓴다. 둘 다 같은 소유자다.
+        const acc = r.account_id != null ? accMap.get(r.account_id) || null : null;
+
         return {
           ...r,
+          author_email: acc?.email || null,
+          author_name: acc?.display_name || null,
           observation_count: cnt,
           user_rank_count: uCnt,
           obs_total: cnt + uCnt,
@@ -324,7 +345,7 @@ export default async function handler(req, res) {
       }
       if (industry && r.industry !== industry) return false;
       if (kw) {
-        const hay = `${r.title || ''} ${r.industry || ''} ${r.region || ''} ${r.treatment_name || ''} ${r.observed_keyword || ''} ${r.id}`.toLowerCase();
+        const hay = `${r.title || ''} ${r.industry || ''} ${r.region || ''} ${r.treatment_name || ''} ${r.observed_keyword || ''} ${r.author_email || ''} ${r.author_name || ''} ${r.id}`.toLowerCase();
         if (!hay.includes(kw)) return false;
       }
       if (from || to) {

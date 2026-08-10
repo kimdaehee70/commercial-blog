@@ -414,6 +414,10 @@ export default function AdminPublish() {
   const [fPage, setFPage] = useState(1);
   const [fSize, setFSize] = useState(100);
   const [selectedId, setSelectedId] = useState(null);
+  // [세션134] 선택삭제 — 목록 체크박스. 페이지 전환·재조회 시 초기화한다.
+  //   화면 밖 행이 선택된 채로 남으면 운영자가 보지 않은 글을 지우게 된다.
+  const [checked, setChecked] = useState(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [snapshot, setSnapshot] = useState(null);
   const [timeline, setTimeline] = useState([]);
   // [세션81] 사용자 순위등록(post_ranks). 관리자 관측(timeline)과 별개 SoT — 합치지 않고 나란히 둔다.
@@ -492,6 +496,7 @@ export default function AdminPublish() {
       const j = await r.json();
       if (j.ok) {
         setRows(j.rows || []);
+        setChecked(new Set()); // [세션134] 목록이 바뀌면 선택은 무효다
         setMeta({
           summary: j.summary || null, page: j.page || null, industries: j.industries || [],
           industryStats: j.industry_stats || [], industryTotal: j.industry_total || null,
@@ -868,6 +873,54 @@ export default function AdminPublish() {
     if (r.status === 401) { alert('인증이 만료되었습니다. 다시 로그인해 주세요.'); router.replace('/login'); return null; }
     if (r.status === 403) { alert('관리자 권한이 필요합니다.'); return null; }
     return r.json();
+  };
+
+  // [세션134] 선택 파생 — 전체선택은 「현재 페이지」 한정이다. 조회 전량이 아니다.
+  const allOnPageChecked = rows.length > 0 && rows.every((r) => checked.has(r.id));
+  const toggleAll = () =>
+    setChecked(allOnPageChecked ? new Set() : new Set(rows.map((r) => r.id)));
+  const toggleOne = (id) =>
+    setChecked((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+
+  // 작성자 표시 — 이름 > 이메일 로컬파트 > 계정번호. 이메일 전체는 목록에서 너무 길다.
+  const authorLabel = (r) =>
+    r.author_name
+    || (r.author_email ? String(r.author_email).split('@')[0] : null)
+    || (r.account_id != null ? `#${r.account_id}` : '-');
+
+  // [세션134] 선택삭제 — 기존 publish-delete(Soft Delete) 를 건별로 호출한다.
+  //   전용 bulk API 를 새로 만들지 않는다. 삭제 규칙(deleted_at·관측 보존·already_deleted)이
+  //   두 곳에 생기면 언젠가 갈라진다. 검증된 경로 하나만 쓴다.
+  //   순차 호출 — 동시 호출은 실패 지점을 흐린다. 부분 실패해도 성공분은 목록에서 즉시 빠진다.
+  const doBulkDelete = async () => {
+    const ids = Array.from(checked);
+    if (ids.length === 0 || bulkBusy) return;
+    if (!confirm(`선택한 ${ids.length}건을 삭제합니다.\n글은 목록에서 숨겨지고 관측 기록은 보존됩니다.\n진행할까요?`)) return;
+
+    setBulkBusy(true);
+    const done = [];
+    const failed = [];
+    try {
+      for (const id of ids) {
+        const j = await callAction('/api/admin/publish-delete', { publish_id: id });
+        if (j === null) break;                       // 인증 만료 — callAction 이 이미 처리
+        if (j.ok || j.error === 'already_deleted') done.push(id);
+        else failed.push(id);
+      }
+    } finally {
+      if (done.length) {
+        const gone = new Set(done);
+        setRows((rs) => rs.filter((row) => !gone.has(row.id)));
+        if (gone.has(selectedId)) { setSelectedId(null); setSnapshot(null); setTimeline([]); }
+      }
+      setChecked(new Set());
+      setBulkBusy(false);
+      alert(`삭제 ${done.length}건 완료${failed.length ? ` · 실패 ${failed.length}건 (id ${failed.join(', ')})` : ''}`);
+    }
   };
 
   // 재발행 = URL 재연결 + 발행 상태 갱신. 글 재생성 아님(엔진 무접촉).
@@ -1256,13 +1309,39 @@ export default function AdminPublish() {
           </div>
         )}
 
+        {/* [세션134] 선택 액션 바 — 선택이 있을 때만 나타난다. 평소 화면을 차지하지 않는다. */}
+        {checked.size > 0 && (
+          <div style={S.bulkBar}>
+            <span style={{ fontWeight: 600 }}>{checked.size}건 선택</span>
+            <button onClick={() => setChecked(new Set())} style={S.searchBtnSm} disabled={bulkBusy}>
+              선택 해제
+            </button>
+            <button onClick={doBulkDelete} style={S.bulkDelBtn} disabled={bulkBusy}>
+              {bulkBusy ? '삭제 중…' : '선택 삭제'}
+            </button>
+            <span style={{ color: T.textFaint, fontSize: 11 }}>
+              삭제해도 관측 기록은 보존됩니다
+            </span>
+          </div>
+        )}
+
         <div style={S.listScroll}>
           <table style={S.table}>
             <thead>
               <tr style={S.th}>
+                <td style={{ ...S.td, width: 28 }}>
+                  <input
+                    type="checkbox"
+                    checked={allOnPageChecked}
+                    onChange={toggleAll}
+                    title="이 페이지 전체 선택"
+                    style={{ cursor: 'pointer' }}
+                  />
+                </td>
                 <td style={S.td}>id</td>
                 <td style={{ ...S.td, ...S.urlCell }}>URL</td>
                 <td style={S.td}>title</td>
+                <td style={S.td}>작성자</td>
                 <td style={S.td}>업종</td>
                 <td style={S.td}>created</td>
                 <td style={S.td}>생존</td>
@@ -1286,6 +1365,14 @@ export default function AdminPublish() {
                       fontWeight: r.id === selectedId ? 600 : 400,
                     }}
                   >
+                    <td style={{ ...S.td, width: 28 }} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={checked.has(r.id)}
+                        onChange={() => toggleOne(r.id)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </td>
                     <td style={S.td}>
                       {r.id}
                       {(r.queue_state === 'due' || r.queue_state === 'overdue') && (
@@ -1302,6 +1389,9 @@ export default function AdminPublish() {
                     </td>
                     <td style={{ ...S.td, ...S.titleCell }}>
                       {r.title || '-'}
+                    </td>
+                    <td style={{ ...S.td, color: T.textMuted }} title={r.author_email || ''}>
+                      {authorLabel(r)}
                     </td>
                     <td style={S.td} title={r.industry || ''}>{industryLabel(r.industry)}</td>
                     <td style={S.td}>{fmtDate(r.created_at)}</td>
@@ -2050,6 +2140,18 @@ const S = {
   },
   manualInput: { ...inputStyle, flex: 1, fontSize: 12, padding: '5px 8px', width: '100%', boxSizing: 'border-box' },
   searchBtnSm: { ...inputStyle, padding: '2px 7px', cursor: 'pointer', fontSize: 12 },
+  // [세션134] 선택 액션 바
+  bulkBar: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: '7px 10px', marginBottom: 6,
+    background: 'rgba(59,130,246,.12)',
+    border: `1px solid ${T.borderRow}`,
+    borderRadius: 6, fontSize: 12, color: T.textSoft,
+  },
+  bulkDelBtn: {
+    ...inputStyle, padding: '3px 12px', cursor: 'pointer', fontSize: 12,
+    color: '#fff', background: '#b91c1c', border: '1px solid #b91c1c', fontWeight: 600,
+  },
 
   // 검색 패널은 강조 대상 → 초록 테두리 유지(다크 대비로 조정)
   searchPanel: {
