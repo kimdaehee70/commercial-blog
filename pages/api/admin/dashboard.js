@@ -85,7 +85,22 @@ export default async function handler(req, res) {
       .order('created_at', { ascending: false });
     if (pErr) throw pErr;
 
-    const posts = (rawPosts || []).filter((p) => p.publish_status === 'published');
+    // 2-b. published 축 분리 조회 (세션133 · ADMIN-UNOBSERVED-NEGATIVE-01)
+    //   위 rawPosts 는 조건 없는 전량 SELECT 라 PostgREST 기본 1000행 상한에 걸린다.
+    //   세션78 시점 총 1591행일 때는 상한 미만이라 무증상이었고, 총행이 1000을 넘어선 뒤
+    //   「잘린 1000행 안에서 published 필터」가 되어 분모만 축소됐다(실측: published 135 → 83).
+    //   분자 observedCount 는 publish_metrics 정본(135)이므로 83-135 = -52.
+    //   → published 는 DB 단계에서 .eq 로 좁혀 상한 자체를 만들지 않는다. 고정 상한 확장(.range)은 재발 예약이라 채택하지 않는다.
+    //   ⚠ baseline 축(draftCount / quota gen_monthly)은 이번 패치 범위 밖 — rawPosts 그대로 유지.
+    //      baseline 1620행도 동일 상한에 걸려 있음. 별도 축(ADMIN-BASELINE-ROWCAP-01)으로 이월.
+    const { data: publishedPosts, error: pubErr } = await supabaseAdmin
+      .from('publish_history')
+      .select('id, account_id, title, industry, region, treatment_name, created_at, publish_status')
+      .eq('publish_status', 'published')
+      .order('created_at', { ascending: false });
+    if (pubErr) throw pubErr;
+
+    const posts = publishedPosts || [];
     const draftCount = (rawPosts || []).filter((p) => p.publish_status === 'baseline').length;
 
     // 3. publish_metrics 전체
