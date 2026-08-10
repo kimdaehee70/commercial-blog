@@ -72,6 +72,12 @@ export default async function handler(req, res) {
       .from("publish_history")
       .select("id, title, industry, region, keyword, treatment_name, publish_status, naver_post_url, published_at, created_at, source_post_id")  // [fix] source_post_id — baseline↔published 병합 식별자(§merge-A안). 미노출 시 프론트가 제목 병합에 의존 → 등록완료인데 미등록 표시 + 재등록 409.
       .eq("account_id", account.id)
+      // [세션135 · MY-USAGE-SOFTDELETE-DISPLAY-01] 삭제된 글은 사용자 화면에서 제외.
+      //   이 API 하나가 마이페이지 이용내역 + 최근발행 두 화면의 목록 정본이라 여기서만 막으면 된다.
+      //   ※ quota 계산은 이 경로를 쓰지 않는다(lib/billing/usage.countGeneratedInPeriod).
+      //     quota 축은 deleted_at 미필터가 확정 정책이므로(QUOTA-SOFTDELETE-POLICY-01)
+      //     이 필터를 그쪽으로 옮기거나 복사하지 않는다. 표시 축 전용.
+      .is("deleted_at", null)
       .order("published_at", { ascending: false, nullsFirst: false })
       // [fix] 2차 키 — published_at=null(baseline) 그룹은 1차 키만으론 순서 불안정.
       //   created_at(NOT NULL) → id로 완전 결정적 정렬. 누락·뒤섞임 방지.
