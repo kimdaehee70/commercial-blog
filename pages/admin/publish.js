@@ -595,6 +595,15 @@ export default function AdminPublish() {
     setQInput(String(idNum)); setFQ(String(idNum));
   }, [rows, selectedId]);
 
+  // [OBS-FORM-RESET-01] 행 전환 시 관측 입력 폼 초기화.
+  //   buildObsBody 는 화면이 아니라 form state 만 읽는다. 저장하지 않고 다른 행으로 이동하면
+  //   이전 행의 related/core_rank 가 그대로 남아 다음 행 DB 에 기록된다(관측 데이터 오염).
+  //   기존 초기화는 저장 성공 직후 1곳뿐이었다 → 행 전환 경로를 여기서 함께 막는다.
+  //   ⚠ 표시 정책과 무관. 저장 스키마·서버 무접촉.
+  useEffect(() => {
+    setForm(defaultForm());
+  }, [selectedId]);
+
   useEffect(() => {
     fetchDetail(selectedId);
   }, [selectedId, fetchDetail]);
