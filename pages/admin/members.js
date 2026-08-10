@@ -112,14 +112,14 @@ import {
 
 const ROLE_OPTIONS   = ['user', 'admin'];          // set-role whitelist (owner 제외)
 const STATUS_OPTIONS = ['active', 'suspended'];    // update-account whitelist
-const PLAN_OPTIONS   = ['free', 'basic', 'standard', 'pro'];   // ALLOWED_PLANS (v65 4-tier)
+const PLAN_OPTIONS   = ['free', 'basic', 'standard', 'pro', 'enterprise'];   // ALLOWED_PLANS (S127 5-tier · enterprise=관리자 수동 부여, 판매 미노출)
 const BLOG_ACCOUNT_RE = /^[a-zA-Z0-9_-]+$/;        // 103차: 클라 1차 검증 (서버도 동일 검증)
 
 // ── 표시 라벨 한글화 (표시 전용 — DB/API/option value/onChange 인자 전부 무변경) ──
 //   매핑에 없는 값은 원문 그대로 출력(안전장치). label만 바꾸고 value는 항상 영문 유지.
 const ROLE_LABEL   = { owner: '운영자', admin: '관리자', user: '사용자' };
 const STATUS_LABEL = { active: '활성', pending: '대기', suspended: '정지' };
-const PLAN_LABEL   = { free: '무료', basic: '베이직', standard: '스탠다드', pro: '프로' };
+const PLAN_LABEL   = { free: '무료', basic: '베이직', standard: '스탠다드', pro: '프로', enterprise: '엔터프라이즈' };
 const roleLabel   = (v) => ROLE_LABEL[v]   || v || '—';
 const statusLabel = (v) => STATUS_LABEL[v] || v || '—';
 const planLabel   = (v) => PLAN_LABEL[v]   || v || '—';
