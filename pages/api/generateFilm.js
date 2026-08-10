@@ -27,6 +27,7 @@ import {
   buildUserPrompt,
   getImageAlts,
   getSectionAlt,
+  hasFacts,
   FORBIDDEN,
 } from "../../lib/film-prompts";
 import { FILM_FLOW, FILM_SECTION_PHOTO } from "../../lib/film-playConfig";
@@ -162,6 +163,10 @@ export default async function handleFilm(req, res) {
       material,                                  // ③ 자재(브랜드·원단) — 업종 소유 입력값
       surface,                                   //    표면(무광·유광·우드…) — 미입력 시 무영향
       baseGrade,                                 //    하지 상태(양호·흠집·재시공·부적합) — 필름 판단 축
+      // [세션136 · SINK-FILM-RECOVERY-01/C] 실제 사례형에 필요한 최소 2축.
+      //   미입력이면 프롬프트에 아무것도 붙지 않고 정보형·조건형으로 생성된다(부작용 0).
+      workScope,                                 //    실제 시공범위 (예: 상부장 8짝·하부장 6짝·서랍 3)
+      existingCondition,                         //    실제 기존상태 (예: 하이그로시 황변, 하부 도어 부풀음)
     } = req.body;
 
     // 필름 = 출장/현장방문 업종 → 고정 사업장 위치블록 미노출(PATCH-07)
@@ -183,7 +188,12 @@ export default async function handleFilm(req, res) {
 
     const kw = treatment.name;
     const mat = formatMaterial(material);
-    const ctx = { site, material: mat, surface: surface || "", baseGrade: baseGrade || "" };
+    const ctx = {
+      site, material: mat, surface: surface || "", baseGrade: baseGrade || "",
+      // [세션136/C] 신규 2축. 빈 문자열이면 hasFacts 판정에 잡히지 않는다.
+      workScope: String(workScope || "").replace(/\s+/g, " ").trim(),
+      existingCondition: String(existingCondition || "").replace(/\s+/g, " ").trim(),
+    };
     const systemPrompt = buildSystemPrompt(region, treatment, ctx);
 
     const writtenSections = new Set();
@@ -253,6 +263,9 @@ export default async function handleFilm(req, res) {
     console.log(`[QC][film] 메뉴(${kw}): kw ${kwCount} / 지역+kw 결합 ${rgKwCount} (3 이하 정상)`);
     console.log(`[QC][film] 글자수: ${content.length}`);
     console.log(`[QC][film] 현장정보: ${site.siteName ? `${site.siteName} ${site.siteSize}` : "미입력"} / 자재: ${mat || "미입력"} / 표면: ${surface || "미입력"} / 하지: ${baseGrade || "미입력"}`);
+    // [세션136/A] Facts 모드 — QA 판정 기준. facts=false 인데 본문에 목격 서술이 있으면 회귀다.
+    console.log(`[QC][film] 범위: ${ctx.workScope || "미입력"} / 기존상태: ${ctx.existingCondition || "미입력"}`);
+    console.log(`[QC][film] Facts 모드: ${hasFacts(ctx) ? "사례형(FACTS)" : "정보형(NO-FACTS)"}`);
     console.log(`[QC][film] 문장잘림 의심: ${countBrokenSentences(content)}건 (0이어야 정상)`);
 
     return res.status(200).json({
