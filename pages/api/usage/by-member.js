@@ -30,9 +30,11 @@ import { requireOwner } from "../../../lib/guards";
 // 폴백 quota (plans 조회 실패 시에만 사용). DB 값과 동일하게 유지.
 // 평상시엔 사용되지 않음 — 진실 소스는 DB plans.monthly_quota.
 const FALLBACK_PLAN_QUOTA = {
-  free: 10,
+  free: 3,
   basic: 30,
+  standard: 60,
   pro: 100,
+  enterprise: 150,
 };
 
 export default async function handler(req, res) {
