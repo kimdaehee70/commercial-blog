@@ -34,6 +34,8 @@ import { FILM_FLOW, FILM_SECTION_PHOTO } from "../../lib/film-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
 import { parseSite, buildSiteTitleOrNull, insertSiteBeforeHashtags } from "../../lib/siteBlock.js";
 import { buildIntentTitleOrNull } from "../../lib/titleEngine.js";
+// [WIRING-02] INTENT 조회 전용 계층. 조회만 한다(조립·프롬프트 무관).
+import { getIntent } from "../../lib/spine/intentSpine.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -148,7 +150,22 @@ function buildTitleLegacy(region, treatment) {
   return title.replace(/\s{2,}/g, " ").trim();
 }
 
-function buildTitle(region, treatment, site) {
+// [WIRING-02] INTENT 제목 조립 — 소유자는 이 파일(intentSpine 은 조회 전용).
+//   판정: INTENT > site. Pilot 목적상 질문축이 제목부터 끝까지 유지되어야 한다.
+//   site 정보는 본문·위치 요소로 남고 제목 지배권만 INTENT 가 가진다.
+function buildIntentTitleFromIntent(region, treatment, intent) {
+  if (!intent) return null;
+  const hint = String(intent.titleHint || "").trim();
+  if (!hint) return null;
+  const rg = String(region || "").trim();
+  const kw = String((treatment && treatment.name) || "").trim();
+  return [rg, kw, hint].filter(Boolean).join(" ").replace(/\s{2,}/g, " ").trim();
+}
+
+function buildTitle(region, treatment, site, intent) {
+  // [WIRING-02] 배타 실행 — intent 있으면 site/titleEngine 경로를 타지 않는다.
+  const _i = buildIntentTitleFromIntent(region, treatment, intent);
+  if (_i) return _i;
   const _s = buildSiteTitleOrNull(region, treatment, site);
   if (_s) return _s;
   const _t = buildIntentTitleOrNull(region, treatment, "film");
@@ -167,6 +184,8 @@ export default async function handleFilm(req, res) {
       //   미입력이면 프롬프트에 아무것도 붙지 않고 정보형·조건형으로 생성된다(부작용 0).
       workScope,                                 //    실제 시공범위 (예: 상부장 8짝·하부장 6짝·서랍 3)
       existingCondition,                         //    실제 기존상태 (예: 하이그로시 황변, 하부 도어 부풀음)
+      // [WIRING-02] 글의 내용축. 미전달이면 전 경로 기존과 동일(회귀 0).
+      intentId,
     } = req.body;
 
     // 필름 = 출장/현장방문 업종 → 고정 사업장 위치블록 미노출(PATCH-07)
@@ -194,10 +213,25 @@ export default async function handleFilm(req, res) {
       workScope: String(workScope || "").replace(/\s+/g, " ").trim(),
       existingCondition: String(existingCondition || "").replace(/\s+/g, " ").trim(),
     };
+
+    // ── [WIRING-02] INTENT 해석 ────────────────────────────
+    //   · 미전달 → 기존 경로 100% 유지
+    //   · 전달됐는데 조회 실패 → 400. 조용한 폴백 금지(S137 계약).
+    //     기본 INTENT 로 슬쩍 대체하면 반복 문제가 다른 형태로 남는다.
+    const _intentId = String(intentId || "").trim();
+    if (_intentId) {
+      const _found = getIntent("film", treatment.cat, _intentId);
+      if (!_found) {
+        return res.status(400).json({
+          error: `INTENT 매칭 실패: ${_intentId} (${treatment.cat})`,
+        });
+      }
+      ctx.intent = _found;
+    }
     // ★ [세션136 재수술/②] 제목을 섹션 루프 '앞'에서 확정한다.
     //   QA FAIL 원인: 제목이 루프 뒤에 생성돼 프롬프트가 제목을 몰랐고, 제목 INTENT 가 본문을 지배하지 못했다.
     //   buildTitle 자체는 무수정(titleEngine.js 무접촉). 생성 시점만 앞당긴다.
-    const title = buildTitle(region, treatment, site);
+    const title = buildTitle(region, treatment, site, ctx.intent);
     ctx.title = title;
 
     const systemPrompt = buildSystemPrompt(region, treatment, ctx);
@@ -271,6 +305,8 @@ export default async function handleFilm(req, res) {
     // [세션136/A] Facts 모드 — QA 판정 기준. facts=false 인데 본문에 목격 서술이 있으면 회귀다.
     console.log(`[QC][film] 범위: ${ctx.workScope || "미입력"} / 기존상태: ${ctx.existingCondition || "미입력"}`);
     console.log(`[QC][film] Facts 모드: ${hasFacts(ctx) ? "사례형(FACTS)" : "정보형(NO-FACTS)"}`);
+    console.log(`[QC][film] INTENT: ${ctx.intent ? `${ctx.intent.id} (${ctx.intent.label})` : "미선택(기존 경로)"}`);
+    console.log(`[QC][film] basis: ${ctx.intent ? "차단(INTENT 활성)" : "기존 규칙"}`);
     console.log(`[QC][film] 제목 선확정: ${title}`);
     console.log(`[QC][film] 문장잘림 의심: ${countBrokenSentences(content)}건 (0이어야 정상)`);
 
