@@ -9,6 +9,7 @@ import { getActiveContext } from "../lib/contextSpine";
 import { getPhotoPolicy, photoDescLine } from "../lib/photoPolicyRegistry";
 import { getRegionStrategySafe } from "../lib/spine/regionStrategyRegistry";  // [v-region] 지역 전략(visit/service) 조회 — 미등록 업종은 visit 축퇴
 import { buildCoreKeyword } from "../lib/spine/serviceAxis";  // [S117] Core 관측축 — region + catalog.name. full_keyword(소재축)와 분리
+import { getIntents, listIntentOptions } from "../lib/spine/intentSpine";  // [WIRING-03] INTENT 조회 전용. 정의된 cat 에서만 셀렉터 노출(데이터가 곧 게이트)
 import { CLINIC_TARGETS, ALL_TREATMENTS as CLINIC_TREATMENTS, CLINIC_BLOG_TYPES } from "../lib/clinic-data";
 import { DENTAL_TREATMENTS, DENTAL_META } from "../lib/dental-data";
 // [ent v2 승격 2026-07-13] 이비인후과 V2 Purpose — v1(ent-data 20종·후기형) → v2(14종·정보형) 교체.
@@ -10311,7 +10312,7 @@ export default function Home() {
     } catch (_) {} finally { setDiagLoading(false); }
   };
 
-  const generate = async (treatmentId, region, blogType = "review", targetId = "consult", overrideTitle = null, treatmentName = "", hallName = "") => {
+  const generate = async (treatmentId, region, blogType = "review", targetId = "consult", overrideTitle = null, treatmentName = "", hallName = "", intentId = "") => {
     if (isGenerating.current) return;
 
     // [v60] quota spine — 생성 시작 전 차단 (정책: quota는 '생성 횟수' 기준이므로 발행이 아닌 생성 진입에서 막아야 함)
@@ -10460,6 +10461,9 @@ export default function Home() {
           //   서버 generateFuneral.js:200 hallName 수신부는 기존 구현 그대로(백엔드 무수정).
           //   빈 문자열이면 splitRegionHall 폴백 → 현행 동작과 동일.
           hallName,
+          // [WIRING-03] INTENT id — intents/*.js 정의 cat 에서만 값 존재. 그 외 전 업종 "".
+          //   서버 generateFilm.js 는 값이 있으면 조회, 없는 id 면 400. 조용한 폴백 없음.
+          intentId,
           // [v103] 실사업장 4필드 — 정보형 생성/발행 게이트용
           storeName:    _storeName,
           // [v77] 제목 끝 상호 표시 토글 — store_profiles.title_suffix_on. 서버(핸들러)가 resolveTitleSuffix로 방어.
@@ -10803,7 +10807,25 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
   const [hallInput, setHallInput] = useState("");
   const isHall = currentIndustry === "funeral" && picked?.cat === "장례식장";
   const hallOk = !isHall || hallInput.trim().length > 0;   // 필수 입력 강제
-  const canGo = !!picked && hasRegion && hallOk;
+  // [WIRING-03] INTENT 선택 — 글의 내용축. hallName 과 동일 패턴(특정 cat 에서만 값 존재).
+  //   ⚠ 게이트는 하드코딩 cat 이 아니라 데이터다. intents/*.js 에 정의된 cat 만 목록이 나온다.
+  //     미정의 cat(현재 싱크대필름 외 전부)은 intentList=[] → 셀렉터 미렌더 + intentId="" → 현행 출력 무변화.
+  //   ⚠ 정의된 cat 은 선택 필수. 조용한 기본값 폴백을 두지 않는다(S137 계약) — 두면 반복 문제가 형태만 바꿔 남는다.
+  const [intentPick, setIntentPick] = useState("");
+  // [WIRING-03B] INTENT 축 = 허브 업종이 아니라 선택된 treatment 가 선언한 엔진 업종.
+  //   근거(S139 실측): 프론트 currentIndustry="interior" / 서버 라우팅 업종="film" → 애초에 다른 축.
+  //   우선순위: __dept(다중 시공분야 통합마스터가 주입) > industry(데이터 원본 선언) > currentIndustry(단일업종 폴백).
+  //   ⚠ 달력 프리필 경로는 picked 자체가 원본 t(_raw 없음) → (picked?._raw || picked) 로 두 경로를 통일한다.
+  //   ⚠ 하드코딩 매핑(interior→film) 금지. 게이트는 intents/*.js 정의 유무(데이터)로만 결정된다.
+  const _pickedRaw = picked?._raw || picked;
+  const intentIndustry = _pickedRaw?.__dept || _pickedRaw?.industry || currentIndustry;
+  const intentList = getIntents(intentIndustry, picked?.cat);
+  const intentOk = intentList.length === 0 || !!intentPick;
+  // [WIRING-03A] UI 노출용 최소 형태(label/question). axes 는 프롬프트 전용이라 여기로 내려오지 않는다.
+  const intentOptions = listIntentOptions(intentIndustry, picked?.cat);
+  // 메뉴(cat)를 바꾸면 이전 선택은 무효 — 다른 cat 의 intentId 가 남으면 서버가 400 을 낸다.
+  useEffect(() => { setIntentPick(""); }, [picked?.id, currentIndustry]);
+  const canGo = !!picked && hasRegion && hallOk && intentOk;
   const complete = () => {
     if (!canGo) return;
     // 회전 인덱스 확정·증가(증가 전 값으로 region 재산출 — 미리보기와 동일 보장).
@@ -10811,7 +10833,8 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
     if (subRotList.length > 1) { try { useIdx = bumpSubRotIndex(subRotKey); } catch {} }
     const finalRegion = pickSubRegion(storeRep, storeSub, useIdx, currentIndustry).region || storeRep;  // [v-region]
     // [WIRING-01C] 3번째 인자 = 사용자 입력 장례식장명(SoT). 비대상이면 항상 "".
-    if (onComplete) onComplete(picked, finalRegion, isHall ? hallInput.trim() : "");
+    // [WIRING-03] 4번째 인자 = 선택한 INTENT id. 미정의 cat 이면 항상 "".
+    if (onComplete) onComplete(picked, finalRegion, isHall ? hallInput.trim() : "", intentList.length ? intentPick : "");
   };
 
   // [v144] 업종별 항목 라벨 — lex().itemWord 단일 출처. restaurant=메뉴/legal=업무/의료=시술 자동.
@@ -10898,6 +10921,41 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
               />
               <div style={{ marginTop: 8, fontSize: 11.5, color: "#8a5a00", lineHeight: 1.5 }}>
                 검색해 찾아오는 시설명입니다. 제목·본문에 그대로 안내됩니다. 지역명은 빼고 시설명만 입력하세요.
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── [WIRING-03A] INTENT 선택 — intents/*.js 에 정의된 cat 에서만 노출·필수 ── */}
+        {intentList.length > 0 && (
+          <>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "#E65100", margin: "18px 2px 8px" }}>
+              🧭 글의 내용축 <span style={{ color: "#d32f2f", fontWeight: 900 }}>필수</span>
+              {intentPick ? null : <span style={{ color: "#ccc", fontWeight: 700 }}> · 하나를 선택하세요</span>}
+            </div>
+            <div style={{ background: "#fff", borderRadius: 12,
+              border: intentPick ? "1.5px solid #e0d0f0" : "1.5px solid #FFB300",
+              padding: "14px 16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {intentOptions.map(op => {
+                  const on = intentPick === op.id;
+                  return (
+                    <div key={op.id} onClick={() => setIntentPick(op.id)}
+                      title="클릭하여 내용축 선택"
+                      style={{ background: on ? "#F3E5F5" : "#fff", borderRadius: 8,
+                        border: on ? "1.5px solid #9C27B0" : "1.5px solid #ede8f8",
+                        boxShadow: on ? "0 3px 12px rgba(123,31,162,.12)" : "0 2px 8px rgba(100,50,180,.04)",
+                        padding: "10px 11px", cursor: "pointer", transition: "all .15s" }}>
+                      <div style={{ fontSize: 12, fontWeight: 900, color: on ? "#4A148C" : "#1a1a2e",
+                        lineHeight: 1.3, wordBreak: "keep-all", marginBottom: 4 }}>{op.label}</div>
+                      <div style={{ fontSize: 11, color: on ? "#7B1FA2" : "#999", fontWeight: 600,
+                        lineHeight: 1.45, wordBreak: "keep-all" }}>{op.question}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 9, fontSize: 11.5, color: "#8a5a00", lineHeight: 1.5 }}>
+                선택한 축이 제목과 본문 전체의 주제가 됩니다. 같은 시술이라도 축이 다르면 다른 글이 나옵니다.
               </div>
             </div>
           </>
@@ -11025,7 +11083,9 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
             {canGo ? `${picked.name} 글 작성하기`
               : !picked ? `${L_ITEM}을 먼저 선택하세요`
               : !hasRegion ? "업체정보에서 지역을 설정하세요"
-              : "장례식장명을 입력하세요"}
+              : !hallOk ? "장례식장명을 입력하세요"
+              : !intentOk ? "글의 내용축을 선택하세요"
+              : "글 작성하기"}
           </button>
           )}
         </div>
@@ -12078,6 +12138,8 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
     // [WIRING-01C] 장례식장명 = 사용자가 명시 입력한 사실값. 검색어 재파싱(newParsed) 결과가 아니다.
     //   → parsed 단일 소스에서만 읽고, newParsed 폴백을 두지 않는다(삭제·변경 불가).
     const finalHallName  = (parsed.hallName || "").trim();
+    // [WIRING-03] INTENT id 도 동일 원칙 — parsed 단일 소스. 재파싱 폴백을 두지 않는다.
+    const finalIntentId  = (parsed.intentId || "").trim();
     const autoBlogType   = s.type === "비교형" ? "compare"
                          : s.type === "후기형" ? "review"
                          : parseBlogTypeFromText(text);
@@ -12137,7 +12199,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
     addMsg({ role: "user", text: userMsgText });
     addMsg({ role: "assistant", text: `${displayTitle}\n${BLOGTYPE_LABEL[autoBlogType]} 글로 작성합니다.` });
     setStage("generating");
-    generate(finalTreatment, finalRegion, autoBlogType, autoTarget, overrideTitle, finalName, finalHallName);
+    generate(finalTreatment, finalRegion, autoBlogType, autoTarget, overrideTitle, finalName, finalHallName, finalIntentId);
   };
 
   // ─────────────────────────────────────────────────────────
@@ -13685,13 +13747,14 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     }
                     setStage("treatment");
                   }}
-                  onComplete={(t, region, hallName) => {
+                  onComplete={(t, region, hallName, intentId) => {
                     // [v111] 페이지 전환 없이 버튼만 '작성 중'으로 변환 → 보드를 계속 마운트 유지.
                     //   showTreatmentSelect/calendarPrefill은 result 진입 시 정리(아래 useEffect). 여기선 stage만 generating으로.
                     setPendingTreatment(null);
                     addMsg({ role: "user", text: `${region} ${t.name}` });
                     // [WIRING-01C] hallName = 사용자 입력 SoT. parsed에 실어 handleAnalysisSelect까지 무손실 전달.
-                    analyzeKeyword({ treatmentId: t.id, treatmentName: t.name, region, hallName: hallName || "" }, t.name);
+                    // [WIRING-03] intentId 도 동일 경로. 미정의 cat 이면 "" → 서버가 기존 경로로 생성.
+                    analyzeKeyword({ treatmentId: t.id, treatmentName: t.name, region, hallName: hallName || "", intentId: intentId || "" }, t.name);
                   }}
                 />
               ) : stage === "analysis" && analysisData ? (
