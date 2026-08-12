@@ -10929,51 +10929,59 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
         {/* ── [WIRING-03A] INTENT 선택 — intents/*.js 에 정의된 cat 에서만 노출·필수 ── */}
         {intentList.length > 0 && (
           <>
-            <div style={{ fontSize: 12.5, fontWeight: 800, color: "#E65100", margin: "18px 2px 8px" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "#E65100", margin: "12px 2px 6px" }}>
               🧭 글의 내용축 <span style={{ color: "#d32f2f", fontWeight: 900 }}>필수</span>
               {intentPick ? null : <span style={{ color: "#ccc", fontWeight: 700 }}> · 하나를 선택하세요</span>}
             </div>
             <div style={{ background: "#fff", borderRadius: 12,
               border: intentPick ? "1.5px solid #e0d0f0" : "1.5px solid #FFB300",
-              padding: "14px 16px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              padding: "10px 12px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 8 }}>
                 {intentOptions.map(op => {
                   const on = intentPick === op.id;
                   return (
                     <div key={op.id} onClick={() => setIntentPick(op.id)}
                       title="클릭하여 내용축 선택"
-                      style={{ background: on ? "#F3E5F5" : "#fff", borderRadius: 8,
-                        border: on ? "1.5px solid #9C27B0" : "1.5px solid #ede8f8",
-                        boxShadow: on ? "0 3px 12px rgba(123,31,162,.12)" : "0 2px 8px rgba(100,50,180,.04)",
-                        padding: "10px 11px", cursor: "pointer", transition: "all .15s" }}>
+                      style={{ position: "relative", background: on ? "#F3E5F5" : "#fff", borderRadius: 8,
+                        border: on ? "2px solid #9C27B0" : "1.5px solid #ede8f8",
+                        boxShadow: on ? "0 3px 12px rgba(123,31,162,.16)" : "0 2px 8px rgba(100,50,180,.04)",
+                        padding: on ? "7px 26px 7px 9px" : "8px 9px", cursor: "pointer", transition: "all .15s" }}>
+                      {on && (
+                        <span style={{ position: "absolute", top: 6, right: 7, width: 16, height: 16,
+                          borderRadius: 8, background: "#9C27B0", color: "#fff", fontSize: 10.5,
+                          fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center",
+                          lineHeight: 1 }}>✓</span>
+                      )}
                       <div style={{ fontSize: 12, fontWeight: 900, color: on ? "#4A148C" : "#1a1a2e",
-                        lineHeight: 1.3, wordBreak: "keep-all", marginBottom: 4 }}>{op.label}</div>
+                        lineHeight: 1.3, wordBreak: "keep-all", marginBottom: 3 }}>{op.label}</div>
                       <div style={{ fontSize: 11, color: on ? "#7B1FA2" : "#999", fontWeight: 600,
-                        lineHeight: 1.45, wordBreak: "keep-all" }}>{op.question}</div>
+                        lineHeight: 1.35, wordBreak: "keep-all" }}>{op.question}</div>
                     </div>
                   );
                 })}
               </div>
-              <div style={{ marginTop: 9, fontSize: 11.5, color: "#8a5a00", lineHeight: 1.5 }}>
-                선택한 축이 제목과 본문 전체의 주제가 됩니다. 같은 시술이라도 축이 다르면 다른 글이 나옵니다.
-              </div>
+              {!intentPick && (
+                <div style={{ marginTop: 7, fontSize: 11.5, color: "#8a5a00", lineHeight: 1.45 }}>
+                  선택한 축이 제목과 본문 전체의 주제가 됩니다. 같은 시술이라도 축이 다르면 다른 글이 나옵니다.
+                </div>
+              )}
             </div>
           </>
         )}
 
         {/* ── [v99] 발행지역 — 업체정보 자동 적용(읽기전용). 1계정=1지역전략이므로 입력 제거. ── */}
         <div style={{ fontSize: 12.5, fontWeight: 800, color: picked ? "#E65100" : "#bbb",
-          margin: "18px 2px 8px" }}>
+          margin: "12px 2px 6px" }}>
           📍 발행지역 {picked ? null : <span style={{ color: "#ccc", fontWeight: 700 }}>· {L_ITEM}을 먼저 선택하세요</span>}
         </div>
 
         <div style={{ opacity: picked ? 1 : 0.45, pointerEvents: picked ? "auto" : "none" }}>
           {hasRegion ? (
             <div style={{ background: "#fff", borderRadius: 12, border: "1.5px solid #e0d0f0",
-              padding: "16px 18px", marginBottom: 12 }}>
+              padding: "11px 14px", marginBottom: 10 }}>
               {/* ── 자동 적용 — 가로 1줄(설정된 것만) ── */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9 }}>
-                <div style={{ fontSize: 14.5, fontWeight: 800, color: "#7B1FA2",
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 800, color: "#7B1FA2",
                   display: "flex", alignItems: "center", gap: 6 }}>
                   <span>✅</span> AI 자동 적용
                 </div>
@@ -10986,7 +10994,7 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: 13, color: "#555", lineHeight: 1.8 }}>
+              <div style={{ fontSize: 12.5, color: "#555", lineHeight: 1.55 }}>
                 {[
                   storeName && <span key="n"><span style={{ color: "#999" }}>업체명 </span><strong style={{ color: "#1a1a2e", fontWeight: 600 }}>{storeName}</strong></span>,
                   storeRep  && <span key="r"><span style={{ color: "#999" }}>지역 </span><strong style={{ color: "#1a1a2e", fontWeight: 600 }}>{storeRep}</strong></span>,
@@ -11000,25 +11008,25 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
 
               {/* [v123] 생활권 순번 회전 — 이번 글에 쓰일 생활권 1개 명시(보이는=적용). 2개 이상일 때만. */}
               {subRotList.length > 1 && picked0.subPick && (
-                <div style={{ marginTop: 9, padding: "8px 12px", borderRadius: 8,
-                  background: "#F3E5F5", fontSize: 12.5, color: "#6A1B9A", lineHeight: 1.5 }}>
+                <div style={{ marginTop: 7, padding: "6px 10px", borderRadius: 8,
+                  background: "#F3E5F5", fontSize: 12, color: "#6A1B9A", lineHeight: 1.4 }}>
                   📍 이번 글 생활권 <strong style={{ fontWeight: 800 }}>{picked0.subPick}</strong>
                   <span style={{ color: "#9457b8", fontWeight: 700 }}> ({picked0.index + 1}/{subRotList.length} · 작성할 때마다 순서대로 회전)</span>
                 </div>
               )}
 
               {/* ── 구분선 ── */}
-              <div style={{ borderTop: "1px solid #f0ebf8", margin: "14px 0" }} />
+              <div style={{ borderTop: "1px solid #f0ebf8", margin: "9px 0" }} />
 
               {/* ── AI 자동 작성 — 누르면 무엇이 만들어지는가 ── */}
-              <div style={{ fontSize: 14.5, fontWeight: 800, color: "#7B1FA2", marginBottom: 7,
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: "#7B1FA2", marginBottom: 6,
                 display: "flex", alignItems: "center", gap: 6 }}>
                 <span>✍️</span> AI 자동 작성
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "#999" }}>
+                  · 선택한 {L_ITEM}과 업체정보로 제목·내용 자동 생성
+                </span>
               </div>
-              <div style={{ fontSize: 13.5, color: "#555", lineHeight: 1.65, marginBottom: 10 }}>
-                선택한 {L_ITEM}과 업체정보를 바탕으로 제목과 내용을 자동 생성합니다.
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "5px 16px", fontSize: 12.5, color: "#555" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 12, color: "#555" }}>
                 <span>✓ 제목 자동 생성</span>
                 <span>✓ 생활권 자동 반영</span>
                 <span>✓ 업체정보 자동 반영</span>
