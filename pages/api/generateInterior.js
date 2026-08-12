@@ -20,6 +20,25 @@ import {
 } from "../../lib/interior-prompts.js";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
 import { buildIntentTitleOrNull } from "../../lib/titleEngine.js";
+// ── [INTERIOR-INTENT-WIRING-01 · S146] INTENT 배선 (FREEZE 부분해제 범위) ──
+//   범위 = INTENT 선택 + user 프롬프트 말미 1줄 append. 그 외 로직 무접촉.
+//   · INTERIOR_FLOW 루프 / renderInfoBlock / pickInfoBlockKey / pickTitle / prompts 무수정.
+//   · INTENTS[cat] 미정의면 intent=null → 기존 동작과 완전 동일(데이터가 게이트).
+//   ★ interior 엔진 화자 = 「범위를 수주하는 종합업체」. 전문 시공기술 축은
+//     독립 업종 엔진(bathroom·dobae·flooring·tile) 소관이므로 INTENT 는
+//     수주 범위·공정 조합·진행 조건만 다룬다. (INTERIOR-DUP-BATH-01 결론)
+import { INTENTS as INTERIOR_INTENTS } from "../../lib/spine/intents/interior.js";
+
+// INTENT 를 주입할 섹션. axis1·axis3 는 Scene Spine 동선 강제 구간,
+// axis2·infoblock 은 analysisAxis 선점 구간이므로 제외한다.
+const INTENT_SECTIONS = new Set(["intro", "axis4", "closing"]);
+
+function pickIntent(treatment, wantId) {
+  const list = INTERIOR_INTENTS?.[treatment?.cat];
+  if (!Array.isArray(list) || !list.length) return null;
+  if (wantId) return list.find((v) => v.id === wantId) || null;
+  return list[Math.floor(Math.random() * list.length)];
+}
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
@@ -90,7 +109,10 @@ export default async function handleInterior(req, res) {
     } = req.body || {};
 
     const reg = region || userRegion || "";
-    const tId = treatmentId || program;
+    // [INTERIOR-TREATMENT-RESOLVE-01 · S146] program 은 객체({name,industry,...})라
+    //   문자열 t.id/t.name 과 비교하면 항상 false → 전 cat 이 TREATMENTS[0](아파트 리모델링)로
+    //   폴백되던 결함. id·name 을 꺼내 흡수한다. treatmentId 우선순위는 기존 그대로.
+    const tId = treatmentId || program?.id || program?.name || program;
     const treatment =
       INTERIOR_TREATMENTS.find((t) => t.id === tId || t.name === tId) ||
       INTERIOR_TREATMENTS[0];
@@ -117,9 +139,16 @@ export default async function handleInterior(req, res) {
       axis3: "진행 순서 안내", axis4: "시공 전 확인 안내", closing: "인테리어 견적 상담 안내",
     };
 
+    // [INTERIOR-INTENT-WIRING-01] INTENT 선택 — 미정의 cat 이면 null(기존 동작 유지).
+    const intent = pickIntent(treatment, req.body?.intentId);
+    if (intent) console.log(`[QC][interior] INTENT: ${intent.id} (${intent.label})`);
+
     const parts = [];
     for (const sec of INTERIOR_FLOW) {
-      const user = buildUserPrompt(reg, treatment, sec.key, aptName);
+      let user = buildUserPrompt(reg, treatment, sec.key, aptName);
+      // [INTERIOR-INTENT-WIRING-01] 지정 3축에만 말미 1줄 append. 기존 프롬프트 무수정.
+      const _ax = intent && INTENT_SECTIONS.has(sec.key) ? intent.axes?.[sec.key] : null;
+      if (_ax) user += `\n\n[이번 글의 주제 축]\n${_ax}`;
       const text = await callGPT(system, user);
       if (sec.key === "infoblock") {
         parts.push(text + renderInfoBlock(treatment) + "\n\n[이미지: 체크포인트 안내]");
