@@ -299,10 +299,72 @@ function runVerify() {
 }
 
 // ───────────────────────────────────────────────────────────
+// LOAD — service_role upsert. 01C DDL 승인·실행 후에만 사용.
+//   대상 DB는 .env.local 의 NEXT_PUBLIC_SUPABASE_URL 이 가리키는 곳.
+//   (DB_ENV_RULES: 작업 DB = vuuqtrzcfjbywlxqskoi 단일)
+// ───────────────────────────────────────────────────────────
+const LOAD_BATCH = 300;
+
+async function runLoad() {
+  if (!fs.existsSync(NORMALIZED_PATH)) die(`${NORMALIZED_PATH} 없음. --fetch 먼저.`);
+  const { meta, rows } = JSON.parse(fs.readFileSync(NORMALIZED_PATH, "utf8"));
+
+  // 적재 전 최소 재검증 — verify 를 건너뛴 실수 방지
+  if (rows.length !== meta.expected_total - meta.rejected) {
+    die(`정규화 건수 불일치. --verify 를 먼저 통과시킬 것.`);
+  }
+  const seen = new Set();
+  for (const r of rows) {
+    const k = `${r.ctpv}|${r.sigungu}|${r.name}`;
+    if (seen.has(k)) die(`3중키 중복 발견: ${k}. 적재 중단.`);
+    seen.add(k);
+  }
+
+  const url = readEnvLocal("NEXT_PUBLIC_SUPABASE_URL");
+  const svc = readEnvLocal("SUPABASE_SERVICE_ROLE_KEY");
+  if (!svc.startsWith("sb_secret_")) {
+    die(`SUPABASE_SERVICE_ROLE_KEY 형식 이상(sb_secret_ 아님). DB_ENV_RULES 확인.`);
+  }
+  console.log(`target: ${url}`);
+
+  const { createClient } = await import("@supabase/supabase-js");
+  const db = createClient(url, svc, { auth: { persistSession: false } });
+
+  const payload = rows.map((r) => ({
+    ...r,
+    data_date: meta.data_date,
+    synced_at: meta.synced_at,
+  }));
+
+  let done = 0;
+  for (let i = 0; i < payload.length; i += LOAD_BATCH) {
+    const chunk = payload.slice(i, i + LOAD_BATCH);
+    const { error } = await db
+      .from("funeral_halls_public")
+      .upsert(chunk, { onConflict: "ctpv,sigungu,name" });
+    if (error) die(`upsert 실패 (offset ${i}): ${error.message}`);
+    done += chunk.length;
+    console.log(`  upserted ${done} / ${payload.length}`);
+  }
+
+  const { count, error: cErr } = await db
+    .from("funeral_halls_public")
+    .select("*", { count: "exact", head: true });
+  if (cErr) die(`count 조회 실패: ${cErr.message}`);
+
+  console.log("");
+  console.log(`sent: ${payload.length} / db row count: ${count}`);
+  console.log(count === payload.length ? "RESULT: PASS" : "RESULT: FAIL — 건수 불일치");
+  if (count !== payload.length) process.exitCode = 1;
+}
+
+// ───────────────────────────────────────────────────────────
 if (hasFlag("fetch")) await runFetch();
 else if (hasFlag("verify")) runVerify();
+else if (hasFlag("load")) await runLoad();
 else {
   console.log("usage:");
   console.log("  node scripts/ingest-funeral-public.mjs --fetch --data-date=YYYY-MM-DD");
   console.log("  node scripts/ingest-funeral-public.mjs --verify");
+  console.log("  node scripts/ingest-funeral-public.mjs --load");
 }
