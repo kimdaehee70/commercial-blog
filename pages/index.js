@@ -10820,7 +10820,12 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
   const _pickedRaw = picked?._raw || picked;
   const intentIndustry = _pickedRaw?.__dept || _pickedRaw?.industry || currentIndustry;
   const intentList = getIntents(intentIndustry, picked?.cat);
-  const intentOk = intentList.length === 0 || !!intentPick;
+  // [WIRING-03C] 0종=박스없음 / 1종=박스표시+자동선택(클릭 불필요) / 2종↑=직접선택 필수.
+  //   ⚠ 자동선택은 "1종일 때만" 성립하는 파생값이다. 2종 이상에서 조용한 기본값 폴백은 두지 않는다(S137 계약 유지).
+  //   ⚠ setIntentPick 을 건드리지 않는다 — state 를 쓰면 cat 전환 타이밍에 이전 cat 의 id 가 남는다.
+  const intentAuto = intentList.length === 1 ? (intentList[0]?.id || "") : "";
+  const intentValue = intentPick || intentAuto;
+  const intentOk = intentList.length === 0 || !!intentValue;
   // [WIRING-03A] UI 노출용 최소 형태(label/question). axes 는 프롬프트 전용이라 여기로 내려오지 않는다.
   const intentOptions = listIntentOptions(intentIndustry, picked?.cat);
   // 메뉴(cat)를 바꾸면 이전 선택은 무효 — 다른 cat 의 intentId 가 남으면 서버가 400 을 낸다.
@@ -10834,7 +10839,7 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
     const finalRegion = pickSubRegion(storeRep, storeSub, useIdx, currentIndustry).region || storeRep;  // [v-region]
     // [WIRING-01C] 3번째 인자 = 사용자 입력 장례식장명(SoT). 비대상이면 항상 "".
     // [WIRING-03] 4번째 인자 = 선택한 INTENT id. 미정의 cat 이면 항상 "".
-    if (onComplete) onComplete(picked, finalRegion, isHall ? hallInput.trim() : "", intentList.length ? intentPick : "");
+    if (onComplete) onComplete(picked, finalRegion, isHall ? hallInput.trim() : "", intentList.length ? intentValue : "");
   };
 
   // [v144] 업종별 항목 라벨 — lex().itemWord 단일 출처. restaurant=메뉴/legal=업무/의료=시술 자동.
@@ -10930,22 +10935,26 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
         {intentList.length > 0 && (
           <>
             <div style={{ fontSize: 12.5, fontWeight: 800, color: "#E65100", margin: "12px 2px 6px" }}>
-              🧭 글의 내용축 <span style={{ color: "#d32f2f", fontWeight: 900 }}>필수</span>
-              {intentPick ? null : <span style={{ color: "#ccc", fontWeight: 700 }}> · 하나를 선택하세요</span>}
+              🧭 글의 내용축{intentList.length > 1 ? <span style={{ color: "#d32f2f", fontWeight: 900 }}> 필수</span> : null}
+              {intentList.length > 1
+                ? (intentValue ? null : <span style={{ color: "#ccc", fontWeight: 700 }}> · 하나를 선택하세요</span>)
+                : <span style={{ color: "#aaa", fontWeight: 700 }}> · 이 축으로 작성됩니다</span>}
             </div>
             <div style={{ background: "#fff", borderRadius: 12,
-              border: intentPick ? "1.5px solid #e0d0f0" : "1.5px solid #FFB300",
+              border: intentValue ? "1.5px solid #e0d0f0" : "1.5px solid #FFB300",
               padding: "10px 12px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 8 }}>
                 {intentOptions.map(op => {
-                  const on = intentPick === op.id;
+                  const on = intentValue === op.id;
+                  const one = intentList.length === 1;
                   return (
-                    <div key={op.id} onClick={() => setIntentPick(op.id)}
-                      title="클릭하여 내용축 선택"
+                    <div key={op.id} onClick={one ? undefined : () => setIntentPick(op.id)}
+                      title={one ? "이번 글의 내용축" : "클릭하여 내용축 선택"}
                       style={{ position: "relative", background: on ? "#F3E5F5" : "#fff", borderRadius: 8,
                         border: on ? "2px solid #9C27B0" : "1.5px solid #ede8f8",
                         boxShadow: on ? "0 3px 12px rgba(123,31,162,.16)" : "0 2px 8px rgba(100,50,180,.04)",
-                        padding: on ? "7px 26px 7px 9px" : "8px 9px", cursor: "pointer", transition: "all .15s" }}>
+                        padding: on ? "7px 26px 7px 9px" : "8px 9px",
+                        cursor: one ? "default" : "pointer", transition: "all .15s" }}>
                       {on && (
                         <span style={{ position: "absolute", top: 6, right: 7, width: 16, height: 16,
                           borderRadius: 8, background: "#9C27B0", color: "#fff", fontSize: 10.5,
@@ -10960,7 +10969,7 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
                   );
                 })}
               </div>
-              {!intentPick && (
+              {intentList.length > 1 && !intentValue && (
                 <div style={{ marginTop: 7, fontSize: 11.5, color: "#8a5a00", lineHeight: 1.45 }}>
                   선택한 축이 제목과 본문 전체의 주제가 됩니다. 같은 시술이라도 축이 다르면 다른 글이 나옵니다.
                 </div>
