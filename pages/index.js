@@ -402,7 +402,7 @@ function WhyScreen() {
 // ★ [PATCH v3.7] 새로고침 시 글쓰기·결과·탭 상태 유지 (운영 안정화)
 import { usePersistentState, SK, storageGet, storageSet, storageRemove } from "../lib/storage";
 // [51차] quota spine 연결 — supabase client (세션 조회용)
-import { supabase } from "../lib/supabase";
+import { supabase, getFreshToken } from "../lib/supabase";
 import { SUPPORT_KINDS, SUPPORT_CONTACT_NOTE, kindLabel as supKindLabel, kindColor as supKindColor, statusLabel as supStatusLabel, statusColor as supStatusColor } from "../lib/supportKinds";  // [세션96] 접수 게시판 통합
 // [v7] 오버레이 폐기 — 기존 AI 대화창이 랜딩+체험+네비 담당. import 비활성.
 // import ExperienceOverlay from "../components/ExperienceOverlay";
@@ -8617,8 +8617,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
         setOpenPostId(postId); setOpenPost(null); setOpenBusy("글을 불러오는 중…");
         setUrlDraft("");
         try {
-          const { data: sess } = await supabase.auth.getSession();
-          const token = sess?.session?.access_token;
+          const token = await getFreshToken();   // [SESSION-EXPIRE-01] 만료 시 1회 복구 · 실패면 로그아웃
           if (!token) { setOpenBusy("세션이 만료되었습니다. 다시 로그인해주세요."); return; }
           const r = await fetch(`/api/me/post/${postId}`, { headers: { Authorization: `Bearer ${token}` } });
           const j = await r.json();
@@ -8659,7 +8658,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
         setOpenBusy("URL 등록 중…"); setUrlMsg(null);
         try {
           // [Publish Spine 1차] 토큰 획득 + publish-secure 위임 (동작·payload 동일).
-          const token = await publishApi.getToken();
+          const token = await getFreshToken();   // [SESSION-EXPIRE-01] Publish.js 무수정 · 호출부만 교체
           if (!token) { setOpenBusy(""); setUrlMsg({ kind: "err", text: "세션이 만료되었습니다. 다시 로그인해주세요." }); return; }
           const res = await publishApi.publishSecure({
               blog_account:   blogAccount,
@@ -10805,6 +10804,37 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
   //     HALL_INTENT_CATS=["장례식장"])와 동일 기준. id 기준으로 잡으면 프론트/백엔드 축이 갈라진다.
   //   ⚠ 다른 funeral 9종·타 업종은 isHall=false → 입력칸 미렌더 + hallName="" → 현행 출력 무변화.
   const [hallInput, setHallInput] = useState("");
+  // [FUNERAL-PUBLIC-RUNTIME-INJECT-01] 장례식장 검색·선택.
+  //   ★ 여기서 확정하는 것은 '공식 장례식장명' 하나뿐이다. 시설 Facts 는 저장하지 않는다 —
+  //     생성 요청 시 서버(pages/api/generate.js)가 funeral_halls_public 에서 직접 읽는다.
+  //   ★ 선택 강제 아님. 공공데이터 미수록 시설(신규·폐업 등)도 자유 입력으로 생성 가능해야 한다
+  //     (미수록 = Facts 없음 → 시설 정보 없는 일반 안내글. 생성 차단 아님).
+  const [hallAcItems, setHallAcItems] = useState([]);
+  const hallAcTimer = useRef(null);
+  const hallAcSeq = useRef(0);
+  const closeHallAc = () => setHallAcItems([]);
+  const onHallInput = (val) => {
+    setHallInput(val);
+    if (hallAcTimer.current) clearTimeout(hallAcTimer.current);
+    const q = String(val || "").trim();
+    if (q.length < 2) { closeHallAc(); return; }   // API 와 동일 기준(2자)
+    const seq = ++hallAcSeq.current;
+    hallAcTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/funeral-halls-search?q=${encodeURIComponent(q)}`);
+        const j = await r.json();
+        if (seq !== hallAcSeq.current) return;     // 늦게 도착한 응답 폐기
+        setHallAcItems(j && j.ok && Array.isArray(j.items) ? j.items : []);
+      } catch { closeHallAc(); }                   // 실패해도 수동 입력 경로는 살아 있다
+      // [FUNERAL-HALL-SEARCH-UX-01] 300 → 150ms. 1080건 규모라 서버 부담보다 체감 지연이 크다.
+      //   ⚠ 0ms(무debounce) 금지 — 매 키스트로크 요청. 응답 역전은 hallAcSeq 가 이미 막는다.
+    }, 150);
+  };
+  const pickHall = (it) => {
+    setHallInput(it.name);                         // 공식명 확정 = 서버 조회 키
+    hallAcSeq.current++;
+    closeHallAc();
+  };
   const isHall = currentIndustry === "funeral" && picked?.cat === "장례식장";
   const hallOk = !isHall || hallInput.trim().length > 0;   // 필수 입력 강제
   // [WIRING-03] INTENT 선택 — 글의 내용축. hallName 과 동일 패턴(특정 cat 에서만 값 존재).
@@ -10916,16 +10946,38 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
             <div style={{ background: "#fff", borderRadius: 12,
               border: hallInput.trim() ? "1.5px solid #e0d0f0" : "1.5px solid #FFB300",
               padding: "14px 16px" }}>
-              <input
-                value={hallInput}
-                onChange={(e) => setHallInput(e.target.value)}
-                placeholder="예: 서울의료원 장례식장"
-                style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px",
-                  borderRadius: 8, border: "1.5px solid #e8e8ed", fontSize: 13.5,
-                  fontFamily: "inherit", color: "#1a1a2e", outline: "none" }}
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  value={hallInput}
+                  onChange={(e) => onHallInput(e.target.value)}
+                  onBlur={() => setTimeout(closeHallAc, 150)}
+                  autoComplete="off"
+                  placeholder="장례식장명 2자 이상 입력 (예: 서울의료원)"
+                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px",
+                    borderRadius: 8, border: "1.5px solid #e8e8ed", fontSize: 13.5,
+                    fontFamily: "inherit", color: "#1a1a2e", outline: "none" }}
+                />
+                {hallAcItems.length > 0 && (
+                  <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 40,
+                    marginTop: 3, background: "#fff", border: "1.5px solid #e0d0f0", borderRadius: 8,
+                    boxShadow: "0 6px 18px rgba(80,40,120,.15)", overflow: "hidden" }}>
+                    {hallAcItems.map((it, k) => (
+                      <div key={k}
+                        onMouseDown={(e) => { e.preventDefault(); pickHall(it); }}
+                        style={{ padding: "8px 11px", fontSize: 12.5, cursor: "pointer",
+                          borderTop: k ? "1px solid #f2ecf8" : "none" }}>
+                        <span style={{ fontWeight: 700, color: "#4a3560" }}>{it.name}</span>
+                        <span style={{ color: "#a99bbb", marginLeft: 6, fontSize: 11.5 }}>
+                          {it.ctpv}{it.sigungu ? " · " + it.sigungu : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div style={{ marginTop: 8, fontSize: 11.5, color: "#8a5a00", lineHeight: 1.5 }}>
-                검색해 찾아오는 시설명입니다. 제목·본문에 그대로 안내됩니다. 지역명은 빼고 시설명만 입력하세요.
+                후보에서 고르면 공식 명칭으로 확정되고, 주소·주차·빈소·안치실은 글 작성 시 자동으로 반영됩니다.<br />
+                목록에 없는 곳은 그대로 입력해도 됩니다(시설 정보 없이 작성).
               </div>
             </div>
           </>
