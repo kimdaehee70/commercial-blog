@@ -7,6 +7,9 @@ import OpenAI from "openai";
 //   address 등 위치 5필드가 req.body로 오면 해시태그 직전에 "찾아오시는 길" 삽입.
 //   필드 비면(일반글쓰기) buildLocationBlock="" → 미삽입(옵션① 자동 분기).
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
+// [SAFE-DROP-01] 생성 후 안전삭제 Gate — 금지형 3종(주소→행동/정보→도움/닫는 인사)만 문장 삭제.
+//   Facts 값 exact substring 포함 시 SKIP · 삭제로 이미지 캡션 종결이 되면 SKIP · 시설값→효과 무접촉.
+import { applySafeDropGate } from "../../lib/funeral-postgen-gate.js";
 // [T-1] 제목 브랜드 접미사 — 「제목 ｜ 상호」. 전문서비스 화이트리스트 업종만 부착.
 //   제목 조립 완료 문자열만 받는 후처리. Prompt·Spine·Data 무관.
 import { appendBrandSuffix } from "../../lib/spine/titleBrandSuffix.js";
@@ -324,6 +327,7 @@ export default async function handleFuneral(req, res) {
     out = removeDuplicates(out);
     out = stripOwnerSignature(out);   // 이미지 슬롯 삽입 전 서명 제거 ($ 앵커 매칭 보존)
     out = injectImageSlots(out, region, hallName);
+    out = applySafeDropGate(out, hallFacts).text;   // [SAFE-DROP-01] 해시태그 부착 전 BODY 에만 적용
     // 마무리 해시태그
     out += `\n\n${buildHashtags(region, hallName)}`;
 
