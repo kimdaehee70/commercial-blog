@@ -10453,6 +10453,10 @@ export default function Home() {
       const { data: _genSess } = await supabase.auth.getSession();
       const _genToken = _genSess?.session?.access_token || null;
 
+      // [FUNERAL-HALL-IDENTITY-MERGE-01] 선택 확정 식별자. name 이 일치할 때만 살아난다.
+      //   미선택·수동입력·재생성(hallName="") → null → 서버는 종전 폴백 경로로 간다.
+      const _pickedHall = getPickedHall(hallName);
+
       const { ok: _genOk, data } = await generateApi.postGenerate(_genToken, {
           target, program: treatment, blogType: blogTypeObj,
           userRegion: region, userMemo: "", overrideTitle,
@@ -10460,6 +10464,11 @@ export default function Home() {
           //   서버 generateFuneral.js:200 hallName 수신부는 기존 구현 그대로(백엔드 무수정).
           //   빈 문자열이면 splitRegionHall 폴백 → 현행 동작과 동일.
           hallName,
+          // [FUNERAL-HALL-IDENTITY-MERGE-01] 지역 식별자 — 동명 시설 식별 전용. 본문 미노출.
+          //   ★ hallName 에 섞지 않는 이유: hallName 은 제목·본문 실명·해시태그·이미지 alt 에
+          //     그대로 쓰인다. 지역을 붙이면 "경상북도 상주시 제일장례식장"이 본문에 노출된다.
+          hallCtpv:    _pickedHall ? _pickedHall.ctpv : "",
+          hallSigungu: _pickedHall ? _pickedHall.sigungu : "",
           // [WIRING-03] INTENT id — intents/*.js 정의 cat 에서만 값 존재. 그 외 전 업종 "".
           //   서버 generateFilm.js 는 값이 있으면 조회, 없는 id 면 400. 조용한 폴백 없음.
           intentId,
@@ -10757,6 +10766,33 @@ const TARGET_LABEL   = { consult: "상담 고민형", result: "시술 후기형"
 // ============================================================
 // CATS는 컴포넌트 상단에서 동적 계산 (선언은 파일 상단으로 이동됨)
 
+// ── [FUNERAL-HALL-IDENTITY-MERGE-01] 장례식장 '선택 확정' 식별자 ──────────────
+//   문제(S156 실측): 자동완성 후보는 ctpv/sigungu 를 알고 있는데 선택 순간 name 만 남았다.
+//     → 생성 API 는 동명 시설(DB 21종/51행)을 식별하지 못한다.
+//       종전 코드는 .limit(1) 로 아무거나 붙였고, 신규 코드는 AMBIGUOUS 로 주입을 포기한다.
+//       어느 쪽도 정답이 아니다 — 사용자가 이미 고른 지역을 끝까지 들고 가야 한다.
+//
+//   ★ hallName 문자열에 지역을 섞지 않는다. hallName 은 본문 실명·제목·해시태그·이미지 alt
+//     에 그대로 쓰이므로("서울특별시 중랑구 …" 노출) 식별자는 반드시 별도 필드여야 한다.
+//   ★ TreatmentSelectBoard(선택) 와 Home(생성) 은 서로 다른 컴포넌트다. 5홉 prop 스레딩
+//     (onComplete → analyzeKeyword → parsed → generate(8인자) → body) 대신 모듈 스코프 1개로
+//     전달한다. generate() 시그니처 무변경 = 재생성·초안 등 타 호출부 영향 0.
+//   ★ 안전장치: 저장된 name 과 실제 전송 hallName 이 정확히 같을 때만 식별자를 쓴다.
+//     수동 편집·다른 시설 전환·재생성(hallName="") 은 자동으로 불일치 → 폐기된다.
+let _funeralPickedHall = null;   // { name, ctpv, sigungu } | null
+
+function setPickedHall(it) {
+  _funeralPickedHall = it
+    ? { name: String(it.name || ""), ctpv: String(it.ctpv || ""), sigungu: String(it.sigungu || "") }
+    : null;
+}
+
+function getPickedHall(hallName) {
+  const n = String(hallName || "").trim();
+  if (!n || !_funeralPickedHall) return null;
+  return _funeralPickedHall.name === n ? _funeralPickedHall : null;
+}
+
 function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentIndustry, initialTreatment, initialRep, initialSub, entryMode, storeInfo, onEditStore, isGenerating, onPickChange }) {
   // ★ Phase 9.5 — restaurant 업종은 카드 대신 4단 select UI 사용
   // PHILOSOPHY 2-1: 카드 클릭 ❌ / 검색 행동 조합 ⭕
@@ -10807,14 +10843,22 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
   // [FUNERAL-PUBLIC-RUNTIME-INJECT-01] 장례식장 검색·선택.
   //   ★ 여기서 확정하는 것은 '공식 장례식장명' 하나뿐이다. 시설 Facts 는 저장하지 않는다 —
   //     생성 요청 시 서버(pages/api/generate.js)가 funeral_halls_public 에서 직접 읽는다.
-  //   ★ 선택 강제 아님. 공공데이터 미수록 시설(신규·폐업 등)도 자유 입력으로 생성 가능해야 한다
-  //     (미수록 = Facts 없음 → 시설 정보 없는 일반 안내글. 생성 차단 아님).
+  //   ★ [S158 폐기] 구 설계는 '선택 강제 아님 — 미수록 시설도 자유 입력 생성 가능'이었다.
+  //     전제였던 '미수록 = 시설 정보 없는 일반 안내글'이 실측에서 깨졌다(S158). Facts 없이도
+  //     주소·빈소 등급·조문객 수치·화장장 거리를 창작한 허위 시설 안내문이 나온다.
+  //     → 현행: 자동완성 선택 필수. 미선택(hallPicked=null) 시 생성 차단(hallOk).
   const [hallAcItems, setHallAcItems] = useState([]);
+  // [FUNERAL-HALL-IDENTITY-MERGE-01] 선택 확정 배지 상태. 값이 있으면 = 이번 생성 요청에
+  //   지역 식별자가 살아 있다는 뜻이다. 장식이 아니라 상태 표시다.
+  const [hallPicked, setHallPicked] = useState(null);   // { ctpv, sigungu } | null
   const hallAcTimer = useRef(null);
   const hallAcSeq = useRef(0);
   const closeHallAc = () => setHallAcItems([]);
   const onHallInput = (val) => {
     setHallInput(val);
+    // ★ 수동 편집 = 선택 해제. 이름만 바뀌고 옛 지역이 남으면 다른 시설의 지역으로 조회된다.
+    setHallPicked(null);
+    setPickedHall(null);
     if (hallAcTimer.current) clearTimeout(hallAcTimer.current);
     const q = String(val || "").trim();
     if (q.length < 2) { closeHallAc(); return; }   // API 와 동일 기준(2자)
@@ -10832,11 +10876,17 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
   };
   const pickHall = (it) => {
     setHallInput(it.name);                         // 공식명 확정 = 서버 조회 키
+    // [FUNERAL-HALL-IDENTITY-MERGE-01] 지역 식별자 확정. name 만으로는 동명 시설을 못 가른다.
+    setHallPicked({ ctpv: it.ctpv || "", sigungu: it.sigungu || "" });
+    setPickedHall(it);
     hallAcSeq.current++;
     closeHallAc();
   };
   const isHall = currentIndustry === "funeral" && picked?.cat === "장례식장";
-  const hallOk = !isHall || hallInput.trim().length > 0;   // 필수 입력 강제
+  // [FUNERAL-NOFACTS-NAMED-FABRICATION-01] 선택 강제 — 자동완성 미선택(hallPicked=null) 차단.
+  //   근거(S158 실측): 실명 + hallFacts=null 경로가 주소·빈소 등급·조문객 수치·화장장 거리를
+  //   전부 창작한 허위 시설 안내문을 생성했다. 자유 입력의 산출물은 오정보다.
+  const hallOk = !isHall || (hallInput.trim().length > 0 && !!hallPicked);
   // [WIRING-03] INTENT 선택 — 글의 내용축. hallName 과 동일 패턴(특정 cat 에서만 값 존재).
   //   ⚠ 게이트는 하드코딩 cat 이 아니라 데이터다. intents/*.js 에 정의된 cat 만 목록이 나온다.
   //     미정의 cat(현재 싱크대필름 외 전부)은 intentList=[] → 셀렉터 미렌더 + intentId="" → 현행 출력 무변화.
@@ -10975,9 +11025,23 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
                   </div>
                 )}
               </div>
+              {/* [FUNERAL-HALL-IDENTITY-MERGE-01] 선택 확정 배지 — 지역 식별자 보유 상태 표시 */}
+              {hallPicked ? (
+                <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5,
+                  background: "#E8F5E9", border: "1px solid #A5D6A7", borderRadius: 999,
+                  padding: "4px 11px", fontSize: 11.5, fontWeight: 800, color: "#2E7D32" }}>
+                  ✓ {hallPicked.ctpv}{hallPicked.sigungu ? " " + hallPicked.sigungu : ""} 시설로 확정
+                </div>
+              ) : hallInput.trim().length >= 2 ? (
+                <div style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5,
+                  background: "#FFF8E1", border: "1px solid #FFE082", borderRadius: 999,
+                  padding: "4px 11px", fontSize: 11.5, fontWeight: 800, color: "#8a5a00" }}>
+                  · 미선택 — 후보에서 선택해야 글을 만들 수 있습니다
+                </div>
+              ) : null}
               <div style={{ marginTop: 8, fontSize: 11.5, color: "#8a5a00", lineHeight: 1.5 }}>
                 후보에서 고르면 공식 명칭으로 확정되고, 주소·주차·빈소·안치실은 글 작성 시 자동으로 반영됩니다.<br />
-                목록에 없는 곳은 그대로 입력해도 됩니다(시설 정보 없이 작성).
+                목록에 없는 곳은 시설 정보를 확인할 수 없어 글을 만들 수 없습니다.
               </div>
             </div>
           </>
@@ -11152,7 +11216,7 @@ function TreatmentSelectBoard({ treatments, cats, onSelect, onComplete, currentI
             {canGo ? `${picked.name} 글 작성하기`
               : !picked ? `${L_ITEM}을 먼저 선택하세요`
               : !hasRegion ? "업체정보에서 지역을 설정하세요"
-              : !hallOk ? "장례식장명을 입력하세요"
+              : !hallOk ? "장례식장을 후보에서 선택하세요"
               : !intentOk ? "글의 내용축을 선택하세요"
               : "글 작성하기"}
           </button>
