@@ -83,7 +83,9 @@ function buildHashtags(region, hallName) {
     tags.push(`${r}상조`);
     tags.push(`${r}장례식장`);
   }
-  tags.push("장례절차", "가족장", "장례비용");
+  // [TAG-COST-01] "장례비용" 제거 — 본문은 비용 언급이 영구 금지(361~362행: 검증된 장례비용 필드 0개)인데
+  //   태그만 비용을 노출해 왔다. 3편 연속 재현. 조건부로 살릴 근거가 없어 항목 자체를 뺀다.
+  tags.push("장례절차", "가족장");
   return Array.from(new Set(tags.filter(Boolean))).map((t) => `#${t}`).join(" ");
 }
 
