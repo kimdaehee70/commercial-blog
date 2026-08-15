@@ -57,12 +57,35 @@ function splitRegionHall(raw) {
 
 // 장례식장명 정규화 — "을지대병원장례식장" → "을지대병원 장례식장" (해시태그·본문 가독)
 //   이미 띄어져 있으면 그대로. "장례식장장례식장" 중복 제거.
+// [HALLNAME-PREFIX-01] 광역단체 접두어. 공백 뒤 매칭만 — "서울특별시립승화원"류 무영향.
+//   ★ 표시명에서는 제거하고, _hallKey 에서도 동일하게 제거해 매칭을 접두어 무관으로 만든다.
+//     한쪽만 고치면 DB h.name 과 불일치 → matchFuneralHall 폴백 없음 → 생성 차단된다.
+const _HALL_PREFIX = /^(서울특별시|부산광역시|대구광역시|인천광역시|광주광역시|대전광역시|울산광역시|세종특별자치시|경기도|강원특별자치도|충청북도|충청남도|전북특별자치도|전라남도|경상북도|경상남도|제주특별자치도)\s+/;
+
 function normalizeHallName(raw) {
   let h = String(raw || "").trim().replace(/\s+/g, " ");
   if (!h) return "";
+  h = h.replace(_HALL_PREFIX, "");
   h = h.replace(/(장례식장)\s*\1+/g, "$1");
   if (!/\s장례식장$/.test(h)) h = h.replace(/([^\s])장례식장$/, "$1 장례식장");
   return h.trim();
+}
+
+// [S4-DET-01] 실용 안내(S4) 원문 결정론 삽입.
+//   ★ 계약: 이 문자열은 LLM 을 거치지 않는다. 가공·재정렬·어미 수정 0.
+//     프롬프트 명문화로는 4회 시도 끝 PASS 후에도 재회귀했다(확인합니다 → 확인하는 것이 중요합니다).
+//     따라서 프롬프트에서 재료를 회수하고 후처리에서 원문 그대로 넣는다.
+//   ★ 호출 위치는 SafeDrop 이후 · 해시태그 이전. 삽입 뒤 어떤 후처리도 통과하지 않는다.
+//   앵커: 정보블럭(■) 시작 줄 직전. 없으면 본문 끝.
+function insertPracticalVerbatim(text, sentences) {
+  const list = Array.isArray(sentences) ? sentences.filter(Boolean) : [];
+  if (!list.length) return text;
+  const para = list.join(" ");
+  const lines = String(text).split("\n");
+  const idx = lines.findIndex((l) => l.trimStart().startsWith("■"));
+  if (idx < 0) return `${text.trimEnd()}\n\n${para}`;
+  lines.splice(idx, 0, para, "");
+  return lines.join("\n");
 }
 
 // 해시태그 생성 — 공백 제거(네이버 해시태그는 공백에서 끊김) + 중복 차단
@@ -100,6 +123,7 @@ function buildHashtags(region, hallName, body = "") {
 //     품질 문제가 아니라 오정보 제공이 된다(장례 업종 신뢰 붕괴).
 function _hallKey(s) {
   return String(s || "")
+    .replace(_HALL_PREFIX, "")  // [HALLNAME-PREFIX-01] 접두어 유무 무관 매칭
     .replace(/\s+/g, "")      // 공백 무시 ("을지대병원 장례식장" = "을지대병원장례식장")
     .replace(/[·ㆍ,()]/g, "") // 구분자 무시
     .toLowerCase();
@@ -289,7 +313,9 @@ export default async function handleFuneral(req, res) {
       });
     }
 
-    const userPrompt = buildPrompt({ treatment, region, storeName, hallName, hallFacts });
+    // [S4-DET-01] 요청 로컬 수집 객체 — 모듈/전역 상태 금지(serverless 요청 간 오염 방지).
+    const _collect = { practical: [] };
+    const userPrompt = buildPrompt({ treatment, region, storeName, hallName, hallFacts, _collect });
 
     // ── GPT 호출 (단일 호출 — funeral-prompts 설계 그대로. 섹션 루프 미이식) ──
     const completion = await openai.chat.completions.create({
@@ -334,6 +360,8 @@ export default async function handleFuneral(req, res) {
     out = stripOwnerSignature(out);   // 이미지 슬롯 삽입 전 서명 제거 ($ 앵커 매칭 보존)
     out = injectImageSlots(out, region, hallName);
     out = applySafeDropGate(out, hallFacts).text;   // [SAFE-DROP-01] 해시태그 부착 전 BODY 에만 적용
+    // [S4-DET-01] SafeDrop 이후 · 해시태그 이전. 원문 그대로 삽입, 이후 후처리 무통과.
+    out = insertPracticalVerbatim(out, _collect.practical);
     // 마무리 해시태그
     out += `\n\n${buildHashtags(region, hallName, out)}`;
 
