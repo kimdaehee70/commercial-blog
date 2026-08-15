@@ -81,6 +81,31 @@ function stripVisitFieldsIfNoStore(body, industry) {
 //     (「…신내로 156입니다. … 참고하시면 됩니다」 74자·2문장)은 M2′·M3′를 통과하므로
 //     숫자 하나로만 막는다. 도메인어 목록은 부활시키지 않는다 — 축약 표기에 뚫린 방식이다.
 //   실측(GATE2 10표본 역적용): 제거 2/2 · 오삭제 0/8 · Facts 손상 0.
+// ── [FUNERAL-HALL-IDENTITY-MERGE-01] 시설명 정규화 · Facts 병합 ──────────────
+//   ⚠ _fhKey 는 generateFuneral.js L96 _hallKey 와 동일 규칙이다(공백·구분자 무시 + 소문자).
+//     소비단이 non-export 라 import 할 수 없어 규칙만 복제했다.
+//     ★ 한쪽만 바꾸면 라우터가 고른 엔트리를 소비단이 못 찾는다 — 반드시 함께 수정한다.
+const _fhKey = (s) =>
+  String(s || "").replace(/\s+/g, "").replace(/[·ㆍ,()]/g, "").toLowerCase();
+
+// 사용자 입력 우선 병합. 빈 사용자 값은 public 값을 지우지 않는다.
+//   · public 만 있음 → public
+//   · user 만 있음   → user (공공 조회 실패·모호 시에도 사용자 Facts 는 살린다)
+//   · 둘 다 있음     → public 기반 + 사용자 비어있지 않은 값으로 덮어쓰기
+//   ★ funeral-prompts.js _HALL_FACT_LABELS 에 없는 키(ctpv·sigungu 등)는 소비단이
+//     읽지 않으므로 그대로 실려 있어도 출력에 영향 없다.
+function _mergeHallFacts(publicHall, userHall) {
+  if (!publicHall && !userHall) return null;
+  if (!publicHall) return userHall;
+  if (!userHall) return publicHall;
+  const out = { ...publicHall };
+  for (const k of Object.keys(userHall)) {
+    const v = userHall[k];
+    if (String(v == null ? "" : v).trim()) out[k] = v;
+  }
+  return out;
+}
+
 const _SC_BENEFIT = /(도움이 되|바랍니다|되시길|참고하시)/;
 
 function _scIsSelfClosing(para) {
@@ -110,6 +135,116 @@ function applySelfClosingGate(text, hallName) {
   lines.splice(lineNo, 1);
   if (lines[lineNo] === "" && lines[lineNo - 1] === "") lines.splice(lineNo, 1); // 빈 줄 1개 정리
   return { out: lines.join("\n"), removed: hits[0][1] };
+}
+
+// ── [B-WARNING-TAIL-GATE-01] 생성 후 경고 꼬리 제거 ────────────────────────
+//   배경: baseline N=20 에서 제재 Fact 뒤 경고 부가가 11건. 계열이 2종으로 수렴.
+//     B1 독립 경고문 (「이 점 역시 유의하시기 바랍니다」)      → 문장 삭제
+//     B2 Fact 꼬리 부착 (「…처할 수 있으니 주의해야 합니다」) → 꼬리 절단 + 어미 복원
+//
+//   ★ 엔진 FREEZE 무접촉. _TOPIC_CONTRACT / 정보량 헤더 / assets / 프롬프트 무수정.
+//     SELF-CLOSING-POST-GATE-01 과 같은 후처리 계층, 별도 함수. 내부에 섞지 않는다.
+//
+//   ★ B2 문장에는 「1년 이하 / 1천만원 이하」 같은 법정 수치가 함께 들어 있다.
+//     문장 통째 삭제 절대 금지. STATUTORY-AMOUNT 5/5 보존을 깨뜨린다.
+//
+//   fail-safe 4중:
+//     1) 경고 술어 사전 10종 닫힌 집합 — 목록 밖 표현 무변경
+//     2) 술어 앞부분에 정보 토큰 없음 → B1(삭제) / 있음 → B2(절단)
+//     3) 어미 매핑 4종 닫힌 집합 — 매핑 밖 / 후보 2개 이상 무변경
+//     4) 문장 단위 숫자·금액·기간 토큰 감소 시 해당 문장 원복
+//   실측(baseline N=20 오프라인): 검출 11 → 처리 7(B1 1 / B2 6) · 보류 4
+//     숫자 손실 0 · 문장 파손 0 · 정상 문장 오탐 0
+// ──────────────────────────────────────────────────────────────────────────
+const _WT_WARN = [
+  "주의해야 합니다", "주의가 필요합니다", "주의하셔야 합니다",
+  "유의하시기 바랍니다", "유의해야 합니다", "유의하셔야 합니다",
+  "유념하셔야 합니다", "유념해야 합니다",
+  "기억해 주세요", "기억하시기 바랍니다",
+];
+
+const _WT_MAP = [
+  ["있으니", "있습니다."],
+  ["있음을", "있습니다."],
+  ["되니", "됩니다."],
+  ["것임을", "것입니다."],
+];
+
+const _WT_INFO = /[0-9]|(법|령|규칙|서식|조례)|(장관|시장|군수|구청장|지사|경찰|공무원|장례지도사|진흥원|주민센터|정부24)|(신고|신청|첨부|제출|교부|발급|통보|안치|분골|봉안|화장|매장|개장|상속|조회)/;
+const _WT_NUMTOK = /\d[\d,]*\s?(?:천만원|만원|원|년|개월|일|시간|구|실|회|순위|호)?/g;
+
+function _wtTokens(s) {
+  return (String(s).match(_WT_NUMTOK) || []).slice().sort();
+}
+
+function _wtSplitSents(p) {
+  const out = [];
+  let last = 0;
+  for (let i = 0; i + 1 < p.length; i++) {
+    if (p[i] === "다" && p[i + 1] === ".") {
+      out.push(p.slice(last, i + 2));
+      last = i + 2;
+      while (last < p.length && /\s/.test(p[last])) last++;
+      i = last - 1;
+    }
+  }
+  if (last < p.length) out.push(p.slice(last));
+  return out.filter((s) => s.trim());
+}
+
+//  returns { text: string|null, kind: "NOCHANGE"|"B1"|"B2"|"AMBIG"|"NOMAP" }
+function _wtGateSentence(s) {
+  const hits = _WT_WARN.filter((w) => s.includes(w));
+  if (hits.length === 0) return { text: s, kind: "NOCHANGE" };
+  // 원칙: 경고 술어가 2개 이상이면 무변경
+  const total = hits.reduce((n, w) => n + s.split(w).length - 1, 0);
+  if (hits.length > 1 || total > 1) return { text: s, kind: "AMBIG" };
+
+  const w = hits[0];
+  const head = s.slice(0, s.indexOf(w));
+
+  // B1 — 술어 앞에 정보 토큰 없음 → 문장 삭제
+  if (!_WT_INFO.test(head)) {
+    if (_wtTokens(s).length > 0) return { text: s, kind: "NOMAP" }; // 가드
+    return { text: null, kind: "B1" };
+  }
+
+  // B2 — 꼬리 절단 + 어미 복원
+  const stem = head.replace(/\s+$/, "").replace(/,$/, "");
+  const cands = _WT_MAP.filter(([k]) => stem.endsWith(k));
+  if (cands.length !== 1) {
+    return { text: s, kind: cands.length > 1 ? "AMBIG" : "NOMAP" };
+  }
+  const [k, v] = cands[0];
+  const out = stem.slice(0, stem.length - k.length) + v;
+
+  // 사후검증 — 숫자·금액·기간 토큰 감소 시 원복
+  const a = _wtTokens(s);
+  const b = _wtTokens(out);
+  if (a.length !== b.length || a.some((x, i) => x !== b[i])) {
+    return { text: s, kind: "NOMAP" };
+  }
+  return { text: out, kind: "B2" };
+}
+
+function applyWarningTailGate(text) {
+  if (typeof text !== "string" || !text) return { out: text, stats: null };
+  const stats = { B1: 0, B2: 0, AMBIG: 0, NOMAP: 0, samples: [] };
+  const paras = text.split("\n\n").map((p) => {
+    if (p.startsWith("[이미지") || p.startsWith("■") || p.startsWith("#")) return p;
+    const kept = [];
+    for (const s of _wtSplitSents(p)) {
+      const r = _wtGateSentence(s.trim());
+      if (r.kind !== "NOCHANGE") {
+        stats[r.kind] += 1;
+        if (r.kind === "B1" || r.kind === "B2") stats.samples.push(s.trim().slice(0, 60));
+      }
+      if (r.text !== null) kept.push(r.text);
+    }
+    return kept.join(" ");
+  });
+  const changed = stats.B1 + stats.B2 > 0;
+  return { out: changed ? paras.join("\n\n") : text, stats: changed ? stats : null };
 }
 
 export default async function handler(req, res) {
@@ -154,33 +289,120 @@ export default async function handler(req, res) {
   //     빈 배열 = MISMATCH-GUARD-01(generateFuneral.js:264) 미발동 → Facts 없는 일반 안내글로 생성.
   //   ★ 게이트 2조건(industry==="funeral" && hallName 존재) — 타 업종은 index.js isHall 게이트로
   //     hallName="" 이라 진입 자체가 불가. 영향 0.
+  //
+  // ── [FUNERAL-HALL-IDENTITY-MERGE-01] S156 STEP2-A ────────────────────────
+  //   실측으로 확인된 결함 2건을 함께 닫는다. T2 신규 9필드는 이 축에 넣지 않는다.
+  //
+  //   ① 오식별 — .eq("name") 단독 식별.
+  //      T2 원본 실측: 중복 시설명 27종 / 66행(중앙장례식장 6·시민장례식장 4·제일장례식장 4…).
+  //      .limit(1) 이 걸려 있어 어느 지역 시설이 잡힐지는 name 정렬 우연이었다.
+  //      = 서울 사용자가 부산 시설의 주차·빈소·안치 값을 받을 수 있는 오정보 경로.
+  //      ★ 또한 maybeSingle() 은 2건 이상에서 error 를 내는데 error 를 구조분해하지 않아
+  //        로그조차 남지 않았다. 조용히 실패하고 있었다.
+  //
+  //   ② 사용자 입력 소실 — funeralHalls 전면치환.
+  //      Store.js hallEditor 10필드 중 public 에 없는 5필드
+  //      (parkingFee·restaurant·facilities·crematorium·memo)가 생성 직전에 사라졌다.
+  //      = 입력 UI 는 살아 있는데 소비단에 도달하지 못하는 기능 손실.
+  //
+  //   ★ 식별자 출처 = 저장된 hall 엔트리의 ctpv/sigungu.
+  //     이 두 값은 funeral-halls-search.js 가 같은 테이블에서 내려준 값을 그대로 저장한 것이라
+  //     표기 정규화(trim/별칭)가 불필요하다 — 자기 자신과 비교한다.
+  //   ★ 구(舊) 저장분에는 ctpv/sigungu 가 없다 → name 단독 폴백. 단 2건 이상이면 '모호'로
+  //     판정해 주입하지 않는다. 틀린 Facts 보다 무Facts 가 낫다(장례 업종 오정보 = 신뢰 붕괴).
+  //   ★ 병합 규칙: 사용자 입력값(비어있지 않은 것) > public > 없음.
+  //     빈 사용자 값이 public 값을 지우지 않는다.
+  //   ★ FREEZE 무접촉 — generateFuneral.js / funeral-prompts.js 무수정.
+  //     소비단(matchFuneralHall)은 여전히 name 완전일치 1건만 본다. 규약 불변.
   if (industry === "funeral" && String(req.body.hallName || "").trim()) {
     const _hallName = String(req.body.hallName).trim();
+    const _key = _fhKey(_hallName);
+
+    // 치환 전에 사용자 저장분을 먼저 읽는다 — 식별자(ctpv/sigungu)와 병합 원본이 여기 있다.
+    const _store = req.storeRuntime.store || {};
+    const _vi = (_store.visit_info && typeof _store.visit_info === "object") ? _store.visit_info : {};
+    const _userHalls = Array.isArray(_vi.funeralHalls) ? _vi.funeralHalls : [];
+    const _userHall = _userHalls.find((h) => h && _fhKey(h.name) === _key) || null;
+
     let _publicHall = null;
+    let _ambiguous = false;
     try {
-      const { data } = await supabaseAdmin
+      let _q = supabaseAdmin
         .from("funeral_halls_public")
-        .select("name, address, parking, halls, mortuary")
-        .eq("name", _hallName)
-        .limit(1)
-        .maybeSingle();
-      _publicHall = data || null;
+        .select("ctpv, sigungu, name, address, parking, halls, mortuary, " +
+                "restaurant_raw, store_raw, waitroom_raw, disabled_facility_raw")
+        .eq("name", _hallName);
+      const _ctpv = String(
+        req.body.hallCtpv || (_userHall && _userHall.ctpv) || ""
+      ).trim();
+      const _sig = String(
+        req.body.hallSigungu || (_userHall && _userHall.sigungu) || ""
+      ).trim();
+      if (_ctpv) _q = _q.eq("ctpv", _ctpv);
+      if (_sig)  _q = _q.eq("sigungu", _sig);
+
+      // limit(2) — 1건 확정 / 2건 이상 모호 판정용. maybeSingle 미사용(error 은폐 회피).
+      const { data, error } = await _q.limit(2);
+      if (error) throw error;
+      const _rows = Array.isArray(data) ? data : [];
+      if (_rows.length === 1) {
+        _publicHall = _rows[0];
+      } else if (_rows.length > 1) {
+        _ambiguous = true;
+        console.warn(`[funeral-inject] AMBIGUOUS: "${_hallName}" 동명 다수 · 지역 식별자 없음 → public 주입 생략`);
+      }
     } catch (e) {
-      console.warn("[funeral-inject] public 조회 실패(Facts 없이 진행):", e?.message);
+      console.warn("[funeral-inject] public 조회 실패(사용자 입력만으로 진행):", e?.message);
     }
+
+    // ── [FUNERAL-DETAIL-T2-RECOVERY-01] STEP2-B · T2 편의시설 → 기존 슬롯 조립 ──
+    //   ★ _HALL_FACT_LABELS(funeral-prompts.js L408) 기존 9키에 얹는다. 신규 슬롯 0.
+    //     소비단(generateFuneral / funeral-prompts) 무수정 — FREEZE 유지.
+    //   ★ 설치 → 소비 / 미설치·결측 → 키 자체를 만들지 않는다.
+    //     빈 문자열조차 넣지 않아야 funeral-prompts.js L661 「미등록 시설 존재 창작 금지」와
+    //     정합하고 '없다'는 서술까지 자동 차단된다(미설치 침묵).
+    //   ★ raw 컬럼은 소비단에 넘기지 않는다 — 규약 밖 키가 hallFacts 에 섞이면 안 된다.
+    //   ★ 적재 실측(S157): T2 1,117행 중 962행(86.1%) UPDATE. 미매칭 155행은 결측일 뿐
+    //     오염이 아니다 — 기존 4필드로 종전과 동일하게 동작한다.
+    if (_publicHall) {
+      const _on = (v) => String(v || "").trim() === "설치";
+      const _fac = [
+        _on(_publicHall.store_raw) && "매점",
+        _on(_publicHall.waitroom_raw) && "유족대기실",
+        _on(_publicHall.disabled_facility_raw) && "장애인편의시설",
+      ].filter(Boolean);
+
+      const _rest = _on(_publicHall.restaurant_raw);
+      delete _publicHall.restaurant_raw;
+      delete _publicHall.store_raw;
+      delete _publicHall.waitroom_raw;
+      delete _publicHall.disabled_facility_raw;
+
+      if (_rest) _publicHall.restaurant = "있음";
+      if (_fac.length) _publicHall.facilities = _fac.join(", ");
+      console.log(
+        `[funeral-t2] restaurant:${_rest ? "Y" : "-"}` +
+        ` / facilities:${_fac.length ? _fac.join("·") : "-"}`
+      );
+    }
+
+    const _merged = _mergeHallFacts(_publicHall, _userHall);
 
     // store=null(익명/미등록)이어도 소비 경로가 성립하도록 객체를 세운다.
     //   ⚠ visit_info 는 spread 로 보존 — 13키(lunchHours·reservation·parkingOps 등)를 잃으면
     //     buildStoreProfile VISIT_INFO_MAP slot 이 통째로 사라진다(생성 결과 회귀).
-    const _store = req.storeRuntime.store || {};
     req.storeRuntime.store = {
       ..._store,
       visit_info: {
-        ...(_store.visit_info && typeof _store.visit_info === "object" ? _store.visit_info : {}),
-        funeralHalls: _publicHall ? [_publicHall] : [],
+        ..._vi,
+        funeralHalls: _merged ? [_merged] : [],
       },
     };
-    console.log(`[funeral-inject] ${_hallName} → ${_publicHall ? "public matched" : "no public facts"}`);
+    console.log(
+      `[funeral-inject] ${_hallName} → public:${_publicHall ? "Y" : (_ambiguous ? "AMBIG" : "N")}` +
+      ` / user:${_userHall ? "Y" : "N"} / merged:${_merged ? "Y" : "N"}` +
+      ` / idSrc:${String(req.body.hallCtpv || "").trim() ? "body" : ((_userHall && _userHall.ctpv) ? "store" : "none")}`
+    );
   }
 
   // ── [D-4-5a] STORE_PROFILE 조립 + View 분배 (주입만 · 소비 없음) ─────
@@ -233,6 +455,13 @@ export default async function handler(req, res) {
             if (typeof payload.textMarkdown === "string") payload.textMarkdown = out;
             if (typeof payload.content === "string") payload.content = out;
             console.log(`[SELF-CLOSING-POST-GATE-01] removed: ${removed.slice(0, 60)}`);
+          }
+          const wt = applyWarningTailGate(payload.text);
+          if (wt.stats) {
+            payload.text = wt.out;
+            if (typeof payload.textMarkdown === "string") payload.textMarkdown = wt.out;
+            if (typeof payload.content === "string") payload.content = wt.out;
+            console.log(`[B-WARNING-TAIL-GATE-01] B1=${wt.stats.B1} B2=${wt.stats.B2} hold=${wt.stats.AMBIG + wt.stats.NOMAP}`);
           }
         }
       } catch (e) {
