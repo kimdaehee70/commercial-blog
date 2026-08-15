@@ -33,18 +33,12 @@
 // - ⚠ 실측(세션81): published 117건 중 source_post_id 없음 57건. 그룹 해석 불가 → 단일 행 처리.
 //   추측 연결 금지. backfill 은 별도 축으로 이월.
 // 116차 v0.4: 본체 유실 복구. GET ?publish_id= → { ok, snapshot, timeline } / POST → { ok, snapshot }
-//   가드: Bearer + OWNER_UID. 모든 응답 JSON(HTML 누출 금지). 테이블: publish_metrics(+publish_history)
+//   가드: Bearer + role>=admin (ADMIN-RBAC-02). 모든 응답 JSON(HTML 누출 금지). 테이블: publish_metrics(+publish_history)
 // 55차 v0.2 / 48차 v0.1 = 구 LIST 보드 (세대 불일치로 폐기)
 
-import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
-import { OWNER_UID } from '../../../lib/constants';
-
-// auth 검증 전용 (anon key)
-const supabaseAuth = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+import { requireRole } from '../../../lib/guards';
+import { ROLES } from '../../../lib/constants';
 
 // ── [세션83] 전량 조회 헬퍼 ──────────────────────────────────────────────
 // PostgREST 기본 상한(1000행)을 range 루프로 넘긴다. builder 는 매 호출 새 인스턴스를 반환해야 한다
@@ -391,20 +385,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
   }
 
-  // --- Bearer 토큰 검증 ---
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    return res.status(401).json({ ok: false, error: 'UNAUTHORIZED', detail: 'missing_bearer_token' });
-  }
-
-  const { data: userData, error: userErr } = await supabaseAuth.auth.getUser(token);
-  if (userErr || !userData?.user) {
-    return res.status(401).json({ ok: false, error: 'UNAUTHORIZED', detail: 'invalid_token' });
-  }
-  if (userData.user.id !== OWNER_UID) {
-    return res.status(403).json({ ok: false, error: 'FORBIDDEN', detail: 'not_owner' });
-  }
+  // --- [ADMIN-RBAC-02] RBAC 가드 (Bearer + accounts.role >= admin) ---
+  const guard = await requireRole(req, res, ROLES.ADMIN);
+  if (!guard) return;
 
   // ============ GET ============
   if (req.method === 'GET') {

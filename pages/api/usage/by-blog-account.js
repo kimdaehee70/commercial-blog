@@ -2,7 +2,7 @@
 // v0.2 — 56차 (owner 가드 + Bearer 검증)
 // 변경:
 //   - Authorization: Bearer <token> 검증 추가
-//   - OWNER_UID 검증 → non-owner 403
+//   - [ADMIN-RBAC-02] role>=admin 검증 → 미달 403
 //   - 응답에 verified 객체 추가
 //   - 비즈니스 로직 무변경 (집계·정렬·KST 계산 등 v0.1 그대로)
 //
@@ -22,7 +22,8 @@
 //   - avg_qc_score
 
 import { createClient } from "@supabase/supabase-js";
-import { OWNER_UID } from "../../../lib/constants";
+import { requireRole } from "../../../lib/guards";
+import { ROLES } from "../../../lib/constants";
 
 // KST 이번 달 첫날 ISO (시작 시각)
 function kstMonthStartISO() {
@@ -51,21 +52,9 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: "SUPABASE_ENV_MISSING" });
     }
 
-    // ── owner 가드 ──────────────────────────────────────────
-    const authHeader = req.headers.authorization || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    if (!token) {
-      return res.status(401).json({ ok: false, error: "UNAUTHORIZED", detail: "missing_bearer_token" });
-    }
-
-    const supabaseAuth = createClient(url, anonKey, { auth: { persistSession: false } });
-    const { data: userData, error: userErr } = await supabaseAuth.auth.getUser(token);
-    if (userErr || !userData?.user) {
-      return res.status(401).json({ ok: false, error: "UNAUTHORIZED", detail: "invalid_token" });
-    }
-    if (userData.user.id !== OWNER_UID) {
-      return res.status(403).json({ ok: false, error: "FORBIDDEN", detail: "not_owner" });
-    }
+    // ── [ADMIN-RBAC-02] RBAC 가드 (Bearer + accounts.role >= admin) ──
+    const guard = await requireRole(req, res, ROLES.ADMIN);
+    if (!guard) return;
 
     // ── 비즈니스 로직 (v0.1 그대로) ─────────────────────────
     const supabase = createClient(url, serviceKey, { auth: { persistSession: false } });
@@ -117,7 +106,7 @@ export default async function handler(req, res) {
         },
         recent,
         month_start_kst: monthStart,
-        verified: { auth_user_id: userData.user.id, is_owner: true },
+        verified: { auth_user_id: guard.user.id, role: guard.role },
       });
     }
 
@@ -175,7 +164,7 @@ export default async function handler(req, res) {
       total_publish_all: rows.length,
       month_start_kst: monthStart,
       accounts: summary,
-      verified: { auth_user_id: userData.user.id, is_owner: true },
+      verified: { auth_user_id: guard.user.id, role: guard.role },
     });
   } catch (e) {
     console.error("[usage] 예외:", e);

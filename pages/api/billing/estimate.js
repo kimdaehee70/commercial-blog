@@ -6,13 +6,13 @@
 //
 // 54차 변경:
 //   - Bearer access_token 검증 (supabase.auth.getUser)
-//   - OWNER_UID 일치 검증 (비-owner 차단)
+//   - [ADMIN-RBAC-02] role>=admin 검증으로 전환
 //   - 401 / 403 응답 추가
 //   - 하위 API(/api/usage/by-blog-account) 호출 시 Authorization 헤더 전달
 //   - 기존 계산 로직 무변경
 
-import { createClient } from '@supabase/supabase-js';
-import { OWNER_UID } from '../../../lib/constants';
+import { requireRole } from '../../../lib/guards';
+import { ROLES } from '../../../lib/constants';
 import {
   calculateCharge,
   quotaUsageRatio,
@@ -46,33 +46,12 @@ export default async function handler(req, res) {
 
   try {
     // ─────────────────────────────────────────────
-    // [54차 신설] 토큰 검증 + owner 가드
+    // [ADMIN-RBAC-02] RBAC 가드 (Bearer + accounts.role >= admin)
+    //   authHeader 는 하위 API(/api/usage/by-blog-account) 전파용으로 유지한다.
     // ─────────────────────────────────────────────
     const authHeader = req.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-    if (!token) {
-      return res.status(401).json({ ok: false, error: 'UNAUTHORIZED' });
-    }
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !serviceKey) {
-      console.error('[BILLING_ESTIMATE v0.3] ENV 누락');
-      return res.status(500).json({ ok: false, error: 'SERVER_ENV_MISSING' });
-    }
-
-    const supabase = createClient(supabaseUrl, serviceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-    const { data: userData, error: authErr } = await supabase.auth.getUser(token);
-    if (authErr || !userData?.user) {
-      return res.status(401).json({ ok: false, error: 'INVALID_TOKEN' });
-    }
-
-    if (userData.user.id !== OWNER_UID) {
-      return res.status(403).json({ ok: false, error: 'FORBIDDEN_NOT_OWNER' });
-    }
+    const guard = await requireRole(req, res, ROLES.ADMIN);
+    if (!guard) return;
     // ─────────────────────────────────────────────
     // 가드 통과 → 기존 로직 실행
     // ─────────────────────────────────────────────
@@ -104,7 +83,7 @@ export default async function handler(req, res) {
         quota_usage_ratio: Number(ratio.toFixed(3)),
         over_quota: monthly > plan.monthly_quota,
         enforcement: 'observation_only',
-        verified: { auth_user_id: userData.user.id, is_owner: true },
+        verified: { auth_user_id: guard.user.id, role: guard.role },
       });
     }
 
@@ -151,7 +130,7 @@ export default async function handler(req, res) {
       summary: sum,
       accounts: items,
       enforcement: 'observation_only',
-      verified: { auth_user_id: userData.user.id, is_owner: true },
+      verified: { auth_user_id: guard.user.id, role: guard.role },
     });
   } catch (e) {
     console.error('[BILLING_ESTIMATE v0.3] error:', e?.message || e);

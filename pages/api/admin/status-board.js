@@ -4,7 +4,7 @@
 // 98차 v0.1: 운영 상태판 — read 전용 집계 엔드포인트 (신규)
 // - observations.js(관측 원본)와 분리. 이 파일은 POST 없음 = write 표면 0 = FREEZE 정합.
 // - GET ?industry=dental → { ok, industry, groups, unclustered, meta }
-// - 가드: Bearer + OWNER_UID (observations.js 패턴 그대로).
+// - 가드: Bearer + role>=admin (ADMIN-RBAC-02).
 // - 소스: publish_history(read) + publish_metrics(read). 단일 DB. SELECT only.
 //
 // 데이터 계약 (98차 확정):
@@ -19,15 +19,9 @@
 //
 // FREEZE: 엔진 / publish.js / RPC / check-quota.js 불변. 이 파일은 그 어느 것도 호출/수정 안 함.
 
-import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
-import { OWNER_UID } from '../../../lib/constants';
-
-// auth 검증 전용 (anon key) — observations.js와 동일 패턴
-const supabaseAuth = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+import { requireRole } from '../../../lib/guards';
+import { ROLES } from '../../../lib/constants';
 
 // ── STEP 2: 업종별 그룹키 주입 (하드코딩 금지, 설정으로) ──────────────
 // 새 업종 = 여기 한 줄 추가. 골격 코드 불변.
@@ -87,19 +81,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED' });
   }
 
-  // --- Bearer 토큰 검증 (observations.js 패턴 그대로) ---
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    return res.status(401).json({ ok: false, error: 'UNAUTHORIZED', detail: 'missing_bearer_token' });
-  }
-  const { data: userData, error: userErr } = await supabaseAuth.auth.getUser(token);
-  if (userErr || !userData?.user) {
-    return res.status(401).json({ ok: false, error: 'UNAUTHORIZED', detail: 'invalid_token' });
-  }
-  if (userData.user.id !== OWNER_UID) {
-    return res.status(403).json({ ok: false, error: 'FORBIDDEN', detail: 'not_owner' });
-  }
+  // --- [ADMIN-RBAC-02] RBAC 가드 (Bearer + accounts.role >= admin) ---
+  const guard = await requireRole(req, res, ROLES.ADMIN);
+  if (!guard) return;
 
   const industry = (req.query.industry || 'dental').toString();
   const includeTest = req.query.include_test === '1'; // demo/test 토글
