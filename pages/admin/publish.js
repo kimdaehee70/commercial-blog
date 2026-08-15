@@ -923,6 +923,41 @@ export default function AdminPublish() {
     }
   };
 
+  // [세션171] 완전 삭제 — 운영자 미발행 테스트 기록 전용 Hard Delete.
+  //   ★ 게이트 판정은 전부 서버(publish-purge)가 한다. 화면은 id 만 보낸다.
+  //     조건(본인계정·URL없음·publish_metrics 0·survival_log 0) 위반 건은 서버가
+  //     Soft Delete 로 폴백하므로 여기서 미리 거르지 않는다 — 판정이 두 곳에 생기면 갈라진다.
+  //   ★ publish_metrics · survival_log 는 FK ON DELETE CASCADE 다(실측). 게이트가 유일한 방어선.
+  const doBulkPurge = async () => {
+    const ids = Array.from(checked);
+    if (ids.length === 0 || bulkBusy) return;
+    if (!confirm(
+      `선택한 ${ids.length}건을 완전 삭제합니다.\n되돌릴 수 없습니다.\n\n`
+      + `발행 URL 또는 관측 기록이 있는 건은 자동으로 숨김 처리만 됩니다.\n진행할까요?`
+    )) return;
+
+    setBulkBusy(true);
+    try {
+      const j = await callAction('/api/admin/publish-purge', { publish_ids: ids });
+      if (j === null) return;                        // 인증 만료 — callAction 이 이미 처리
+      if (!j.ok) { alert('완전 삭제 실패: ' + (j.error || '')); return; }
+
+      const gone = new Set([...(j.purged || []), ...(j.soft_deleted || []).map((s) => s.id)]);
+      if (gone.size) {
+        setRows((rs) => rs.filter((row) => !gone.has(row.id)));
+        if (gone.has(selectedId)) { setSelectedId(null); setSnapshot(null); setTimeline([]); }
+      }
+      setChecked(new Set());
+      alert(
+        `완전 삭제 ${j.purged_count}건`
+        + (j.soft_deleted_count ? ` · 숨김 처리 ${j.soft_deleted_count}건 (조건 미충족)` : '')
+        + (j.failed_count ? ` · 실패 ${j.failed_count}건` : '')
+      );
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   // 재발행 = URL 재연결 + 발행 상태 갱신. 글 재생성 아님(엔진 무접촉).
   const doRepublish = async () => {
     if (!selectedId) return;
@@ -1319,8 +1354,11 @@ export default function AdminPublish() {
             <button onClick={doBulkDelete} style={S.bulkDelBtn} disabled={bulkBusy}>
               {bulkBusy ? '삭제 중…' : '선택 삭제'}
             </button>
+            <button onClick={doBulkPurge} style={S.bulkPurgeBtn} disabled={bulkBusy}>
+              완전 삭제
+            </button>
             <span style={{ color: T.textFaint, fontSize: 11 }}>
-              삭제해도 관측 기록은 보존됩니다
+              선택 삭제 = 숨김(관측 보존) · 완전 삭제 = 영구(테스트 기록만)
             </span>
           </div>
         )}
@@ -2151,6 +2189,11 @@ const S = {
   bulkDelBtn: {
     ...inputStyle, padding: '3px 12px', cursor: 'pointer', fontSize: 12,
     color: '#fff', background: '#b91c1c', border: '1px solid #b91c1c', fontWeight: 600,
+  },
+  // [세션171] 완전 삭제 — 되돌릴 수 없으므로 선택 삭제와 색을 분리한다(오조작 방지).
+  bulkPurgeBtn: {
+    ...inputStyle, padding: '3px 12px', cursor: 'pointer', fontSize: 12,
+    color: '#fca5a5', background: 'transparent', border: '1px solid #b91c1c', fontWeight: 600,
   },
 
   // 검색 패널은 강조 대상 → 초록 테두리 유지(다크 대비로 조정)

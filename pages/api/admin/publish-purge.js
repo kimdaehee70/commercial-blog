@@ -28,7 +28,7 @@ import { ROLES } from '../../../lib/constants';
 const MAX_IDS = 200;   // 1회 호출 상한. 대량 정리는 여러 번 나눠 부른다.
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST' && req.method !== 'DELETE') {
+  if (req.method !== 'POST' && req.method !== 'DELETE' && req.method !== 'PATCH') {
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
 
