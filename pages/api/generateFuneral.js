@@ -66,7 +66,7 @@ function normalizeHallName(raw) {
 }
 
 // 해시태그 생성 — 공백 제거(네이버 해시태그는 공백에서 끊김) + 중복 차단
-function buildHashtags(region, hallName) {
+function buildHashtags(region, hallName, body = "") {
   const nospace = (s) => String(s || "").replace(/\s+/g, "");
   const tags = [];
   const r = nospace(region);
@@ -85,7 +85,10 @@ function buildHashtags(region, hallName) {
   }
   // [TAG-COST-01] "장례비용" 제거 — 본문은 비용 언급이 영구 금지(361~362행: 검증된 장례비용 필드 0개)인데
   //   태그만 비용을 노출해 왔다. 3편 연속 재현. 조건부로 살릴 근거가 없어 항목 자체를 뺀다.
-  tags.push("장례절차", "가족장");
+  // [TAG-FAMILY-01] "가족장"은 삭제가 아니라 내용 연동 — funeralForm(P6) 자산에 실재하므로
+  //   가족장 주제 글에서는 유효 태그다. 본문에 없는 편에서만 억제한다. 완성 BODY 문자열 검사(deterministic).
+  tags.push("장례절차");
+  if (String(body || "").includes("가족장")) tags.push("가족장");
   return Array.from(new Set(tags.filter(Boolean))).map((t) => `#${t}`).join(" ");
 }
 
@@ -332,7 +335,7 @@ export default async function handleFuneral(req, res) {
     out = injectImageSlots(out, region, hallName);
     out = applySafeDropGate(out, hallFacts).text;   // [SAFE-DROP-01] 해시태그 부착 전 BODY 에만 적용
     // 마무리 해시태그
-    out += `\n\n${buildHashtags(region, hallName)}`;
+    out += `\n\n${buildHashtags(region, hallName, out)}`;
 
     // [A-7] 위치블록 후단 삽입 — 해시태그 줄을 떼어 [본문 + 찾아오시는길 + 해시태그] 재조립.
     //   _locStore 위치필드 전부 빈값(일반글쓰기)이면 buildLocationBlock=""→원문 그대로(부작용 0).
