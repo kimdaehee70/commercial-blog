@@ -12974,7 +12974,15 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
           {/* ── 좌측: 대화창 50% — 도구 탭일 때 숨김 ── */}
-          {resultTab !== "tools" && (
+          {/* [UI-GENERATE-RESULT-FULLWIDTH-01] 생성 완료(stage="result")에도 좌컬럼 언마운트.
+              배경: 완료 시 생성 Hero 가 사라지면 좌컬럼 렌더 체인이 landing else 분기로 떨어져
+                    히어로+유튜브가 드러나고 결과가 우측 50% 에 갇혔다(실측).
+              좌컬럼은 width:"50%" 고정, 우컬럼은 flex → 좌컬럼 제거만으로 우측이 100% 가 된다
+              (resultTab==="tools" 가 이미 같은 방식으로 동작 중).
+              ★ stage==="generating" 은 게이트를 통과하지 못하므로 생성 중 2컬럼 무변화.
+              ※ HOLD UI-RESULT-SUMMARY-MOVE-01 — ResultSummary 고유 3종
+                (발행 5단계 / 사용방법 영상 / SEO·문단·이미지 집계)의 우측 이전은 별도 축. */}
+          {resultTab !== "tools" && stage !== "result" && (
           <div style={{ width: "50%", flexShrink: 0, display: "flex", flexDirection: "column",
             borderRight: "1px solid #e8e8ed", background: "#f7f7f8" }}>
             <div style={{ padding: "0 24px", borderBottom: "1px solid #e8e8ed", height: 53,

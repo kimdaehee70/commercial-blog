@@ -89,7 +89,7 @@ function insertPracticalVerbatim(text, sentences) {
 }
 
 // 해시태그 생성 — 공백 제거(네이버 해시태그는 공백에서 끊김) + 중복 차단
-function buildHashtags(region, hallName, body = "") {
+function buildHashtags(region, hallName, body = "", treatment = null) {
   const nospace = (s) => String(s || "").replace(/\s+/g, "");
   const tags = [];
   const r = nospace(region);
@@ -111,6 +111,16 @@ function buildHashtags(region, hallName, body = "") {
   // [TAG-FAMILY-01] "가족장"은 삭제가 아니라 내용 연동 — funeralForm(P6) 자산에 실재하므로
   //   가족장 주제 글에서는 유효 태그다. 본문에 없는 편에서만 억제한다. 완성 BODY 문자열 검사(deterministic).
   tags.push("장례절차");
+  // [TAG-MENU-01] funeral_procedure 한정 — treatment.keywords 를 태그로 승격.
+  //   근거: Core 는 메뉴별 검색시장으로 분리됐는데(FUNERAL-OTHER-MENU-EXPOSURE-02)
+  //         태그축은 「{지역}+상조」 골격에 남아 3개까지 떨어졌다.
+  //   ★ 하드코딩 신규 태그 0 — data.js 의 기존 keywords 자산만 재사용한다.
+  //   ★ id 완전일치 게이트. TARGET 외 treatment 는 진입하지 않는다(One Axis).
+  //   ★ 중복은 아래 Set 이 흡수한다("장례절차"는 위 상수와 중복).
+  //   ※ HOLD FUNERAL-TAG-CONSTANT-01 — 위 "장례절차" 무조건 부착은 별도 축에서 정리.
+  if (treatment && treatment.id === "funeral_procedure") {
+    for (const k of (treatment.keywords || [])) tags.push(nospace(k));
+  }
   if (String(body || "").includes("가족장")) tags.push("가족장");
   return Array.from(new Set(tags.filter(Boolean))).map((t) => `#${t}`).join(" ");
 }
@@ -363,7 +373,7 @@ export default async function handleFuneral(req, res) {
     // [S4-DET-01] SafeDrop 이후 · 해시태그 이전. 원문 그대로 삽입, 이후 후처리 무통과.
     out = insertPracticalVerbatim(out, _collect.practical);
     // 마무리 해시태그
-    out += `\n\n${buildHashtags(region, hallName, out)}`;
+    out += `\n\n${buildHashtags(region, hallName, out, treatment)}`;
 
     // [A-7] 위치블록 후단 삽입 — 해시태그 줄을 떼어 [본문 + 찾아오시는길 + 해시태그] 재조립.
     //   _locStore 위치필드 전부 빈값(일반글쓰기)이면 buildLocationBlock=""→원문 그대로(부작용 0).
