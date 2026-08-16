@@ -70,7 +70,7 @@ export default async function handler(req, res) {
     // 노출 허용 컬럼만 명시 선택.
     const { data: posts, error: postErr } = await supabaseAdmin
       .from("publish_history")
-      .select("id, title, industry, region, keyword, treatment_name, publish_status, naver_post_url, published_at, created_at, source_post_id")  // [fix] source_post_id — baseline↔published 병합 식별자(§merge-A안). 미노출 시 프론트가 제목 병합에 의존 → 등록완료인데 미등록 표시 + 재등록 409.
+      .select("id, title, industry, region, keyword, treatment_name, publish_status, naver_post_url, published_at, created_at, source_post_id, cluster, core_keyword")  // [CORE-KEYWORD-HALL-01] cluster — baseline 저장 hallName 브리지. 미노출 시 openPost.cluster=undefined → Core 가 fallback(생활권+업종)으로 새어 관측축 오염. Naver §2 미노출 대상 아님(화면 렌더 미사용, 내부 브리지값). / [LENS-CORE-SOT-01] core_keyword — 생성 시점 확정 Core(관측축 SoT). 돋보기 검색어 정본. 미노출 시 화면이 region+treatment_name 으로 재조립 → 관측축과 다른 검색어를 연다. / [fix] source_post_id — baseline↔published 병합 식별자(§merge-A안). 미노출 시 프론트가 제목 병합에 의존 → 등록완료인데 미등록 표시 + 재등록 409.
       .eq("account_id", account.id)
       // [세션135 · MY-USAGE-SOFTDELETE-DISPLAY-01] 삭제된 글은 사용자 화면에서 제외.
       //   이 API 하나가 마이페이지 이용내역 + 최근발행 두 화면의 목록 정본이라 여기서만 막으면 된다.

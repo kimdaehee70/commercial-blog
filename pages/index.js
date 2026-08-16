@@ -8,7 +8,12 @@ import { useStore } from "../contexts/StoreContext";
 import { getActiveContext } from "../lib/contextSpine";
 import { getPhotoPolicy, photoDescLine } from "../lib/photoPolicyRegistry";
 import { getRegionStrategySafe } from "../lib/spine/regionStrategyRegistry";  // [v-region] 지역 전략(visit/service) 조회 — 미등록 업종은 visit 축퇴
-import { buildCoreKeyword } from "../lib/spine/serviceAxis";  // [S117] Core 관측축 — region + catalog.name. full_keyword(소재축)와 분리
+import { buildCoreKeyword, buildObservationCore, stripCtpvPrefix } from "../lib/spine/serviceAxis";  // [S117] Core 관측축 — region + catalog.name. full_keyword(소재축)와 분리
+//   [CORE-AT-GENERATION-01] stripCtpvPrefix / buildObservationCore = lib 이관분(구 index 로컬 정의).
+//     Core 계산 SoT 는 lib 1곳. 화면에서 조합식을 재구현하지 않는다.
+
+// [CORE-AT-GENERATION-01] 구 로컬 CORE_CTPV_PREFIX / stripCtpvPrefix 정의는
+//   lib/spine/serviceAxis.js 로 이관됨(서버 save-generated 공용 사용). 상단 import 참조.
 import { getIntents, listIntentOptions } from "../lib/spine/intentSpine";  // [WIRING-03] INTENT 조회 전용. 정의된 cat 에서만 셀렉터 노출(데이터가 곧 게이트)
 import { CLINIC_TARGETS, ALL_TREATMENTS as CLINIC_TREATMENTS, CLINIC_BLOG_TYPES } from "../lib/clinic-data";
 import { DENTAL_TREATMENTS, DENTAL_META } from "../lib/dental-data";
@@ -8669,7 +8674,11 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               content:        p.content || "",
               active_keyword: p.active_keyword,
               full_keyword:   p.full_keyword,
-              core_keyword:   buildCoreKeyword(p.region, p.industry),  // [S117] Core 관측축(상업 경쟁키워드). 생성물 역산 금지
+              // [CORE-AT-GENERATION-01] Core 는 생성 시점에 확정된다 — 여기서 새로 만들지 않는다.
+              //   p.core_keyword = 생성 저장(save-generated)에서 확정된 값. 그대로 승계.
+              //   legacy(core_keyword NULL) 행만 종전 조합식으로 폴백 — 하위호환 보존.
+              //   ★ 이중 SoT 금지: 계산 로직은 lib/spine/serviceAxis 1곳에만 존재한다.
+              core_keyword:   p.core_keyword || buildObservationCore(p.industry, p.region, p.cluster),  // [S117] Core 관측축(상업 경쟁키워드). 생성물 역산 금지
               region:         p.region,
               treatment_id:   p.treatment_id,
               treatment_name: p.treatment_name,
@@ -8832,7 +8841,12 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             {recentPosts.map((p, i) => {
               const rr = ranks[p.id] || {};
               const postUrl = p.naver_post_url || null;
-              const searchQ = [p.region, p.treatment_name || p.keyword].filter(Boolean).join(" ");
+              // [LENS-CORE-SOT-01] 돋보기 검색어 = Core 관측축(생성 시점 확정값). 화면 재조립 폐기.
+              //   ① p.core_keyword ② legacy 폴백(lib 단일 계산) ③ 종전 region+treatment_name.
+              //   ★ URL 미등록 글도 Core 를 가지므로 돋보기는 항상 동작한다.
+              const searchQ = p.core_keyword
+                || buildObservationCore(p.industry, p.region, p.cluster)
+                || [p.region, p.treatment_name || p.keyword].filter(Boolean).join(" ");
               // 기본=검색어 그대로 (관련도순). 후기 순위 제거됨.
               const urlRel    = `https://search.naver.com/search.naver?where=blog&query=${encodeURIComponent(searchQ)}`;
               const titleNode = (
@@ -10690,6 +10704,11 @@ export default function Home() {
                 qc_score:       data.seoScore ?? data.score ?? 0,
                 model:          data.model,
                 store_id:       currentStore?.id || null,
+                // [CORE-KEYWORD-HALL-01] cluster = 장례식장 선택 글의 hallName 을 URL 등록 시점까지
+                //   전달하는 내부 브리지. 컬럼명과 의미가 다르다(기존 전량 NULL·미사용 컬럼 재사용 · DB 변경 0).
+                //   hallName 은 카탈로그 확정값 그대로 — 접두 제거·접미 추가 금지.
+                //   장례식장 글이 아니면 hallName="" → undefined → 미전송(기존 동작 무변화).
+                cluster:        hallName || undefined,
             }).then(() => {
               // 저장 성공 → 허브 갱신(달력/목록 즉시 반영). 미인증/실패 시 조용히 skip.
               if (authUserId) fetchHub();

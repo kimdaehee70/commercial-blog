@@ -86,6 +86,9 @@ import { AdminLayout } from '../../lib/adminLayout';
 import { renderAliveBadge } from '../../lib/adminUI';
 import { T, Btn, inputStyle, selectStyle } from '../../lib/adminTheme';
 import { getCatalogItem, INDUSTRY_CATEGORY_ORDER, INDUSTRY_CATALOG } from '../../lib/industry-catalog';
+// [LENS-CORE-SOT-01] 돋보기 검색어 = Core 관측축. 화면에서 재조립하지 않는다.
+//   Core 계산 SoT 는 lib/spine/serviceAxis 1곳(생성 시점 확정 · legacy 만 폴백).
+import { buildObservationCore } from '../../lib/spine/serviceAxis';
 
 // [v0.8] 업종 표시 한글화 — 화면은 업종명, API/DB는 코드 그대로.
 //   SoT = lib/industry-catalog.js (name). 업종이 늘어도 여기 수정 불필요.
@@ -144,11 +147,16 @@ const fmtDate = (s) => {
   return `${mm}/${dd} ${hh}:${mi}`;
 };
 
+// [LENS-CORE-SOT-01] 검색어 우선순위 — 3단.
+//   ① row.core_keyword          생성 시점 확정 Core(관측축 SoT). 정본.
+//   ② buildObservationCore(...)  legacy(core_keyword NULL) 행 폴백. lib 단일 계산.
+//   ③ 제목 앞머리                 축 자체가 없는 행의 최후 폴백(기존 동작 보존).
+//   ★ region+treatment_name 재조립은 폐기. 화면마다 다른 검색어를 열던 원인.
 const extractSearchKeyword = (row) => {
   if (!row) return '';
-  if (row.region && row.treatment_name) {
-    return `${row.region} ${row.treatment_name}`;
-  }
+  const core = row.core_keyword
+    || buildObservationCore(row.industry, row.region, row.cluster);
+  if (core) return core;
   const title = row.title || '';
   const cut = title.split(/[｜|]/)[0].trim();
   return cut || title.slice(0, 20);

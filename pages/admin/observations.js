@@ -32,6 +32,12 @@ import { renderAliveBadge, fmtDate, fmtDateTime } from '../../lib/adminUI';
 import {
   T, PageHead, StatRow, Stat, Table, Th, Td, Btn, ErrBox, Dash, footNoteStyle,
 } from '../../lib/adminTheme';
+// [BLOG-ACCOUNT-AUTO-LINK-01 · STEP 3] 관측 대상 식별 — naver_post_url 파싱 전용(추가 fetch 0)
+import { extractNaverPost } from '../../lib/naverPostId';
+// [LENS-CORE-SOT-01] 돋보기 검색어 = Core 관측축. 화면에서 재조립하지 않는다.
+//   ★ 이 화면은 ORBIT 관측 입력 화면이다. 여기 돋보기가 관측축과 다르면
+//     전 업종 관측 데이터가 엉뚱한 검색어 기준으로 쌓인다.
+import { buildObservationCore } from '../../lib/spine/serviceAxis';
 
 const STATUS_TABS = [
   { key: 'all',        label: '전체' },
@@ -105,10 +111,16 @@ const defaultForm = () => ({
   rank_detail: emptyRankDetail(),
 });
 
-// 검색어 조립 — region+treatment_name(없으면 제목 앞부분). publish.js 와 동일 규칙.
+// [LENS-CORE-SOT-01] 검색어 우선순위 — 3단. index.js · admin/publish.js 와 동일 규칙.
+//   ① row.core_keyword          생성 시점 확정 Core(관측축 SoT). 정본.
+//   ② buildObservationCore(...)  legacy(core_keyword NULL) 행 폴백. lib 단일 계산.
+//   ③ 제목 앞머리                 축 자체가 없는 행의 최후 폴백(기존 동작 보존).
+//   ★ region+treatment_name 재조립은 폐기. 화면마다 다른 검색어를 열던 원인.
 const extractSearchKeyword = (row) => {
   if (!row) return '';
-  if (row.region && row.treatment_name) return `${row.region} ${row.treatment_name}`;
+  const core = row.core_keyword
+    || buildObservationCore(row.industry, row.region, row.cluster);
+  if (core) return core;
   const title = row.title || '';
   return (title.split(/[｜|]/)[0].trim() || title.slice(0, 20));
 };
@@ -567,6 +579,9 @@ export default function ObservationsPage() {
 //   상단부터: 검색 → 현재상태/변화 → 순위입력 → 노출체크 → 저장 → Timeline (관측 동선 순서)
 function ObservePanel({ row, publishId, detail, loading, form, setForm, saving, onSave, onClose }) {
   const links = buildNaverLinks(row);
+  // [STEP 3] 검색결과에서 찾을 대상. SoT=naver_post_url, 여기서는 파싱 파생값만 쓴다(DB 저장 0).
+  //   식별 근거는 회원 일반정보가 아니라 '바로 그 발행글' → row.naver_post_url 우선.
+  const naverPost = extractNaverPost(row?.naver_post_url);
   const timeline = detail?.timeline || [];
   const userRanks = detail?.user_ranks || [];
   const snapshot = detail?.snapshot || null;
@@ -611,6 +626,18 @@ function ObservePanel({ row, publishId, detail, loading, form, setForm, saving, 
               <a href={links.review_related} target="_blank" rel="noreferrer" style={S.dLink}>후기</a>
               <a href={links.full_related} target="_blank" rel="noreferrer" style={S.dLink}>제목</a>
             </div>
+            {naverPost && (
+              <div style={S.dRow}>
+                <span style={S.dFindLabel}>찾을 블로그</span>
+                <strong style={S.dFindVal}>{naverPost.blogId}</strong>
+                {naverPost.postId && (
+                  <>
+                    <span style={S.dFindLabel}>글 번호</span>
+                    <strong style={S.dFindVal}>{naverPost.postId}</strong>
+                  </>
+                )}
+              </div>
+            )}
             {row?.naver_post_url && (
               <a href={row.naver_post_url} target="_blank" rel="noreferrer" style={S.dUrl}>{row.naver_post_url}</a>
             )}
@@ -835,6 +862,9 @@ const S = {
   dRow: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
   dLink: { fontSize: 12, color: T.info, textDecoration: 'none', border: `1px solid ${T.border || '#232730'}`, borderRadius: 4, padding: '4px 9px' },
   dUrl: { fontSize: 11.5, color: T.info, wordBreak: 'break-all' },
+  // [STEP 3] 관측 대상 식별 — 검색 버튼 바로 아래. OWNER 가 클릭 전에 읽는다.
+  dFindLabel: { fontSize: 11, color: T.textMuted },
+  dFindVal: { fontSize: 13.5, color: T.text, fontFamily: 'monospace', wordBreak: 'break-all' },
   rankGridLabel: { fontSize: 12, color: T.textMuted, fontWeight: 600, marginTop: 2 },
   rankGrid: { display: 'flex', gap: 8 },
   rankCol: { flex: 1, border: `1px solid ${T.border || '#232730'}`, borderRadius: 4, padding: 8 },

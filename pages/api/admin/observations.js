@@ -181,7 +181,7 @@ async function buildList(q = {}) {
   const posts = await fetchAll(() =>
     supabaseAdmin
       .from('publish_history')
-      .select('id, title, industry, region, treatment_name, naver_post_url, source_post_id, created_at, published_at, publish_status')
+      .select('id, title, industry, region, treatment_name, core_keyword, cluster, naver_post_url, source_post_id, created_at, published_at, publish_status')
       .order('created_at', { ascending: false })
   );
 

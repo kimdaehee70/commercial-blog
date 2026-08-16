@@ -14,6 +14,9 @@
 //   body.account_id는 신뢰하지 않음 (서버 검증값으로만 저장).
 
 import { createClient } from "@supabase/supabase-js";
+// [CORE-AT-GENERATION-01] Core 는 URL 등록이 아니라 생성 시점에 확정한다.
+//   Core 계산 SoT 는 lib/spine/serviceAxis 1곳. 이 파일에서 조합식을 재구현하지 않는다.
+import { buildObservationCore } from "../../lib/spine/serviceAxis";
 
 const fail = (res, code, msg, extra = {}) =>
   res.status(code).json({ ok: false, error: msg, ...extra });
@@ -70,6 +73,9 @@ export default async function handler(req, res) {
       treatment_name,
       active_keyword,
       full_keyword,
+      // [CORE-KEYWORD-HALL-01] cluster = 장례식장 선택 글의 hallName 내부 브리지.
+      //   컬럼명과 의미가 다르다 — 기존 전량 NULL·미사용 컬럼 재사용(DB 변경 0).
+      cluster,
       text_markdown,
       char_count,
       qc_score,
@@ -105,11 +111,26 @@ export default async function handler(req, res) {
     if (treatment_name != null) row.treatment_name = treatment_name;
     if (active_keyword != null) row.active_keyword = active_keyword;
     if (full_keyword != null)   row.full_keyword   = full_keyword;
+    if (cluster != null)        row.cluster        = cluster;   // [CORE-KEYWORD-HALL-01] hallName 원형 그대로(가공 0)
     if (text_markdown != null)  row.text_markdown  = text_markdown;
     if (char_count != null)     row.char_count     = char_count;
     if (qc_score != null)       row.qc_score       = qc_score;
     if (model != null)          row.model          = model;
     if (store_id != null)       row.store_id       = store_id;
+
+    // ─── 6-B. Core 관측축 확정 [CORE-AT-GENERATION-01] ───
+    // Core 는 글의 속성이다. URL 의 속성이 아니다.
+    //   URL 을 등록하지 않은 글도 생성 순간부터 자기 검색 좌표를 갖는다.
+    //   → 🔎 검색 가능 · 관리자 수동관측 후보로 존재. 유령글이 되지 않는다.
+    //
+    // 계약 (funeral 파일럿 한정):
+    //   funeral + cluster 존재 → stripCtpvPrefix(cluster)   예) 서울의료원 장례식장
+    //   그 외                  → buildCoreKeyword(region, industry)  예) 강남구 상조
+    //   축이 없으면 null → 미저장(기존 legacy 폴백 경로 그대로).
+    //
+    // ★ cluster 원본은 위에서 가공 없이 저장했다. 여기서만 접두를 뗀다.
+    const _core = buildObservationCore(industry, region, cluster);
+    if (_core) row.core_keyword = _core;
 
     // ─── 7. insert ───
     const { data, error } = await supabase
