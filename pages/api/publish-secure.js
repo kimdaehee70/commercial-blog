@@ -20,6 +20,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { OWNER_UID } from "../../lib/constants";
+// [BLOG-ACCOUNT-AUTO-LINK-01 · STEP 3] 서버 재추출 — 클라이언트 blog_account 를 신뢰하지 않는다
+import { extractNaverPost } from "../../lib/naverPostId";
 
 const ok = (res, body) => res.status(200).json({ ok: true, ...body });
 const fail = (res, code, msg, extra = {}) =>
@@ -60,7 +62,7 @@ export default async function handler(req, res) {
     // ─── 3. 본인 accounts row 조회 (서버 측 정답) ───
     const { data: account, error: accErr } = await supabase
       .from("accounts")
-      .select("id, email, role, plan, status")
+      .select("id, email, role, plan, status, blog_account")
       .eq("auth_user_id", authUserId)
       .maybeSingle();
 
@@ -144,6 +146,54 @@ export default async function handler(req, res) {
       }
     }
 
+    // ─── 6.6 [BLOG-ACCOUNT-AUTO-LINK-01] 서버 재추출 + 계정 연결 판정 (DB 쓰기 0) ───
+    // 정책(선장 확정 · STEP 3):
+    //   · 클라이언트가 보낸 body.blog_account 는 신뢰하지 않는다. 서버가 naver_post_url 을 직접 파싱한다.
+    //   · SoT = naver_post_url. blogId/postId/canonical 은 전부 파생값이며 저장하지 않는다.
+    //   · 판정만 한다. accounts.blog_account UPDATE 는 STEP 4 에서 붙인다 — 이 단계는 쓰기 0.
+    //   · mismatch 여도 URL 등록을 실패시키지 않는다. 발행 URL 은 관측(ORBIT)의 핵심 입력이라
+    //     여기서 막으면 관측 데이터가 통째로 유실된다. 409 는 6.5 중복 URL 축에만 있다.
+    //   · 추출 불가 시 판정만 생략하고 기존 흐름을 그대로 태운다(부작용 0).
+    //
+    // 판정 4상태:
+    //   unparsable — URL 에서 blogId 확정 불가 → 판정 생략
+    //   linkable   — accounts.blog_account 비어있음 + 추출 성공 → STEP 4 자동연결 후보
+    //   matched    — 저장값 === 추출값
+    //   mismatch   — 저장값 ≠ 추출값 → 덮어쓰기 금지. 감지만 하고 소비 UI 는 후속 축에서 판단.
+    let blogLink = null;
+    {
+      const _parsed = extractNaverPost(req.body?.naver_post_url);
+      const _extracted = _parsed?.blogId || null;
+      const _stored = (account.blog_account || "").trim() || null;
+
+      if (!_extracted) {
+        blogLink = { state: "unparsable", stored: _stored, extracted: null };
+      } else if (!_stored) {
+        blogLink = { state: "linkable", stored: null, extracted: _extracted };
+      } else if (_stored === _extracted) {
+        blogLink = { state: "matched", stored: _stored, extracted: _extracted };
+      } else {
+        blogLink = { state: "mismatch", stored: _stored, extracted: _extracted };
+        console.warn(
+          `[publish-secure] blog_account mismatch: account_id=${verifiedAccountId} stored=${_stored} extracted=${_extracted} (덮어쓰기 없음 · 등록은 정상 진행)`
+        );
+      }
+
+      // 참고 신호 — 클라이언트 전송값과 서버 추출값 불일치. 동작 변경 없음(로그 전용).
+      const _client = (req.body?.blog_account || "").trim() || null;
+      if (_extracted && _client && _client !== _extracted) {
+        console.warn(
+          `[publish-secure] client blog_account ≠ server extracted: client=${_client} extracted=${_extracted}`
+        );
+      }
+
+      // 자동연결 실행은 7.4 (발행 성공 이후). 여기서는 판정만 확정한다.
+      //   이유: publish.js 필수검증 실패로 행이 저장되지 않았는데 계정만 연결되면
+      //         저장 안 된 URL 로 blog_account 가 확정되는 유령 연결이 생긴다.
+      blogLink.linked = false;
+      blogLink.raw_stored = account.blog_account; // 7.4 의 UPDATE 조건 분기용 (null vs "")
+    }
+
     // ─── 6.7 [qc-fix] qc_score 보강 (서버 주입) ───
     // 배경: 단건 API(me/post/[id])와 목록(me/posts)은 §2 정책상 qc_score 미노출(점수화 방지).
     //   → 프론트가 qc_score를 가질 수 없어 URL 등록 시 publish.js 필수검증(qc_score)에서 누락 에러.
@@ -210,6 +260,51 @@ export default async function handler(req, res) {
       }
     }
 
+    // ─── 7.4 [BLOG-ACCOUNT-AUTO-LINK-01 · STEP 4] linkable 최초 1회 자동연결 ───
+    // 정책(선장 확정):
+    //   · linkable 에서만 UPDATE. matched / mismatch / unparsable 은 UPDATE 0 (덮어쓰기 절대 금지).
+    //   · 발행 성공(publish_history 저장 확인) 이후에만 실행 → 유령 연결 방지.
+    //   · 경쟁 조건 방어 — 판정 SELECT 와 UPDATE 사이에 다른 요청이 값을 채울 수 있다.
+    //     UPDATE 조건에 "비어있음"을 다시 걸어 원자적으로 처리한다. 조건 불일치 시 0행 → skip.
+    //     먼저 들어간 값이 이긴다. 어떤 경우에도 기존 값을 덮지 않는다.
+    //   · 연결 실패가 URL 등록을 실패시키지 않는다 — 발행 응답은 이미 확정. 로그 + 응답 필드로만 보고.
+    //   · account_id scope(eq id) 재확인 → IDOR 차단. DB 스키마 무변경(기존 컬럼).
+    if (blogLink && blogLink.state === "linkable" && pubRes.ok && pubJson?.ok && pubJson?.id) {
+      try {
+        let q = supabase
+          .from("accounts")
+          .update({ blog_account: blogLink.extracted })
+          .eq("id", verifiedAccountId);
+        // raw 값이 NULL 인지 빈문자열인지에 따라 재확인 조건을 맞춘다(둘 다 linkable).
+        q = blogLink.raw_stored == null
+          ? q.is("blog_account", null)
+          : q.eq("blog_account", blogLink.raw_stored);
+
+        const { data: linkedRows, error: linkErr } = await q.select("id, blog_account");
+
+        if (linkErr) {
+          console.error("[publish-secure] blog_account auto-link failed:", linkErr.message);
+          blogLink.link_error = linkErr.message;
+        } else if (linkedRows && linkedRows.length > 0) {
+          console.log(
+            `[publish-secure] blog_account auto-linked: account_id=${verifiedAccountId} → ${blogLink.extracted}`
+          );
+          blogLink.linked = true;
+          blogLink.stored = blogLink.extracted;
+          blogLink.state = "linked";
+        } else {
+          console.warn(
+            `[publish-secure] auto-link skipped (race): account_id=${verifiedAccountId} — blog_account 가 이미 채워짐`
+          );
+          blogLink.link_skipped = "race";
+        }
+      } catch (linkEx) {
+        console.error("[publish-secure] auto-link 예외:", linkEx?.message || linkEx);
+        blogLink.link_error = String(linkEx?.message || linkEx);
+      }
+    }
+    if (blogLink) delete blogLink.raw_stored; // 내부 분기용 — 응답 미노출
+
     // ─── 7.5 [Observer] 발행 성공 시 경쟁환경 수집 enqueue ───
     //   fire-and-forget. enqueue 실패해도 발행 성공 응답 유지(발행영향 0).
     //   publish.js / enqueue.js 무수정. publish_id만 전달.
@@ -233,6 +328,8 @@ export default async function handler(req, res) {
         account_id: verifiedAccountId,
         is_owner: isOwner,
       },
+      // [STEP 3] 계정 연결 판정 — blogId 문자열만. 토큰·비밀값 미포함. UPDATE 는 아직 없음.
+      blog_link: blogLink,
     });
   } catch (e) {
     console.error("[publish-secure] 예외:", e);
