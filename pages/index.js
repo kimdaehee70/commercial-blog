@@ -12974,15 +12974,13 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
           {/* ── 좌측: 대화창 50% — 도구 탭일 때 숨김 ── */}
-          {/* [UI-GENERATE-RESULT-FULLWIDTH-01] 생성 완료(stage="result")에도 좌컬럼 언마운트.
-              배경: 완료 시 생성 Hero 가 사라지면 좌컬럼 렌더 체인이 landing else 분기로 떨어져
-                    히어로+유튜브가 드러나고 결과가 우측 50% 에 갇혔다(실측).
-              좌컬럼은 width:"50%" 고정, 우컬럼은 flex → 좌컬럼 제거만으로 우측이 100% 가 된다
-              (resultTab==="tools" 가 이미 같은 방식으로 동작 중).
-              ★ stage==="generating" 은 게이트를 통과하지 못하므로 생성 중 2컬럼 무변화.
-              ※ HOLD UI-RESULT-SUMMARY-MOVE-01 — ResultSummary 고유 3종
-                (발행 5단계 / 사용방법 영상 / SEO·문단·이미지 집계)의 우측 이전은 별도 축. */}
-          {resultTab !== "tools" && stage !== "result" && (
+          {/* [UI-RESULT-LEFT-RESTORE-01] FULLWIDTH-01 폐기 — stage!=="result" 게이트 제거.
+              배경: 좌컬럼 언마운트는 증상 대응이었다. 진짜 원인은 아래 helpTab 게이트다.
+                    helpTab=null(로그인 직후 정상 초기값)이면 완료안내를 담은 CoachPanel 분기를
+                    통과하지 못하고 landing else 로 떨어져 히어로+유튜브가 드러났다.
+              해결: 좌컬럼 진입 사유를 helpTab 과 stage==="result" 둘로 분리(아래 참조).
+              ★ resultTab==="tools" 는 무변화. 생성 중(generating) 2컬럼도 무변화. */}
+          {resultTab !== "tools" && (
           <div style={{ width: "50%", flexShrink: 0, display: "flex", flexDirection: "column",
             borderRight: "1px solid #e8e8ed", background: "#f7f7f8" }}>
             <div style={{ padding: "0 24px", borderBottom: "1px solid #e8e8ed", height: 53,
@@ -13394,13 +13392,19 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     onSelect={handleIndustryTreeSelect}
                   />
                 </div>
-              ) : helpTab && (authUserId
+              // [UI-RESULT-LEFT-RESTORE-01] 좌컬럼 진입 사유 2개를 동등하게 병렬화.
+              //   ① 생성 완료  — stage==="result" (helpTab 무관 · 로그인 한정)
+              //   ② 도움말 선택 — helpTab (기존 식 문자 단위 무변경)
+              //   완료안내 UI 는 CoachPanel 내부 ctx.resultMeta / ctx.onHowto 가 소유한다.
+              //   CoachPanel 은 tabId 를 buildCoachAdvice 에만 넘기고, 그 함수는 tabId 를
+              //   참조하지 않는다 → tabId=null 진입 안전.
+              ) : ((authUserId && stage === "result") || (helpTab && (authUserId
                 // [v126] 미확정 store(최초등록)는 우측 STEP 순차입력이 단독 안내 → 좌측 코치 제외(이중안내 해소).
                 //   확정계정 store 편집은 코치 유지(생활권·방문안내 안내 유용).
                 ? ((HELP_CONTENT[helpTab] || helpTab === "manage")
                    && !(helpTab === "store" && !(hubStore && hubStore.industry)))
                 : HELP_CONTENT[helpTab]                            // 비로그인: 기존 정적 안내페이지
-              ) ? (
+              ))) ? (
                 authUserId ? (
                   <CoachPanel
                     tabId={helpTab}
