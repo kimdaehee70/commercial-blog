@@ -133,7 +133,10 @@ export default async function handler(req, res) {
     // [FUNERAL-OTHER-MENU-EXPOSURE-01] treatment_id 4번째 인자 전달.
     //   메뉴별 Core 매핑(FUNERAL_MENU_CORE)이 생성 시점에 메뉴를 식별할 수 있어야 한다.
     //   treatment_id 는 위 §4 에서 이미 파싱·§6 에서 이미 저장되던 값 — 신규 배선 0.
-    const _core = buildObservationCore(industry, region, cluster, treatment_id);
+    // [HOSPITAL-CORE-AUDIT-01] treatment_name 5번째 인자 전달.
+    //   병원군 Core 는 진료과가 아니라 생성 전 선택된 메뉴명이 검색시장이다.
+    //   treatment_name 은 위 §4 에서 이미 파싱·§6 에서 이미 저장되던 값 — 신규 배선 0.
+    const _core = buildObservationCore(industry, region, cluster, treatment_id, treatment_name);
     if (_core) row.core_keyword = _core;
 
     // ─── 7. insert ───
