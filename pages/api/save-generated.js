@@ -129,7 +129,11 @@ export default async function handler(req, res) {
     //   축이 없으면 null → 미저장(기존 legacy 폴백 경로 그대로).
     //
     // ★ cluster 원본은 위에서 가공 없이 저장했다. 여기서만 접두를 뗀다.
-    const _core = buildObservationCore(industry, region, cluster);
+    //
+    // [FUNERAL-OTHER-MENU-EXPOSURE-01] treatment_id 4번째 인자 전달.
+    //   메뉴별 Core 매핑(FUNERAL_MENU_CORE)이 생성 시점에 메뉴를 식별할 수 있어야 한다.
+    //   treatment_id 는 위 §4 에서 이미 파싱·§6 에서 이미 저장되던 값 — 신규 배선 0.
+    const _core = buildObservationCore(industry, region, cluster, treatment_id);
     if (_core) row.core_keyword = _core;
 
     // ─── 7. insert ───
