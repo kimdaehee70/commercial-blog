@@ -167,7 +167,10 @@ export default async function handleInterior(req, res) {
       if (_ax) user += `\n\n[이번 글의 주제 축]\n${_ax}`;
       const text = await callGPT(system, user);
       if (sec.key === "infoblock") {
-        parts.push(text + renderInfoBlock(treatment) + "\n\n[이미지: 체크포인트 안내]");
+        // [INTERIOR-PHOTO-SLOT-AUDIT-01 · S186] 정보박스 자체가 시각 구분 → 사진 미부착.
+        //   선례: furniture-playConfig.js L11 · lighting-playConfig.js L11 동일 원칙.
+        //   전 엔진 중 infoblock 에 이미지를 붙이던 곳은 이 1곳뿐(전수 대조). 슬롯 7→6.
+        parts.push(text + renderInfoBlock(treatment));
       } else {
         parts.push(text + "\n\n[이미지: " + (PHOTO_ALT[sec.key] || "인테리어 견적 상담 안내") + "]");
       }
