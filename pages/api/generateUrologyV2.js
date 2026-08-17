@@ -18,6 +18,7 @@ import {
 import { UROLOGY_V2_FLOW_ENGINE } from "../../lib/urology-v2-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js"; // PATCH-07
 import { insertVisitBeforeHashtags } from "../../lib/visitBlock.js";       // VISIT-01
+import { isClinicPhotoSection } from "../../lib/photoPolicyRegistry.js";  // HOSPITAL-PHOTO-POLICY-01
 
 // ============================================================
 // CAT_FOCUS — 5계열 (cat 기준)
@@ -253,8 +254,10 @@ export default async function handler(req, res) {
       content = "## " + sec.label + "\n" + content.trim();
     }
 
-    const secAlt = imgAlts[sec.key] || imgAlts.examination;
-    result += content.trim() + "\n\n" + secAlt + "\n\n";
+    // [HOSPITAL-PHOTO-POLICY-01] 사진 슬롯은 registry 허용 섹션에만 부착 (concern·examination·sceneVisit).
+    //   ※ 폴백 금지 — 문구가 없으면 슬롯을 만들지 않는다. (구) `|| imgAlts.examination` 제거.
+    const secAlt = isClinicPhotoSection(sec.key) ? imgAlts[sec.key] : null;
+    result += content.trim() + "\n\n" + (secAlt ? secAlt + "\n\n" : "");
   }
 
   // ── 후처리 ──
