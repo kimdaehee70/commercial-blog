@@ -10690,7 +10690,7 @@ export default function Home() {
               || treatmentName  || (extractedTitle || "").split("|")[0].trim()
               || treatment?.id  || treatmentId || "생성글";
             await generateApi.saveGenerated(gToken, {
-                industry:       CURRENT_INDUSTRY,
+                industry:       _genIndustry,   // [INDUSTRY-SAVE-CONTAMINATION-01] 대표업종 아닌 글별 실제 진료과 저장
                 keyword:        _kwBase,
                 title:          extractedTitle || ("제목없음_" + Date.now()),
                 content:        data.text || data.textMarkdown || "",
