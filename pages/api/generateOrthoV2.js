@@ -15,6 +15,7 @@ import { ORTHO_FLOW_ENGINE_V2, ORTHO_TREATMENT_OVERRIDES_V2 }                   
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
 // [VISIT-01] 방문정보 공통 후단 블록
 import { insertVisitBeforeHashtags } from "../../lib/visitBlock.js";
+import { isClinicPhotoSection } from "../../lib/photoPolicyRegistry"; // [HOSPITAL-PHOTO-POLICY-01]
 
 // ------------------------------------------------------------
 // 계열 키워드 (제목·activeKeyword 보조) — 정형외과 부위/증상 축
@@ -440,7 +441,8 @@ export default async function handler(req, res) {
 
     result += content + "\n\n";
 
-    if (imgAlts[sec.key] && sec.key !== "closing") {
+    // [HOSPITAL-PHOTO-POLICY-01] 3슬롯 정책 — closing 조건 → 레지스트리 판정
+    if (isClinicPhotoSection(sec.key) && imgAlts[sec.key]) {
       result += imgAlts[sec.key] + "\n\n";
     }
   }

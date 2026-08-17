@@ -17,6 +17,7 @@ import {
 import { GENERAL_V2_FLOW_ENGINE } from "../../lib/general-v2-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js"; // PATCH-07
 import { insertVisitBeforeHashtags } from "../../lib/visitBlock.js";       // VISIT-01
+import { isClinicPhotoSection } from "../../lib/photoPolicyRegistry"; // [HOSPITAL-PHOTO-POLICY-01]
 
 // ============================================================
 // INFO_VALUES — 진료별 참고 정보 (정보 표시용, 진단 아님)
@@ -334,8 +335,9 @@ export default async function handler(req, res) {
       }
     }
 
-    const secAlt = imgAlts[sec.key] || imgAlts.exam;
-    result += content.trim() + "\n\n" + secAlt + "\n\n";
+    // [HOSPITAL-PHOTO-POLICY-01] scoped alias(general) — 기본값 폴백 제거
+    const secAlt = isClinicPhotoSection(sec.key, "general") ? imgAlts[sec.key] : null;
+    result += content.trim() + "\n\n" + (secAlt ? secAlt + "\n\n" : "");
   }
 
   // ── 후처리 ──

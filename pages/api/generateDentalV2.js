@@ -36,6 +36,7 @@ import {
 } from "./generateUtils";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock";
 import { insertVisitBeforeHashtags } from "../../lib/visitBlock.js";   // VISIT-01
+import { isClinicPhotoSection } from "../../lib/photoPolicyRegistry"; // [HOSPITAL-PHOTO-POLICY-01]
 import { stripMarkdownForNaver } from "../../lib/commonPhotoBox";
 
 // ── 치과 전용 유틸 (calcCount 안전 래퍼만 자립) ──
@@ -264,7 +265,8 @@ ${richPrompt}`;
     if (sec.key === DENTAL_V2_PURPOSE_FLOW.infoBlockAnchor) {
       assembled += renderDentalV2InfoBlock(treatmentData, region) + "\n\n";
     }
-    if (i < SECTIONS.length - 1 && altList[i]) assembled += altList[i] + "\n\n";
+    // [HOSPITAL-PHOTO-POLICY-01] 인덱스 → 섹션 키 Gate. altList 는 SECTIONS 순서 1:1
+    if (isClinicPhotoSection(sec.key) && altList[i]) assembled += altList[i] + "\n\n";
   });
   assembled = assembled.replace(/\n{3,}/g, "\n\n").trim();
   assembled = removeDuplicateSentences(assembled);

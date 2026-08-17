@@ -12,6 +12,7 @@ import {
 import { FAMILY_V2_FLOW_ENGINE } from "../../lib/family-v2-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js"; // PATCH-07
 import { insertVisitBeforeHashtags } from "../../lib/visitBlock.js";       // VISIT-01
+import { isClinicPhotoSection } from "../../lib/photoPolicyRegistry"; // [HOSPITAL-PHOTO-POLICY-01]
 
 // ============================================================
 // GPT 호출
@@ -238,7 +239,9 @@ export default async function handler(req, res) {
       content = secHeader + "\n" + content.trim();
     }
 
-    result += content.trim() + "\n\n" + (alts[sec.key] || alts.closing) + "\n\n";
+    // [HOSPITAL-PHOTO-POLICY-01] scoped alias(family) — closing 폴백 제거
+    const secAlt = isClinicPhotoSection(sec.key, "family") ? alts[sec.key] : null;
+    result += content.trim() + "\n\n" + (secAlt ? secAlt + "\n\n" : "");
   }
 
   // ── 후처리 ──
