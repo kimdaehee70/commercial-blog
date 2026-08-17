@@ -366,15 +366,14 @@ export default async function handleAdministrative(req, res) {
     // placeholder 잔존 처리
     {
       const ph = /(○+|\{행정사사무소명\})\s*행정사사무소|\{행정사사무소명\}/g;
-      content = storeName
-        ? content.replace(ph, storeName)
-        : content.replace(
+      // [ADMIN-STORENAME-LEAK-01] storeName 치환 제거 — 항상 삭제
+      content = content.replace(
             /(^|\n)[^\n]*(○+행정사사무소|\{행정사사무소명\})[^\n]*안내[^\n]*\.?\s*(\n|$)/g,
             "\n"
           );
     }
 
-    content = buildOfficeIntro(storeName) + "\n\n" + content;
+    // [ADMIN-STORENAME-LEAK-01] 도입 인사말 주입 제거
     content = applyPhotoBoxes(content);
     content = content.replace(/(^|\n)\s*운영자\s*(\n|$)/g, "\n").trim();
 
