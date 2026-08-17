@@ -67,6 +67,8 @@ function capApproval(text) {
     t = t.replace(re, (m) => {
       // 보존 예외: '심리 대상' / '검토 대상' / '판단' 이 같은 문장에 있으면 정상 서술로 간주
       if (/(심리 대상|검토 대상|심사 대상|판단이|달라집니다|쟁점)/.test(m)) return m;
+      // [ADMIN-REGISTRATION-EFFECT-01] 등록 완료 후 법적 효과 서술 보존 (조건부 결과보장은 계속 차단)
+      if (/등록(이|을)?\s*(완료|마친|마치)/.test(m) && !/(갖추|충족|제출하|신청하|청구하|요건만|서류만)/.test(m)) return m;
       dropped++;
       return "";
     });
