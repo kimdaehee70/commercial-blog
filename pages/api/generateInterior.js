@@ -78,9 +78,25 @@ function pickTitleLegacy(treatment, region, aptName, livingArea) {
     .trim();
 }
 
+// ── [INTERIOR-TITLE-INTENT-SYNC-01 · S185] INTENT 제목 동기화
+//   (generateFilm.js WIRING-02 이식 — 검증된 참조 구현)
+//   판정: INTENT > titleEngine. 질문축이 제목부터 본문까지 유지되어야 한다.
+//   titleHint 부재 시 null 반환 → 기존 titleEngine/legacy 경로 그대로. 기능 제거 아님.
+function buildIntentTitleFromIntent(region, treatment, intent) {
+  if (!intent) return null;
+  const hint = String(intent.titleHint || "").trim();
+  if (!hint) return null;
+  const rg = String(region || "").trim();
+  const kw = String((treatment && treatment.name) || "").trim();
+  return [rg, kw, hint].filter(Boolean).join(" ").replace(/\s{2,}/g, " ").trim();
+}
+
 // ── 제목 엔진 v1 (titleEngine) — Intent 축 제목. 실패 시 기존 로직 폴백.
 //   ★ buildTitle() 한정 교체. Runtime/Data/Prompt/SCENE_SPINE 무변경.
-function pickTitle(treatment, region, aptName, livingArea) {
+//   폴백 3단: intent.titleHint → titleEngine → legacy titlePatterns
+function pickTitle(treatment, region, aptName, livingArea, intent) {
+  const _i = buildIntentTitleFromIntent(region, treatment, intent);
+  if (_i) return _i;
   const _t = buildIntentTitleOrNull(region, treatment, "interior");
   if (_t) return _t;
   return pickTitleLegacy(treatment, region, aptName, livingArea);
@@ -141,7 +157,7 @@ export default async function handleInterior(req, res) {
 
     // [INTERIOR-INTENT-WIRING-01] INTENT 선택 — 미정의 cat 이면 null(기존 동작 유지).
     const intent = pickIntent(treatment, req.body?.intentId);
-    if (intent) console.log(`[QC][interior] INTENT: ${intent.id} (${intent.label})`);
+    if (intent) console.log(`[QC][interior] INTENT: ${intent.id} (${intent.label}) / titleHint: ${intent.titleHint || "-"}`);
 
     const parts = [];
     for (const sec of INTERIOR_FLOW) {
@@ -158,7 +174,7 @@ export default async function handleInterior(req, res) {
     }
 
     // 제목 + 본문 조립
-    const title = pickTitle(treatment, reg, aptName, livingArea);
+    const title = pickTitle(treatment, reg, aptName, livingArea, intent);
     const alts = getImageAlts(reg, treatment, aptName);
     let body = parts.filter(Boolean).join("\n\n");
 
