@@ -18,6 +18,7 @@ import {
 import { ENDO_V2_FLOW_ENGINE } from "../../lib/endo-v2-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js"; // PATCH-07
 import { insertVisitBeforeHashtags } from "../../lib/visitBlock.js";       // VISIT-01
+import { isClinicPhotoSection } from "../../lib/photoPolicyRegistry"; // [HOSPITAL-PHOTO-POLICY-01]
 
 // ============================================================
 // CAT_FOCUS — 5계열 (cat 기준)
@@ -243,8 +244,9 @@ export default async function handler(req, res) {
       content = "## " + sec.label + "\n" + content.trim();
     }
 
-    const secAlt = imgAlts[sec.key] || imgAlts.examination;
-    result += content.trim() + "\n\n" + secAlt + "\n\n";
+    // [HOSPITAL-PHOTO-POLICY-01] 3슬롯 정책 — 강제 폴백 제거
+    const secAlt = isClinicPhotoSection(sec.key) ? imgAlts[sec.key] : null;
+    result += content.trim() + "\n\n" + (secAlt ? secAlt + "\n\n" : "");
   }
 
   // ── 후처리 ──
