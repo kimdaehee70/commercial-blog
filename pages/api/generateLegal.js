@@ -257,7 +257,7 @@ function stripPostProcessDocs(text, treatmentId) {
 
 // ── 사진 placeholder (1줄 간소화 — 발행자 인지용) ────────
 const LEGAL_PHOTO_POOL = {
-  "상담 안내": "사무소 입구 / 간판 사진",
+  "상담 안내": "상담 접수 / 서류 확인 사진",
   "기준 안내": "상담실 내부 / 법무사 프로필 사진",
   "기한 안내": "달력 / 접수 안내 게시물 사진",
   "자료 안내": "준비 서류 예시 / 체크리스트 사진",
