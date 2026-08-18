@@ -274,11 +274,39 @@ export default async function handler(req, res) {
   //   · 조회 실패해도 생성 차단 금지(try/catch로 흡수) → store=null 로 진행.
   //   ⚠ D-4-5까지 '주입만·소비없음' — 핸들러가 아직 req.storeRuntime.store 를 소비하지 않음.
   //     소비 배선(consumeStoreProfile view 실사용)은 D-4-5에서 별도 진행.
+  //   ⚠ [GENERATE-AUTH-FAILCLOSED-01] 위 「익명 허용」 전제는 2026-08-18 폐기됨.
+  //     익명 허용은 원래 "store 없이도 생성 가능"을 위한 것이었지 "비로그인 생성 허용"이
+  //     아니었다. 그런데 실제로는 토큰 없는 POST 가 quota 게이트를 통째로 우회했다
+  //     (GENERATE-ANONYMOUS-UNLIMITED-01, S197 실측). 아래에서 fail-closed 로 닫는다.
+  //     store=null 은 여전히 허용 — 막는 것은 account=null 뿐이다.
+  let _authBroken = false;
   try {
     req.storeRuntime = await getStoreRuntime(req);
   } catch (e) {
-    console.warn("[router] getStoreRuntime 실패(익명 처리):", e?.message);
+    // 예외 = 인증 계층 장애. 익명으로 강등하면 장애가 곧 무료 무제한이 된다.
+    console.error("[router] getStoreRuntime 예외 — 생성 차단:", e?.message);
+    _authBroken = true;
     req.storeRuntime = { account: null, store: null };
+  }
+
+  if (_authBroken) {
+    return res.status(503).json({
+      error: "일시적인 오류로 생성을 진행할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+      code: "AUTH_LOOKUP_FAILED",
+    });
+  }
+
+  // account 미해석 → 생성 금지. middleware 가 Bearer 존재는 이미 걸렀으므로
+  //   여기 도달하는 null 은 「가짜/만료 토큰」 또는 「account 행 없음」이다.
+  //   ⚠ 이 둘과 「account 조회 장애」는 requireAccount 구조상 구분 불가(전부 null).
+  //     구분 필요 시 guards.js 수정이 선행돼야 한다 → AUTH-NULL-CAUSE-INDISTINCT-01 (별건).
+  const _account = req.storeRuntime?.account || null;
+  if (!_account || !Number.isInteger(_account.id) || _account.id <= 0) {
+    console.warn("[router] AUTH_REQUIRED — account 미해석. 생성 차단.");
+    return res.status(401).json({
+      error: "로그인이 필요합니다.",
+      code: "AUTH_REQUIRED",
+    });
   }
 
   // ── [GENERATE-SERVER-QUOTA-BYPASS-01] 서버측 월 제공량 게이트 ────────────
@@ -292,13 +320,14 @@ export default async function handler(req, res) {
   //       분모 = accounts.plan → getPlan
   //     한 줄이라도 다르게 쓰면 "보이는 한도"와 "막히는 한도"가 또 갈라진다.
   //
-  //   ★ account===null(익명)은 통과 — storeRuntimeProvider 익명 허용 설계 보존.
+  //   ★ account===null 은 위 [GENERATE-AUTH-FAILCLOSED-01] 에서 이미 401 로 차단됐다.
+  //     여기 도달 시 _acc 는 항상 유효. 아래 if 는 방어적 잔존이며 제거하지 않는다.
   //   ★ owner bypass: requireAccount select 에 role 이 없다(id,auth_user_id,email,plan,status).
   //     OWNER_UID 는 즉시 비교, DB role 조회는 차단 직전 1회만 → 정상 경로 쿼리 증가 0.
   //   ★ resolve() 도달 전이므로 초과 시 GPT 호출 0.
-  //   ★ 산정 예외는 통과(fail-open) — 라우터 무중단.
-  //     ⚠ GENERATE-QUOTA-FAILOPEN-01 = 출시 차단 등록됨. DB/usage 조회 장애 시 유료 API 가
-  //       무제한으로 열린다. 출시 전 fail-closed 전환 판정 필요. 이 주석을 지우지 말 것.
+  //   ★ 산정 예외는 503 차단(fail-closed, 2026-08-18 전환).
+  //     산정 불능 상태에서 생성하면 그 순간 유료 API 가 무제한으로 열린다.
+  //     "무중단"보다 "무과금"이 우선이다. fail-open 으로 되돌리지 말 것.
   try {
     const _acc = req.storeRuntime?.account || null;
     if (_acc && Number.isInteger(_acc.id) && _acc.id > 0) {
@@ -327,7 +356,14 @@ export default async function handler(req, res) {
       }
     }
   } catch (e) {
-    console.warn("[router] quota 산정 예외 — 통과 처리(GENERATE-QUOTA-FAILOPEN-01):", e?.message);
+    // [GENERATE-QUOTA-FAILOPEN-01 → CLOSE] 종전엔 통과(fail-open)였다.
+    //   DB/usage 조회 장애 = 유료 GPT 무제한 개방. 산정 불능이면 생성하지 않는다.
+    //   ★ 이 catch 는 403 return 을 삼키지 않는다(try 내 return 은 catch 를 타지 않음).
+    console.error("[router] quota 산정 실패 — 생성 차단(fail-closed):", e?.message);
+    return res.status(503).json({
+      error: "이용량 확인에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+      code: "QUOTA_CHECK_FAILED",
+    });
   }
 
   // ── [FUNERAL-PUBLIC-RUNTIME-INJECT-01] 장례식장 공공데이터 런타임 주입 ──────
