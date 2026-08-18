@@ -90,6 +90,7 @@ export default function SubscribePage() {
             <div style={S.price}>{p.price_krw.toLocaleString()}원<span style={S.unit}>/월</span></div>
             <div style={S.quota}>월 {p.monthly_quota}건 포함</div>
             <div style={S.overage}>초과 1건당 {p.overage_per_post_krw.toLocaleString()}원</div>
+            {p.description && <div style={S.desc}>{p.description}</div>}
             <button
               style={p.id === 'free' ? S.btnDisabled : S.btn}
               disabled={p.id === 'free' || submitting}
@@ -117,6 +118,7 @@ const S = {
   unit:    { fontSize: 14, fontWeight: 400, color: '#666', marginLeft: 4 },
   quota:   { marginTop: 12, fontSize: 14 },
   overage: { marginTop: 4, fontSize: 13, color: '#666' },
+  desc:    { marginTop: 8, fontSize: 13, color: '#444', lineHeight: 1.5 },
   btn:     { marginTop: 16, width: '100%', padding: '10px 0', border: 0, borderRadius: 8, background: '#111', color: '#fff', cursor: 'pointer', fontSize: 14 },
   btnDisabled: { marginTop: 16, width: '100%', padding: '10px 0', border: 0, borderRadius: 8, background: '#e4e4e7', color: '#999', cursor: 'not-allowed', fontSize: 14 },
   msg:     { marginTop: 20, padding: 12, background: '#fef3c7', borderRadius: 8, fontSize: 14 },
