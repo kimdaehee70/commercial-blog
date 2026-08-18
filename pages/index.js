@@ -4630,7 +4630,7 @@ const HELP_CONTENT = {
         "가입·결제 후 플랜과 권한(기능 사용 범위)이 자동으로 적용됩니다.",
       ]},
       { h: "사용량 — 발행이 아니라 ‘생성’ 기준", items: [
-        "이번 달 발행/남은 발행은 ‘생성기에서 글을 만든 횟수’ 기준입니다(발행 여부 무관).",
+        "발행/남은 발행은 ‘생성기에서 글을 만든 횟수’ 기준입니다(발행 여부 무관).",
         "테스트·미발행 글도 모두 사용량에 포함됩니다.",
       ]},
       { h: "누적사용량", items: [
@@ -5694,7 +5694,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
     account: {
       title: "마이페이지 보는 방법",
       steps: [
-        "회원정보·이번 달 사용량·누적 내역을 확인합니다.",
+        "회원정보·사용량·누적 내역을 확인합니다.",
         "사용량은 글을 생성한 시점에 집계됩니다(발행 여부 무관). URL 등록은 별도 표시됩니다.",
         "아래 이용내역을 펼치면 지난 발행 기록을 볼 수 있습니다.",
       ],
@@ -5762,7 +5762,9 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
       const isOwner = q.bypass === true || q.reason === "OWNER_BYPASS";
       if (!isOwner && lim != null) {
         const recs = [`권장 발행량: 월 ${lim}건`];
-        if (rem != null) recs.push(rem > 0 ? `이번 달 남은 발행: ${rem}건` : `이번 달 한도 소진 — 다음 달부터 이어집니다`);
+        // [MYPAGE-SUBSCRIPTION-PERIOD-DISPLAY-01] 집계 기간은 서버 period_basis 를 따른다.
+        const _pl = q.period_basis === "subscription" ? "이용기간" : "이번 달";
+        if (rem != null) recs.push(rem > 0 ? `${_pl} 남은 발행: ${rem}건` : `${_pl} 한도 소진 — 새 이용권 구매 시 바로 이어집니다`);
         cards.push({ tone: rem === 0 ? "warn" : "tip",
           lines: [`현재 ${planName} 플랜입니다.`, `달력의 계획은 플랜 한도(${lim}건) 기준 추천입니다(강제 아님).`],
           recs });
@@ -5815,7 +5817,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
   } else if (tabId === "account") {
     // [세션59] 마이페이지 코치 — store 동형. 1박스 즉시출력(타이핑·누적 폐기). 설명은 영상이 담당.
     renderCards = [{ tone: "tip", _step: "acctFixed",
-      lines: ["계정 정보와 이번 달 사용량을 확인하는 공간입니다.",
+      lines: [`계정 정보와 ${(ctx && ctx.quotaInfo && ctx.quotaInfo.period_basis === "subscription") ? "이용기간" : "이번 달"} 사용량을 확인하는 공간입니다.`,
               "지난 발행 기록은 아래 ‘전체 이용내역 보기’에서 확인하세요."] }];
   } else if (tabId === "posts") {
     // [세션59] 최근발행 코치 — store 동형. 1박스 상태 분기, 타이핑·누적 폐기(설명은 영상이 담당).
@@ -5842,12 +5844,17 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
     const _cqRemain = Number.isFinite(_cq.remaining) ? _cq.remaining
       : ((_cqLimit != null && _cqUsed != null) ? Math.max(0, _cqLimit - _cqUsed) : null);
     const coachSoldOut = !_cqUnlimited && Number.isFinite(_cqRemain) && _cqRemain <= 0;
-    // 다음 생성 가능일 = 다음 달 1일 (월 자동 계산)
-    const _nextReset = (() => {
-      const d = new Date();
-      const nm = (d.getMonth() + 1) % 12;            // 다음 달 (0~11)
-      const ny = d.getFullYear() + (d.getMonth() === 11 ? 1 : 0);
-      return `${ny}년 ${nm + 1}월 1일`;
+    // [MYPAGE-SUBSCRIPTION-PERIOD-DISPLAY-01] 프론트 기간 추정 금지.
+    //   유료 구독의 이용기간은 결제일 기준 +1개월이다. 달력 1일이 아니다.
+    //   서버(check-quota)가 period_basis / period_end 로 정답을 내려주므로 표시만 한다.
+    //   Free/비구독(calendar)은 종료일을 표시하지 않는다 — period_end 는 다음 달 1일 00:00 이라
+    //   그대로 쓰면 "종료일"과 어긋나고, -1일 보정은 프론트 추정이 되므로 금지.
+    const _cqLabel = _cq.period_basis === "subscription" ? "이용기간" : "이번 달";
+    const _periodEndText = (() => {
+      if (_cq.period_basis !== "subscription" || !_cq.period_end) return null;
+      const d = new Date(_cq.period_end);
+      if (isNaN(d.getTime())) return null;
+      return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
     })();
     const visible = [];
     if ((ctx && ctx.coachStage) === "generating") {
@@ -5882,10 +5889,10 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
         log.push({
           tone: "warn",
           lines: [
-            "🔒 이번 달 생성 한도를 모두 사용했습니다.",
-            "✅ 이번 달 발행 기록은 달력에서 확인할 수 있습니다.\n📝 다음 달 발행 전략은 지금 미리 설정할 수 있습니다.",
-            `📅 다음 생성 가능일 : ${_nextReset}`,
-            "💎 더 많은 발행이 필요하면 플랜 업그레이드를 이용하세요.",
+            `🔒 ${_cqLabel} 생성 한도를 모두 사용했습니다.`,
+            `✅ ${_cqLabel} 발행 기록은 달력에서 확인할 수 있습니다.\n📝 다음 기간 발행 전략은 지금 미리 설정할 수 있습니다.`,
+            ...(_periodEndText ? [`📅 현재 이용기간 종료일 : ${_periodEndText}`] : []),
+            "💎 새 이용권을 구매하면 결제 시점부터 바로 다시 생성할 수 있습니다.",
           ],
           _step: s,
         });
@@ -6907,10 +6914,10 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
       <span style={{ fontSize: 20, lineHeight: 1.1 }}>🔒</span>
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <span style={{ fontSize: 14, fontWeight: 900, color: "#E65100" }}>
-          이번 달 생성 한도 사용 완료{(used != null && limit != null) ? ` (${used}/${limit})` : ""}
+          {periodLabel} 생성 한도 사용 완료{(used != null && limit != null) ? ` (${used}/${limit})` : ""}
         </span>
         <span style={{ fontSize: 12.5, fontWeight: 700, color: "#BF360C", lineHeight: 1.5 }}>
-          다음 달 1일에 다시 생성할 수 있어요. 지금은 전략·달력을 미리 준비해 둘 수 있습니다.
+          새 이용권을 구매하면 결제 시점부터 바로 다시 생성할 수 있어요. 지금은 전략·달력을 미리 준비해 둘 수 있습니다.
         </span>
       </div>
     </div>
@@ -8366,7 +8373,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             </>
           ) : hasUsage ? (
             <>
-              {row("이번 달 발행", `${used} / ${limit}건`)}
+              {row(`${periodLabel} 발행`, `${used} / ${limit}건`)}
               {remaining != null && row("남은 한도", `${remaining}건`)}
               <div style={{ marginTop: 14, height: 8, background: "#f0eef5", borderRadius: 99, overflow: "hidden" }}>
                 <div style={{ width: `${Math.min(100, Math.round((used / limit) * 100))}%`, height: "100%",
@@ -14401,11 +14408,11 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
               <>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>📛</div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: "#c62828", marginBottom: 8 }}>
-                  이번 달 발행 한도에 도달했습니다
+                  {quotaModal.detail?.period_basis === "subscription" ? "이용기간" : "이번 달"} 발행 한도에 도달했습니다
                 </div>
                 <div style={{ fontSize: 13, color: "#555", lineHeight: 1.7, marginBottom: 14 }}>
                   현재 플랜: <b>{quotaModal.detail?.plan_id || "free"}</b><br/>
-                  이번 달 발행: <b>{quotaModal.detail?.monthly_publish ?? "?"}건</b>
+                  {quotaModal.detail?.period_basis === "subscription" ? "이용기간" : "이번 달"} 발행: <b>{quotaModal.detail?.monthly_publish ?? "?"}건</b>
                   {" / "}한도 <b>{quotaModal.detail?.monthly_quota ?? "?"}건</b>
                 </div>
                 <div style={{
@@ -14413,8 +14420,12 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                   padding: "10px 12px", fontSize: 12, color: "#E65100", lineHeight: 1.6,
                   marginBottom: 18,
                 }}>
-                  💡 다음 달 1일에 한도가 초기화됩니다.<br/>
-                  더 많은 발행이 필요하시면 플랜 업그레이드를 고려해주세요.
+                  {(quotaModal.detail?.period_basis === "subscription" && quotaModal.detail?.period_end) && (() => {
+                    const d = new Date(quotaModal.detail.period_end);
+                    if (isNaN(d.getTime())) return null;
+                    return <>💡 현재 이용기간 종료일 : {`${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`}<br/></>;
+                  })()}
+                  새 이용권을 구매하면 결제 시점부터 바로 다시 생성할 수 있습니다.
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
