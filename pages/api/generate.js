@@ -333,14 +333,7 @@ export default async function handler(req, res) {
     if (_acc && Number.isInteger(_acc.id) && _acc.id > 0) {
       const _period = await resolveBillingPeriod(_acc.id);
       const _used   = await countGeneratedInPeriod(_acc.id, _period.start, _period.end);
-      // [QUOTA-DENOM-SOURCE-SPLIT-01] 분모 SoT = subscriptions.plan_id.
-      //   종전엔 기간은 resolveBillingPeriod(구독 우선), 분모는 accounts.plan 이었다.
-      //   축이 갈라져 있어 구독 만료·2회 결제실패(canceled) 후에도 분모가 유료로 남았다
-      //   (실측: account 13·14 — accounts.plan=standard / sub.plan_id=basic / 기간 만료).
-      //   plan_id=null = 유효구독 없음 = 캘린더 폴백 → free 3건이 정본이다.
-      //   ★ accounts.plan 무접촉. 관리자 지급·환불 정책과 분리된 컬럼으로 남긴다.
-      //   ★ syncAccountPlan.js PHILOSOPHY 정합: subscriptions.plan_id 가 권위.
-      const _plan   = getPlan(_period.plan_id || DEFAULT_PLAN_ID);
+      const _plan   = getPlan(_acc.plan || DEFAULT_PLAN_ID);
 
       if (_used >= _plan.monthly_quota) {
         let _bypass = !!(_acc.auth_user_id && _acc.auth_user_id === OWNER_UID);

@@ -4,8 +4,8 @@
 //   · 구독행이 없는 계정 → 기존 KST 캘린더 월 기준 (기존 사용자 무영향)
 //   · 기간 산정은 lib/billing/subscription.resolveBillingPeriod 단일 진입점으로 이관.
 //     폴백식(calendarMonthPeriod)은 이전 인라인 계산과 1:1 동일.
-//   · plan 분모 SoT = subscriptions.plan_id (2026-08-18 전환, QUOTA-DENOM-SOURCE-SPLIT-01).
-//     유효구독 없음(plan_id=null) → free. accounts.plan 은 더 이상 quota 분모 권위가 아니다.
+//   · plan은 이번 축 밖 — 여전히 accounts.plan을 SoT로 쓴다.
+//     (B-2에서 관리자 지급 시 accounts.plan과 subscriptions.plan_id를 함께 갱신하므로 일치)
 //   · 응답에 period_basis / period_end 추가. 기존 키(month_start 등) 전부 유지.
 // 74차: helper 도입 — countPublishedInPeriod 호출 + fallback 유지
 // 65차 (B-1): P3 정책 반영 — publish_status='published' 필터 추가
@@ -138,14 +138,7 @@ export default async function handler(req, res) {
     }
 
     // 7. plan 기준 quota 판정
-    // [QUOTA-DENOM-SOURCE-SPLIT-01] 분모 SoT = subscriptions.plan_id (2026-08-18 전환).
-    //   종전엔 기간은 resolveBillingPeriod(구독 우선), 분모는 accounts.plan 이었다.
-    //   축이 갈라져 있어 구독 만료·2회 결제실패(canceled) 후에도 분모가 유료로 남았다
-    //   (실측: account 13·14 — accounts.plan=standard / sub.plan_id=basic / 기간 만료).
-    //   plan_id=null = 유효구독 없음 = 캘린더 폴백 → free 3건이 정본이다.
-    //   ★ accounts.plan 무접촉. 관리자 지급·환불 정책과 분리된 컬럼으로 남긴다.
-    //   ★ generate.js 서버 게이트와 같은 식을 쓴다 — 보이는 한도 = 막히는 한도.
-    const planId = period.plan_id || DEFAULT_PLAN_ID;
+    const planId = account.plan || DEFAULT_PLAN_ID;
     const plan = getPlan(planId);
     const quota = plan.monthly_quota;
     const remaining = Math.max(0, quota - monthly_publish);
