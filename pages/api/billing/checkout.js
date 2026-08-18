@@ -105,8 +105,8 @@ export default async function handler(req, res) {
       order,
       // 결제창 파라미터 — 시크릿이 아닌 공개값만 내려준다(API Secret은 절대 노출 금지).
       portone: {
-        storeId: process.env.PORTONE_STORE_ID || null,
-        channelKey: process.env.PORTONE_CHANNEL_KEY || null,
+        storeId: process.env.PORTONE_V2_STORE_ID || null,
+        channelKey: process.env.PORTONE_V2_CHANNEL_KEY || null,
         paymentId: order.payment_id,
         orderName: `AI-POST ${plan.label} ${months}개월`,
         totalAmount: order.amount,
