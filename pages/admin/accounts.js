@@ -45,7 +45,7 @@ const STATUS_COLOR = {
 
 // [v0.6] standard 누락 수정 — 요금제는 4-tier(free3/basic30/standard60/pro100) 확정인데
 //   select 목록에 standard가 없어 관리자 화면에서 지급 불가였다. lib/billing/plans.js sort_order 순.
-const ALLOWED_PLANS = ["free", "basic", "standard", "pro"];
+const ALLOWED_PLANS = ["free", "basic", "standard", "pro", "enterprise"];
 const ALLOWED_STATUS = ["active", "suspended"];
 const ALLOWED_ROLES = ["admin", "user"]; // 89차 신규 — owner 제외
 
