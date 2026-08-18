@@ -1863,9 +1863,17 @@ function filterRealPosts(arr, industry) {
   // [v157] 업종 필터 통합 — 달력(line 6732)과 동일 기준을 공통 헬퍼로 일원화.
   //   industry 미전달(undefined) 시 업종 필터 스킵 → 기존 호출부 하위호환 유지.
   //   p.industry 빈 레거시 행은 보존(가리지 않음). 데모 토픽 필터는 종전대로 항상 적용.
+  // [UI-SCOPE-VS-CORE-INDUSTRY-CONFLATION-01] 2번째 인자 배열 허용 — 다중 시공분야(departments) 표시 범위.
+  //   근거: Core 축(publish_history.industry = treatment owner)과 사용자 UI 소속은 다른 질문이다.
+  //         겸업 계정(예: departments=[interior,window,film])이 정상 메뉴로 만든 글이
+  //         대표업종 1개 비교에 걸려 자기 목록에서 사라졌다. Core 저장은 무변경.
+  //   문자열 전달 호출부 동작 100% 불변. 빈배열/null = 기존과 동일하게 필터 스킵.
+  const _scope = Array.isArray(industry)
+    ? industry.filter(Boolean)
+    : (industry ? [industry] : []);
   return (Array.isArray(arr) ? arr : []).filter(p =>
     !isDemoTopic(p && (p.treatment_name || p.keyword)) &&
-    !(industry && p && p.industry && p.industry !== industry)
+    !(_scope.length && p && p.industry && !_scope.includes(p.industry))
   );
 }
 function filterRealItems(arr) {
@@ -4679,7 +4687,14 @@ function buildCoachAdvice(tabId, ctx) {
   const region = (store.region || "").trim();
   const subRegion = (store.sub_region || "").trim();
   const address = (store.address || "").trim();
-  const posts = filterRealPosts(ctx.hubPosts, store.industry); // [v157] 현재 업종만
+  // [UI-SCOPE-VS-CORE-INDUSTRY-CONFLATION-01] 표시 범위 = 등록 departments. 없으면 대표업종 fallback.
+  //   ★ normalizeDepartments 는 그룹 미소속 업종(무속·상조·전문직)에서 []를 반환한다(industry-tree L413).
+  //     fallback 없이 넘기면 필터가 전면 해제되므로 반드시 대표업종으로 되돌린다.
+  const _scopeInds = (() => {
+    const dl = normalizeDepartments((store && store.departments) || [], store && store.industry);
+    return dl.length ? dl : (store && store.industry ? [store.industry] : []);
+  })();
+  const posts = filterRealPosts(ctx.hubPosts, _scopeInds); // [UI-SCOPE-01] 등록 분야 전체
   const postCount = posts.length;
   const surv = ctx.hubSurvival || null;
   const observed = surv && surv.observed ? surv.observed : 0;
@@ -4789,6 +4804,12 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
   // [v144] 코치 멘트용 업종 라벨 — ctx.hubStore.industry 기반. 미확정 시 의료 기본값.
   const _ind = (ctx && ctx.hubStore && ctx.hubStore.industry) || "";
   const _LX  = lex(_ind);
+  // [UI-SCOPE-VS-CORE-INDUSTRY-CONFLATION-01] 표시 범위 = 등록 departments(없으면 대표업종 fallback).
+  const _scopeInds = (() => {
+    const s  = (ctx && ctx.hubStore) || {};
+    const dl = normalizeDepartments(s.departments || [], s.industry);
+    return dl.length ? dl : (s.industry ? [s.industry] : []);
+  })();
 
   // [v86] 발행코치(coach) = 매일 오는 발행 전용 페이지. 좌측 코치는 "글 쓸 준비 점검" 역할.
   //   필수 재료(업체명·주소·업종·생활권·발행비율)가 정상인지 빠르게 확인 → 정상이면 "준비 완료",
@@ -4972,7 +4993,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
     postsNow: {
       tone: "tip",
       lines: [(() => {
-        const fp = (filterRealPosts(ctx.hubPosts, ctx.hubStore?.industry) || [])[0]; // [v157] 현재 업종만
+        const fp = (filterRealPosts(ctx.hubPosts, _scopeInds) || [])[0]; // [UI-SCOPE-01] 등록 분야 전체
         const t = fp && (fp.title || fp.keyword);
         return t
           ? `👇 맨 위 글 「${String(t).length > 24 ? String(t).slice(0, 24) + "…" : t}」을 눌러보세요.`
@@ -6715,6 +6736,12 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   // [요율/계획 상태] menuWeights·savedWeights·activePlan·calMonth 등은 부모(Home)에서 관리하고 props로 받는다.
   //   NavPanel은 resultTab 삼항 분기로 재마운트되므로, 내부 useState로 두면 글쓰기/예정클릭 시 초기화되어 저장값이 소실된다.
   //   (A 버그 수정: lift state up — 재마운트돼도 부모가 값 보존)
+  // [UI-SCOPE-VS-CORE-INDUSTRY-CONFLATION-01] 표시 범위 = 등록 departments(없으면 대표업종 fallback).
+  //   deptList(Home 스코프)는 여기서 접근 불가 → hubStore prop 에서 동일 SoT 재파생.
+  const _scopeInds = (() => {
+    const dl = normalizeDepartments((hubStore && hubStore.departments) || [], hubStore && hubStore.industry);
+    return dl.length ? dl : (hubStore && hubStore.industry ? [hubStore.industry] : []);
+  })();
   const PLANS = [
     { id: "free",     name: "Free",     price: "0원",        unit: "/월",
       desc: "시작하기", tagline: "체험용 · 월 3건", quota: "발행 3건 포함", daily: "체험용 3건", color: "#9C27B0",
@@ -6915,7 +6942,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   // [v19] 운영코치 집계 — treatment_name 기준(지역 분산 방지). 현재 업종 시술목록과 비교해 공백 도출.
   //   keyword는 "강남 임플란트 후기"처럼 지역+제목 합성이라 같은 시술이 쪼개짐 → treatment_name으로 집계.
   const coach = (() => {
-    const posts = filterRealPosts(hubPosts, hubStore?.industry); // [v157] 현재 업종만
+    const posts = filterRealPosts(hubPosts, _scopeInds); // [UI-SCOPE-01] 등록 분야 전체
     const freq = {};
     for (const p of posts) {
       // 1순위 treatment_name, 없으면 keyword fallback (구 데이터 호환)
@@ -7456,7 +7483,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
           {/* ②③ 사용량 + 누적사용량 — 한 줄 4칸. 이번달/남은(쿼터) + URL등록/미등록(누적).
               쿼터 숫자는 마이페이지에서만 노출(가드레일). 발행 판정 = naver_post_url 유무. 신규 fetch 없음. */}
           {(() => {
-            const allPosts = filterRealPosts(hubPosts, hubStore?.industry); // [v157] 현재 업종만
+            const allPosts = filterRealPosts(hubPosts, _scopeInds); // [UI-SCOPE-01] 등록 분야 전체
             // [status 기준 — 추가형(INSERT) 구조 확정 반영]
             //   baseline = 생성 글(url=null) = 사용량 1건 (서버 usage.js와 동일 기준)
             //   published(naver_post_url 있음) = URL 등록완료 (별도 row)
@@ -7518,7 +7545,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             //   같은 글이 2줄(생성 1 + 발행 1)로 뜨던 문제 → (이름+생성일) 키로 1글 통합.
             //   생성일=baseline created_at 기준. published row가 있으면 그 글에 발행상태·발행일 병합.
             const rows = (() => {
-              const real = filterRealPosts(hubPosts, hubStore?.industry); // [v157] 현재 업종만
+              const real = filterRealPosts(hubPosts, _scopeInds); // [UI-SCOPE-01] 등록 분야 전체
               const dayKey = (v) => { const t = new Date(v).getTime();
                 if (!Number.isFinite(t)) return "?"; const d = new Date(t);
                 return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
@@ -9342,6 +9369,11 @@ export default function Home() {
   // [v-dept] 진료과 파생 — hubStore 선언 이후(TDZ 방지). 대표=[0]=hubStore.industry.
   const _repIndustry  = (hubStore && hubStore.industry) || "";
   const myDepartments = normalizeDepartments((hubStore && hubStore.departments) || [], _repIndustry);
+  // [UI-SCOPE-VS-CORE-INDUSTRY-CONFLATION-01] 글 목록 표시 범위 전용 파생.
+  //   ★ myDepartments 를 그대로 쓰면 안 된다 — normalizeDepartments 는 그룹 미소속 업종
+  //     (무속·상조·전문직)에서 [] 를 반환하므로(industry-tree L413) 필터가 전면 해제된다.
+  //   ★ deptList(_isMultiDept 게이트 통과분)도 아니다. 게이트와 무관한 원본 등록 범위를 쓴다.
+  const _scopeInds = myDepartments.length ? myDepartments : (_repIndustry ? [_repIndustry] : []);
   //   스위처 노출 조건: 병원군 + 진료과 2개 이상. 단일과·비병원 = 기존 화면 그대로.
   // [v-svcgate 2026-07-21] 병원 전용 → 서비스그룹 일반화. 공사군(interior 등) 다중 시공분야도 메뉴 분리 노출.
   //   근거: departments 저장은 성공하나 게이트가 isHospitalIndustry라 공사군은 _isMultiDept=false → 대표 업종 메뉴만 노출.
@@ -14049,7 +14081,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     const used  = Number.isFinite(q.monthly_publish) ? q.monthly_publish : null;
                     const limit = Number.isFinite(q.monthly_quota)   ? q.monthly_quota   : null;
                     const usageText = unlimited ? "무제한" : (used != null && limit != null ? `${used}/${limit}` : null);
-                    const recent = Array.isArray(hubPosts) ? filterRealPosts(hubPosts, hubStore?.industry).length : null; // [v157] 현재 업종만
+                    const recent = Array.isArray(hubPosts) ? filterRealPosts(hubPosts, _scopeInds).length : null; // [UI-SCOPE-01] 등록 분야 전체
                     const observing = hubSurvival && Number.isFinite(hubSurvival.unknown) ? hubSurvival.unknown : null;
                     // 관측 요약 — "내 글 살아있나?"가 사용자 1순위 관심. survival 데이터(alive/gone/unknown) 그대로 노출.
                     let verdict = "", verdictColor = "#888";
@@ -14074,7 +14106,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                       else { verdict = "주의"; verdictColor = "#c62828"; }
                     }
                     // 추천: 현재 업종 시술 중 최근 발행에 없는 것 1개 → "지역 시술 후기 써줘"
-                    const posts = filterRealPosts(hubPosts, hubStore?.industry); // [v157] 현재 업종만
+                    const posts = filterRealPosts(hubPosts, _scopeInds); // [UI-SCOPE-01] 등록 분야 전체
                     const freq = {};
                     for (const p of posts) { const t = (p.treatment_name || p.keyword || "").trim(); if (t) freq[t] = (freq[t]||0)+1; }
                     const ranked = Object.entries(freq).sort((a,b) => b[1]-a[1]);
