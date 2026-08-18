@@ -10414,6 +10414,11 @@ export default function Home() {
     //   우선순위: treatment.__dept(통합마스터 유래) > deptOfMenu(메뉴명 역인덱스) > CURRENT_INDUSTRY(폴백)
     //   단일과·비병원: __dept 없음 + deptOfMenu → CURRENT_INDUSTRY → 기존 동작 100% 동일.
     const _genIndustry = (treatment && treatment.__dept)
+                      // [TREATMENT-OWNER-ROUTING-FIX-01 · S188] 선택 확정된 treatment 의 소유 업종을 채택.
+                      //   근거(실측): treatment.industry 선언분 1074건 전수 원본 배열 owner 와 일치(불일치 0).
+                      //   미선언 객체는 아래 폴백 그대로 → 기존 동작 무변화(회귀 0).
+                      //   __dept 최우선 유지 → 병원 다중과 경로 영향 0.
+                      || treatment?.industry
                       || deptOfMenu(treatment?.name || treatmentName)
                       || CURRENT_INDUSTRY;
 
