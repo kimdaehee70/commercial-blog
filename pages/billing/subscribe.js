@@ -302,9 +302,10 @@ export default function SubscribePage() {
 
                 <div style={{ ...S.quotaBox, background: `${ac}0d`, border: `1px solid ${ac}1f` }}>
                   <div style={{ ...S.quota, color: ac }}>월 {p.monthly_quota}건 포함</div>
-                  <div style={S.overage}>
-                    초과 1건당 {p.overage_per_post_krw.toLocaleString()}원
-                  </div>
+                  {/* [SUBSCRIBE-OVERAGE-TEXT-UNBACKED-01] 「초과 1건당 N원」 제거.
+                      후불 초과청구는 제공하지 않는다(상품정책 A). 제공하지 않는 과금정책을
+                      화면에 남기면 KG 심사에 그것이 증거로 제출된다. 스타일 키는 유지. */}
+                  <div style={S.overage}>이용기간 내 자유롭게 사용</div>
                 </div>
 
                 {p.description && <div style={S.desc}>{p.description}</div>}
@@ -334,8 +335,9 @@ export default function SubscribePage() {
           <div style={S.noticeHead}>서비스 제공기간 및 이용 안내</div>
           · 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.<br />
           · 자동갱신 — 월 정기결제이며 매 결제일에 동일 플랜으로 자동 갱신됩니다. 해지 시 다음 결제일부터 청구되지 않으며, 이미 결제된 이용기간은 만료일까지 이용할 수 있습니다.<br />
-          · 발행 한도 — 각 플랜의 월 발행 건수는 결제 주기 시작 시 초기화되며 다음 달로 이월되지 않습니다.<br />
-          · 청약철회 및 환불 — 환불정책에 따르며, 사용한 발행 건수만큼 공제 후 잔액을 환불합니다.<br />
+          · 제공 건수 — 각 플랜의 월 제공 생성 건수는 이용기간 내 자유롭게 사용할 수 있으며, 이용기간 시작 시 초기화되고 다음 기간으로 이월되지 않습니다. 일별 사용 제한은 없습니다.<br />
+          · 초과 이용 — 제공 건수를 모두 사용하면 추가 생성이 중지됩니다. 초과 사용분에 대한 후불 추가 요금은 청구되지 않습니다.<br />
+          · 청약철회 및 환불 — 환불정책에 따르며, 사용한 생성 건수만큼 공제 후 잔액을 환불합니다.<br />
           · 이용요금은 부가세 포함 금액입니다.
         </div>
       </div>

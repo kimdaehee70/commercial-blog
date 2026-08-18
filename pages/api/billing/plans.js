@@ -18,7 +18,11 @@ export default async function handler(req, res) {
 
   const { data, error } = await supabase
     .from('plans')
-    .select('id, label, monthly_quota, price_krw, overage_per_post_krw, description, sort_order')
+    // [SUBSCRIBE-OVERAGE-TEXT-UNBACKED-01] overage_per_post_krw 응답 제외.
+    //   후불 초과청구는 제공하지 않는다(상품정책 A). 사용자 화면에 공급될 이유가 없다.
+    //   ★ DB 컬럼은 삭제하지 않는다 — lib/billing/plans.js fallback · estimate.js(관리자)가 참조한다.
+    //   실측: 이 응답의 해당 필드를 읽던 곳은 subscribe.js 1곳뿐이며 함께 제거됨.
+    .select('id, label, monthly_quota, price_krw, description, sort_order')
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
 

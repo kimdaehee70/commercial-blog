@@ -10,7 +10,10 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { isConfigured, chargeBillingKey } from '../../../lib/portone';
-import { calcOverage } from '../../../lib/overage';
+// [CHARGE-DUE-OVERAGE-LIVE-01] calcOverage import 제거 — 실청구 합산 경로 절단.
+//   상품정책 A: 소진 시 차단 · 후불 초과청구 없음. 이 파일이 유일한 실청구 소비처였으므로
+//   여기서 끊으면 고객에게 정가를 초과한 금액이 청구될 경로가 사라진다.
+//   lib/overage.js 파일 자체 · DB 컬럼 · 관리자 과거 데이터는 이번 축에서 뜯지 않는다(One Axis).
 
 const supabaseUrl    = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -126,35 +129,21 @@ export default async function handler(req, res) {
       const paymentId   = `${sub.account_id}-${kind}-${Date.now()}`;
       const baseAmount  = sub.plans.price_krw;
 
-      // ─── overage 계산 (94차 — lib/overage.js) ───
-      // 직전 사이클(current_period_start ~ current_period_end) 기준 집계
-      // helper 내부에서 예외 시 0 fallback. 결제 차단 없음.
-      const cycleStart = sub.current_period_start || periodStart.toISOString();
-      const cycleEnd   = sub.current_period_end   || periodStart.toISOString();
-
-      const { data: planFull } = await supabase
-        .from('plans')
-        .select('monthly_quota, overage_per_post_krw')
-        .eq('id', sub.plan_id)
-        .single();
-
-      const overage = await calcOverage({
-        account_id:   sub.account_id,
-        period_start: cycleStart,
-        period_end:   cycleEnd,
-        plan: {
-          monthly_quota:        planFull?.monthly_quota || 0,
-          overage_per_post_krw: planFull?.overage_per_post_krw || 0,
-        },
-      });
-
-      if (overage.error) {
-        console.warn('[charge-due] overage calc error', sub.id, overage.error);
-      }
-
-      const overageAmount   = Number(overage.amount || 0);
-      const overageQuantity = Number(overage.quantity || 0);
-      const totalAmount     = baseAmount + overageAmount;
+      // ─── [CHARGE-DUE-OVERAGE-LIVE-01] 초과 청구 없음 ───
+      //   상품정책 A 확정: 월 정액 → 정해진 생성량 → 소진 시 차단 → 추가 청구 없음.
+      //   제공 건수를 넘긴 사용분에 대한 후불 청구는 제공하지 않는다.
+      //
+      //   ★ 기존 구조: calcOverage() → totalAmount = baseAmount + overageAmount.
+      //     현재 무증상인 이유는 두 겹의 우연(generated_posts 테이블 부재로 amount=0,
+      //     운영키 미적용으로 배치 미실행)뿐이었다. 둘 중 하나만 풀려도 고객에게
+      //     정가를 초과한 금액이 청구된다. 그래서 산식이 아니라 합산 자체를 끊는다.
+      //
+      //   ★ payment_history 의 overage_* 컬럼은 0 으로 계속 기록한다(스키마 무변경).
+      //     issue-billing-key.js 가 이미 0 하드코딩이므로 두 청구 경로가 일치한다.
+      //   ★ 여기에 다시 overage 를 더하는 코드를 넣지 않는다. 넣으려면 상품정책부터 바꾼다.
+      const overageAmount   = 0;
+      const overageQuantity = 0;
+      const totalAmount     = baseAmount;
 
       // ─── PG 결제 호출 ───
       const charge = await chargeBillingKey({

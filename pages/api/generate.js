@@ -16,6 +16,12 @@ import { getStoreRuntime } from "../../lib/storeRuntimeProvider"; // [D-4-4][A�
 import { buildStoreProfile } from "../../lib/buildStoreProfile"; // [D-4-5a] SoT 조립 (3소스→slots)
 import { consumeStoreProfile } from "../../lib/consumeStoreProfile"; // [D-4-5a] View 분배 (CJS named interop)
 import { supabaseAdmin } from "../../lib/supabaseAdmin"; // [FUNERAL-PUBLIC-RUNTIME-INJECT-01] 공공 장례식장 정본 조회
+// [GENERATE-SERVER-QUOTA-BYPASS-01] 서버측 quota 게이트 — 산식 복제 금지.
+//   check-quota.js L128~146 과 동일한 함수를 그대로 재사용한다.
+import { resolveBillingPeriod } from "../../lib/billing/subscription";
+import { countGeneratedInPeriod } from "../../lib/billing/usage";
+import { getPlan, DEFAULT_PLAN_ID } from "../../lib/billing/plans";
+import { OWNER_UID } from "../../lib/constants";
 
 // ── [세션39][STORE-01] 방문형(출장) 업종 위치/방문정보 스트립 ──────────────
 //   방문형(hasPhysicalStore=false · 청소·이사·방역·누수·꽃배달·유치원 출장행사 등 24종)은
@@ -273,6 +279,55 @@ export default async function handler(req, res) {
   } catch (e) {
     console.warn("[router] getStoreRuntime 실패(익명 처리):", e?.message);
     req.storeRuntime = { account: null, store: null };
+  }
+
+  // ── [GENERATE-SERVER-QUOTA-BYPASS-01] 서버측 월 제공량 게이트 ────────────
+  //   배경: 이 라우터에는 quota 검증이 0줄이었다. check-quota 호출처는 index.js(브라우저)뿐이라
+  //     API 직접 POST 시 제공량 무제한 우회 + GPT 비용 무방어였다.
+  //     "화면에서 작동한다"와 "서버가 막는다"는 다른 판정이다.
+  //
+  //   ★ 산식을 복제하지 않는다. 3축 전부 check-quota.js 와 같은 함수를 그대로 쓴다.
+  //       기간 = resolveBillingPeriod (구독 우선 / 캘린더 폴백)
+  //       분자 = countGeneratedInPeriod (baseline + created_at)
+  //       분모 = accounts.plan → getPlan
+  //     한 줄이라도 다르게 쓰면 "보이는 한도"와 "막히는 한도"가 또 갈라진다.
+  //
+  //   ★ account===null(익명)은 통과 — storeRuntimeProvider 익명 허용 설계 보존.
+  //   ★ owner bypass: requireAccount select 에 role 이 없다(id,auth_user_id,email,plan,status).
+  //     OWNER_UID 는 즉시 비교, DB role 조회는 차단 직전 1회만 → 정상 경로 쿼리 증가 0.
+  //   ★ resolve() 도달 전이므로 초과 시 GPT 호출 0.
+  //   ★ 산정 예외는 통과(fail-open) — 라우터 무중단.
+  //     ⚠ GENERATE-QUOTA-FAILOPEN-01 = 출시 차단 등록됨. DB/usage 조회 장애 시 유료 API 가
+  //       무제한으로 열린다. 출시 전 fail-closed 전환 판정 필요. 이 주석을 지우지 말 것.
+  try {
+    const _acc = req.storeRuntime?.account || null;
+    if (_acc && Number.isInteger(_acc.id) && _acc.id > 0) {
+      const _period = await resolveBillingPeriod(_acc.id);
+      const _used   = await countGeneratedInPeriod(_acc.id, _period.start, _period.end);
+      const _plan   = getPlan(_acc.plan || DEFAULT_PLAN_ID);
+
+      if (_used >= _plan.monthly_quota) {
+        let _bypass = !!(_acc.auth_user_id && _acc.auth_user_id === OWNER_UID);
+        if (!_bypass) {
+          const { data: _r } = await supabaseAdmin
+            .from("accounts").select("role").eq("id", _acc.id).maybeSingle();
+          _bypass = _r?.role === "owner";
+        }
+        if (!_bypass) {
+          console.warn(`[router] QUOTA_EXCEEDED account=${_acc.id} used=${_used} quota=${_plan.monthly_quota} basis=${_period.basis}`);
+          return res.status(403).json({
+            error: "이번 이용기간의 생성 가능 건수를 모두 사용했습니다. 추가 이용을 원하시면 새 이용권을 결제해 주세요.",
+            code: "QUOTA_EXCEEDED",
+            used: _used,
+            quota: _plan.monthly_quota,
+            plan_id: _plan.id,
+            period_end: _period.end,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[router] quota 산정 예외 — 통과 처리(GENERATE-QUOTA-FAILOPEN-01):", e?.message);
   }
 
   // ── [FUNERAL-PUBLIC-RUNTIME-INJECT-01] 장례식장 공공데이터 런타임 주입 ──────
