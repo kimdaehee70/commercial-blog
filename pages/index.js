@@ -6871,6 +6871,10 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   const displayName = storeName || (authEmail ? authEmail.split("@")[0] : "사용자");
   const planLabel = q.plan_id ? String(q.plan_id).toUpperCase() : "FREE";
   const isUnlimited = q.bypass === true || q.reason === "OWNER_BYPASS"; // owner — quota 무제한 응답
+  // [MYPAGE-PERIOD-LABEL-MISMATCH-01] 집계 기간이 구독 결제주기인데 라벨은 '이번 달'이었다.
+  //   서버(check-quota)가 resolveBillingPeriod로 정한 period_basis를 그대로 따른다.
+  //   구독행 있음 → 'subscription'(결제주기) / 없음 → 'calendar'(KST 월). 숫자·계산 무접촉.
+  const periodLabel = q.period_basis === "subscription" ? "이용기간" : "이번 달";
   const used  = Number.isFinite(q.monthly_publish) ? q.monthly_publish : null;
   const limit = Number.isFinite(q.monthly_quota)   ? q.monthly_quota   : null;
   const hasUsage = used != null && limit != null && limit > 0;
@@ -7515,7 +7519,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             const genOver = !isUnlimited && limit != null && genCount != null && genCount >= limit;
             return sectionCard("사용량 · 누적", (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 6 }}>
-                {cell("이번 달 생성", usageWithLimit,
+                {cell(`${periodLabel} 생성`, usageWithLimit,
                   isUnlimited ? "#6A1B9A" : (genOver ? "#c62828" : undefined))}
                 {cell("남은 생성", isUnlimited ? "무제한" : (remainGen != null ? `${remainGen}건` : "—"),
                   isUnlimited ? "#6A1B9A" : (remainGen === 0 ? "#c62828" : "#2e7d32"))}
