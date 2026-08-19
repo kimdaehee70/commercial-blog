@@ -1,102 +1,43 @@
 // pages/billing/subscribe.js
-// 결제 가입 페이지 — 골격 (가맹점 가입 전, 결제창 호출 미작동)
-// 플랜 표시 + "결제하기" 버튼만. 실제 결제창은 portone.isConfigured() 후 활성.
+// 결제 가입 페이지 — 페이지 셸 + PlanCards 호출.
 //
-// 94차 v0.2: Bearer 전파
-// - checkout 호출 시 Authorization: Bearer 헤더 첨부
-// - 세션 없으면 /login redirect
-// - plans 조회는 공개 endpoint 라 무인증 유지
+// [PLAN-CARDS-SHARED-COMPONENT-01] 카드 UI·결제 로직 전량을 components/billing/PlanCards.jsx 로 이관.
+// - 이 파일에 남는 것: 헤더 / 푸터(사업자정보·정책 3종 링크) / 페이지 레이아웃 /
+//   현재 플랜 조회 / 결제 완료 후 복귀 동선.
+// - 이관된 것: ACCENT·BADGE 표현 토큰, /api/billing/plans 조회, 5카드 grid, 반응형 styled-jsx,
+//   handleSubscribe 전량, submitting·msg·paymentRecovery·done 상태, 완료 카드, 고지 안내박스.
+// - ★ 결제 동선·문안·디자인·상품 SoT 는 1글자도 바뀌지 않았다. 위치만 옮겼다.
+//   이 페이지의 완료 후 동작(5초 뒤 /?tab=plans&paid= 복귀)도 종전과 동일하다.
 //
-// [S191 KG-SUBSCRIBE-UI-ALIGN-01] 표현 계층만 정렬. 결제 로직·데이터 계약 무접촉.
-// - index.js 요금제 화면(NavPanel PLANS 카드)의 디자인 토큰을 이식: 브랜드 퍼플 #4A148C,
-//   보더 #E8E0F4/#F4F0FA, 배경 #fafafd/#F7F5FB, 플랜 액센트 + 투명도 접미사(0d/12/1a/1f/3d).
-// - ★ ACCENT는 UI 표현 토큰이다. 상품정보(가격·quota·description·활성상태)는 전부 API 응답만 사용한다.
-//   여기에 상품값을 하드코딩하면 DB/화면 이중 SoT가 되어 KG 심사 정합이 깨진다.
-// - 하단 SiteFooter = 사업자정보 상시 노출(KG 심사 요건). onDoc 미전달 → 정책 링크는 텍스트 폴백,
-//   실제 이동은 아래 /policies/* 3종 <a> 링크가 담당(KG-05 운영 라우트 재사용).
-//
-// [S193 PORTONE-BROWSER-SDK-MISSING-01] 정기결제(B) 동선 실배선.
-// - /api/billing/checkout 호출 제거. checkout은 일회성(A) 경로 자산이다.
-//   requestPayment 파라미터(totalAmount·payMethod)를 내려주고 payment_orders 행을 만든다.
-//   B에서 호출하면 청구되지 않을 고아 주문이 클릭마다 쌓인다. 파일은 삭제하지 않고 격리만 한다.
-// - 대신 /api/billing/config(공개값 전용)로 storeId·channelKey만 받는다.
-// - 죽은 분기 d?.dummy 제거(SUBSCRIBE-DUMMY-BRANCH-DEAD-01). checkout은 dummy를 반환한 적이 없다.
-//   미설정 판별은 config.configured로 한다.
-// - ★ 금액은 이 화면에서 결제되지 않는다. 카드등록(빌링키 발급)만 한다.
-//   첫 달 실제 청구는 서버 /api/billing/issue-billing-key 안의 chargeBillingKey()가 수행한다(5f85c02).
-//   따라서 issue-billing-key 200을 받기 전에는 어떤 완료 표시도 하지 않는다.
-// - SDK 계약 실측(@portone/browser-sdk 0.1.9 .d.ts):
-//     requestIssueBillingKey({ storeId, billingKeyMethod, channelKey?, issueId?, issueName?, customer?, redirectUrl? })
-//       → { transactionType:'ISSUE_BILLING_KEY', billingKey, code?, message?, pgCode?, pgMessage? } | undefined
-//     실패는 throw가 아니라 code 필드로 온다. undefined 반환도 가능하다.
-//     ★ displayAmount는 "표시 전용"이며 청구액이 아니다. 혼동을 막기 위해 넘기지 않는다.
+// 이관 전 이력(보존):
+// - [S191 KG-SUBSCRIBE-UI-ALIGN-01] index.js 디자인 토큰 이식. 하단 SiteFooter = 사업자정보
+//   상시 노출(KG 심사 요건). 정책 이동은 아래 /policies/* 3종 <a> 링크가 담당(KG-05 운영 라우트).
+// - [S193 PORTONE-BROWSER-SDK-MISSING-01] 정기결제(B) 동선 실배선. /api/billing/checkout 은
+//   일회성(A) 경로 자산이라 호출하지 않는다. 금액은 이 화면에서 결제되지 않으며,
+//   첫 달 실청구는 서버 /api/billing/issue-billing-key 의 chargeBillingKey() 가 수행한다.
+// - [SUBSCRIBE-POST-PAYMENT-RETURN-01] 완료 후 마이페이지 요금제 탭으로 복귀.
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabase';
 import SiteFooter from '../../components/SiteFooter';
+import PlanCards from '../../components/billing/PlanCards';
 
-// plan id → 액센트 컬러. 표현 전용 상수(상품 데이터 아님). index.js PLANS와 동일값.
-const ACCENT = {
-  free:       '#9C27B0',
-  basic:      '#1565C0',
-  standard:   '#03c75a',
-  pro:        '#E65100',
-  enterprise: '#7B1FA2',
-};
-// [SUBSCRIBE-POST-PAYMENT-RETURN-01] 완료 카드 노출 시간(초).
-//   결제금액·다음 결제일·주문번호를 사용자가 읽을 시간이다. 짧게 만들지 않는다.
-const RETURN_SEC = 5;
 // 복귀 목적지 — 마이페이지 요금제 탭. plan id 만 싣는다.
 //   ★ label 을 URL 에 싣지 않는다. 조작 가능하고 상품 SoT 가 하나 더 늘어난다.
 //     표시명은 도착 화면이 /api/billing/plans 응답에서 찾는다.
 const returnUrl = (planId) => `/?tab=plans&paid=${encodeURIComponent(planId || '')}`;
 
-const FALLBACK_AC = '#4A148C';
-const acOf = (id) => ACCENT[String(id || '').toLowerCase()] || FALLBACK_AC;
-
-// [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] 배지 — index.js 표현 그대로 이식.
-// ★ 표현 전용 상수다. 추천 로직·판정 로직을 새로 만들지 않는다. id 고정 매핑뿐이다.
-const BADGE = {
-  standard:   '가장 많이 선택',
-  enterprise: '가장 강력한 플랜',
-};
-
 export default function SubscribePage() {
   const router = useRouter();
-  const [plans, setPlans]       = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [selected, setSelected] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [msg, setMsg]           = useState('');
-  // done: issue-billing-key가 200을 반환한 뒤에만 채워진다.
-  //       = 첫 달 실청구까지 성공한 상태. 카드등록만으로는 절대 채우지 않는다.
-  const [done, setDone]         = useState(null);
   // [SUBSCRIBE-CURRENT-PLAN-NOT-REFLECTED-01] 현재 이용 중인 플랜 id.
   //   ★ 신규 API 를 만들지 않는다. check-quota 가 이미 plan_id 를 반환한다(accounts.plan SoT).
-  //     여기서 별도 조회원을 만들면 플랜 판정 출처가 2개가 된다.
-  const [curPlan, setCurPlan]   = useState(null);
-  // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 자동 복귀 가드.
-  //   타이머와 버튼이 같은 목적지로 각각 navigate 하면 히스토리가 2개 쌓인다.
-  //   먼저 실행된 쪽만 통과시킨다. state 가 아니라 ref 인 이유: 리렌더를 유발하면
-  //   완료 카드가 다시 그려지며 effect 가 재실행된다.
+  const [curPlan, setCurPlan] = useState(null);
+  // 완료 후 이동 가드. PlanCards 내부에도 1회 가드가 있으나, 이 페이지의 목적지
+  //   중복 push 를 막는 최종 방어는 여기에 둔다.
   const navRef = useRef(false);
-  const [leftSec, setLeftSec] = useState(RETURN_SEC);
 
-  useEffect(() => {
-    fetch('/api/billing/plans')
-      .then(r => r.json())
-      .then(d => {
-        setPlans(Array.isArray(d?.plans) ? d.plans : []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  // [SUBSCRIBE-CURRENT-PLAN-NOT-REFLECTED-01] 현재 플랜 조회.
-  //   index.js 와 동일 호출 규약(GET + auth_user_id). 실패해도 화면은 그대로 뜬다 —
-  //   현재 플랜 표시는 보조 정보이며, 결제 차단의 정본은 서버 게이트다.
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -112,154 +53,12 @@ export default function SubscribePage() {
     return () => { alive = false; };
   }, []);
 
-  async function handleSubscribe(planId) {
-    if (submitting) return;
-    setSubmitting(true);
-    setMsg('');
-    try {
-      // 94차 — Bearer 전파
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.replace('/login');
-        return;
-      }
-
-      // ── 1. 공개 PG 설정 조회 (storeId / channelKey) ──
-      const cfgRes = await fetch('/api/billing/config');
-      const cfg = await cfgRes.json();
-
-      if (!cfgRes.ok || !cfg?.ok) {
-        setMsg('결제 설정을 불러오지 못했습니다.');
-        return;
-      }
-      // ★ 미설정이면 여기서 확실하게 멈춘다. 가짜 성공을 만들지 않는다.
-      if (!cfg.configured || !cfg.storeId) {
-        setMsg(cfg.message || '결제 모듈이 아직 활성화되지 않았습니다. 잠시 후 다시 시도해 주세요.');
-        return;
-      }
-
-      // ── 2. 카드등록(빌링키 발급) 창 호출 ──
-      //    이 단계에서는 돈이 빠져나가지 않는다. 카드 등록만 한다.
-      const PortOne = (await import('@portone/browser-sdk/v2')).default;
-
-      const plan = plans.find(p => p.id === planId);
-      const issueId = `bk-${planId}-${Date.now()}`;
-
-      const issue = await PortOne.requestIssueBillingKey({
-        storeId:          cfg.storeId,
-        ...(cfg.channelKey ? { channelKey: cfg.channelKey } : {}),
-        billingKeyMethod: 'CARD',
-        issueId,
-        issueName:        `AI-POST ${plan?.label || planId} 월 정기결제`,
-        customer: {
-          customerId: session.user?.id || undefined,
-          email:      session.user?.email || undefined,
-        },
-        // 모바일 리디렉션 방식 대비. 복귀 후 처리는 미구현(HOLD).
-        redirectUrl: typeof window !== 'undefined'
-          ? `${window.location.origin}/billing/subscribe`
-          : undefined,
-      });
-
-      // 실측 계약: 실패는 throw가 아니라 code로 온다. undefined 반환도 가능.
-      if (!issue) {
-        setMsg('카드 등록이 완료되지 않았습니다.');
-        return;
-      }
-      if (issue.code) {
-        setMsg(issue.message || issue.pgMessage || '카드 등록에 실패했습니다.');
-        return;
-      }
-      if (!issue.billingKey) {
-        setMsg('빌링키를 받지 못했습니다. 다시 시도해 주세요.');
-        return;
-      }
-
-      // ── 3. 서버로 전달 → 서버가 첫 달을 실제로 청구한다 ──
-      //    ★ payment_id는 보내지 않는다. 청구 ID 결정권은 서버에 있다(5f85c02).
-      const subRes = await fetch('/api/billing/issue-billing-key', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          plan_id:      planId,
-          billing_key:  issue.billingKey,
-          customer_uid: session.user?.id || null,
-          pg_provider:  'portone',
-        }),
-      });
-      const sd = await subRes.json().catch(() => ({}));
-
-      if (subRes.status === 401) {
-        setMsg('인증이 만료되었습니다. 다시 로그인해 주세요.');
-        router.replace('/login');
-        return;
-      }
-      if (subRes.status === 402) {
-        // 카드 등록은 됐지만 첫 달 청구가 거절된 경우. 구독은 생성되지 않았다.
-        setMsg(`첫 결제가 승인되지 않았습니다. ${sd?.reason || ''} 다른 카드로 다시 시도해 주세요.`.trim());
-        return;
-      }
-      if (subRes.status === 409) {
-        // [SUBSCRIBE-409-REASON-COLLAPSED-01] 서버가 보낸 사유를 그대로 쓴다.
-        //   PAYMENT_PAST_DUE 와 QUOTA_REMAINING 은 다른 상황이다. 하나로 뭉개면
-        //   미납 사용자에게 「이용 중」으로 표시돼 정반대 뜻이 된다.
-        setMsg(sd?.message || '현재 상태에서는 새 이용권을 구매할 수 없습니다.');
-        return;
-      }
-      if (!subRes.ok || !sd?.ok) {
-        setMsg(sd?.error || '구독 처리에 실패했습니다. 고객센터로 문의해 주세요.');
-        return;
-      }
-
-      // ── 4. 여기부터가 진짜 완료 ──
-      //    실청구 성공 + subscription active + accounts.plan 승격이 끝난 상태다.
-      setDone({
-        // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 복귀 URL 생성용. 표시에는 쓰지 않는다.
-        planId,
-        planLabel:     plan?.label || planId,
-        priceKrw:      plan?.price_krw ?? null,
-        nextBillingAt: sd.next_billing_at || null,
-        paymentId:     sd.payment_id || null,
-      });
-    } catch (e) {
-      setMsg('결제 처리 중 오류가 발생했습니다. 다시 시도해 주세요.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 완료 카드 → 5초 후 자동 복귀.
-  //   ★ 조건부 return(loading/done) 보다 위에 있어야 한다. 훅은 매 렌더 같은 순서로 호출돼야 한다.
-  //   done 이 채워진 뒤에만 동작하며, 언마운트·즉시이동 시 cleanup 이 타이머를 지운다.
-  useEffect(() => {
-    if (!done) return;
-    let n = RETURN_SEC;
-    setLeftSec(n);
-    const tick = setInterval(() => {
-      n -= 1;
-      setLeftSec(n > 0 ? n : 0);
-    }, 1000);
-    const timer = setTimeout(() => goService(done.planId), RETURN_SEC * 1000);
-    return () => { clearInterval(tick); clearTimeout(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [done]);
-
-  // 타이머·버튼 공용 이동 함수. navRef 로 1회만 통과시킨다.
+  // 결제 완료 → 5초 뒤(또는 버튼 클릭 시 즉시) 마이페이지 요금제 탭으로 복귀.
   //   replace 인 이유: 뒤로가기로 완료 화면(=이미 끝난 결제)에 되돌아오지 못하게 한다.
-  function goService(planId) {
+  function handleComplete(done) {
     if (navRef.current) return;
     navRef.current = true;
-    router.replace(returnUrl(planId));
-  }
-
-  function fmtDate(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+    router.replace(returnUrl(done?.planId));
   }
 
   // ── 헤더(B) — 서비스 연속성. 요금제 → 결제 페이지가 같은 서비스로 읽히게 한다.
@@ -289,70 +88,6 @@ export default function SubscribePage() {
     </div>
   );
 
-  if (loading) {
-    return (
-      <div style={S.page}>
-        {Header}
-        <div style={S.wrap}>
-          <div style={S.loading}>로딩…</div>
-        </div>
-        {Footer}
-      </div>
-    );
-  }
-
-  // ── 완료 화면 ──
-  // 도달 조건: issue-billing-key 200. 즉 첫 달 실청구 성공 + 구독 active + 플랜 승격 완료.
-  // 카드등록만 성공한 상태로는 절대 여기에 오지 않는다.
-  if (done) {
-    return (
-      <div style={S.page}>
-        {Header}
-        <div style={S.wrap}>
-          <div style={S.doneCard}>
-            <div style={S.doneMark}>✓</div>
-            <div style={S.doneTitle}>결제가 완료되었습니다</div>
-            <div style={S.doneRow}>
-              <span style={S.doneKey}>플랜</span>
-              <span style={S.doneVal}>{done.planLabel}</span>
-            </div>
-            {done.priceKrw != null && (
-              <div style={S.doneRow}>
-                <span style={S.doneKey}>결제금액</span>
-                <span style={S.doneVal}>{done.priceKrw.toLocaleString()}원</span>
-              </div>
-            )}
-            {done.nextBillingAt && (
-              <div style={S.doneRow}>
-                <span style={S.doneKey}>다음 결제일</span>
-                <span style={S.doneVal}>{fmtDate(done.nextBillingAt)}</span>
-              </div>
-            )}
-            {done.paymentId && (
-              <div style={S.doneRow}>
-                <span style={S.doneKey}>주문번호</span>
-                <span style={S.doneCode}>{done.paymentId}</span>
-              </div>
-            )}
-            <div style={S.doneNote}>
-              결제 완료 즉시 이용할 수 있습니다. 매월 같은 날짜에 동일 플랜으로 자동 갱신됩니다.
-            </div>
-            {/* [SUBSCRIBE-POST-PAYMENT-RETURN-01] Link → button.
-                Link 는 클릭을 가로채 이동해 버려 타이머 취소와 중복 navigation 가드를
-                걸 수 없다. 목적지는 타이머와 동일하다. */}
-            <button type="button" style={S.doneBtn} onClick={() => goService(done.planId)}>
-              서비스로 이동
-            </button>
-            <div style={S.doneCount}>
-              {leftSec > 0 ? `${leftSec}초 후 자동으로 이동합니다` : '이동 중…'}
-            </div>
-          </div>
-        </div>
-        {Footer}
-      </div>
-    );
-  }
-
   return (
     <div style={S.page}>
       {Header}
@@ -361,100 +96,14 @@ export default function SubscribePage() {
         <h1 style={S.h1}>요금제 선택</h1>
         <p style={S.sub}>구매일부터 1개월 · 이용기간 내 제공량 자유사용</p>
 
-        <div className="planGrid" style={S.grid}>
-          {plans.map(p => {
-            const ac = acOf(p.id);
-            const isFree = p.id === 'free';
-            // [SUBSCRIBE-CURRENT-PLAN-NOT-REFLECTED-01] 현재 이용 중 판정.
-            //   ★ 배지 슬롯은 1개다. 「현재 이용 중」이 추천배지보다 우선한다.
-            //     두 개를 나란히 두면 labelRow minHeight 20 이 깨져 5장 가격선이 어긋난다.
-            const isCur = !!curPlan && String(p.id).toLowerCase() === curPlan;
-            return (
-              <div
-                key={p.id}
-                style={{
-                  ...S.card,
-                  borderColor: isFree ? '#E8E0F4' : `${ac}33`,
-                  boxShadow: isFree ? 'none' : `0 6px 20px ${ac}14`,
-                }}
-              >
-                <div style={S.labelRow}>
-                  <div style={{ ...S.planLabel, color: ac }}>{p.label}</div>
-                  {(isCur || BADGE[p.id]) && (
-                    <span style={{ ...S.badge, color: ac, background: `${ac}12`, border: `1px solid ${ac}2e` }}>
-                      {isCur ? '현재 이용 중' : BADGE[p.id]}
-                    </span>
-                  )}
-                </div>
-
-                {/* [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] 「/월」 삭제.
-                    캘린더 월 이용권 오해를 만든다. 이용기간은 상단 보조문구와
-                    하단 안내가 설명한다(구매일부터 1개월). 자동갱신도 하단 소관. */}
-                <div style={S.price}>
-                  {p.price_krw.toLocaleString()}원
-                </div>
-
-                <div style={{ ...S.quotaBox, background: `${ac}0d`, border: `1px solid ${ac}1f` }}>
-                  {/* free 는 결제 상품이 아니므로 「월」 기준이 유지된다(index.js 와 동일 규칙). */}
-                  <div style={{ ...S.quota, color: ac }}>
-                    {isFree
-                      ? `월 ${p.monthly_quota}건 포함`
-                      : `이용기간 ${p.monthly_quota}건 포함`}
-                  </div>
-                  {/* [SUBSCRIBE-OVERAGE-TEXT-UNBACKED-01] 「초과 1건당 N원」 제거.
-                      후불 초과청구는 제공하지 않는다(상품정책 A). 제공하지 않는 과금정책을
-                      화면에 남기면 KG 심사에 그것이 증거로 제출된다. 스타일 키는 유지. */}
-                  <div style={S.overage}>이용기간 내 자유롭게 사용</div>
-                </div>
-
-                <div style={S.desc}>{p.description || ''}</div>
-
-                <div style={S.ctaZone}>
-                  <button
-                    style={
-                      (isFree || isCur)
-                        ? S.btnDisabled
-                        : { ...S.btn, background: ac, boxShadow: `0 4px 14px ${ac}3d` }
-                    }
-                    disabled={isFree || isCur || submitting}
-                    onClick={() => handleSubscribe(p.id)}
-                  >
-                    {isFree ? '기본 플랜' : (isCur ? '현재 이용 중' : '결제하기')}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {msg && <div style={S.msg}>{msg}</div>}
-
-        {/* 서비스 제공기간·자동갱신 고지 — 전자상거래법 및 PG 심사 모니터링 항목. */}
-        <div style={S.notice}>
-          <div style={S.noticeHead}>서비스 제공기간 및 이용 안내</div>
-          {/* [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] <br/> 연속 → 항목별 div.
-              문안은 1글자도 변경하지 않는다(전자상거래법·PG 심사 고지문). 분리 목적은
-              항목 경계를 시각적으로 살려 가독성을 확보하는 것뿐이다. 1단 유지. */}
-          <div style={S.noticeItem}>· 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.</div>
-          <div style={S.noticeItem}>· 자동갱신 — 월 정기결제이며 매 결제일에 동일 플랜으로 자동 갱신됩니다. 해지 시 다음 결제일부터 청구되지 않으며, 이미 결제된 이용기간은 만료일까지 이용할 수 있습니다.</div>
-          <div style={S.noticeItem}>· 제공 건수 — 각 플랜의 월 제공 생성 건수는 이용기간 내 자유롭게 사용할 수 있으며, 이용기간 시작 시 초기화되고 다음 기간으로 이월되지 않습니다. 일별 사용 제한은 없습니다.</div>
-          <div style={S.noticeItem}>· 초과 이용 — 제공 건수를 모두 사용하면 추가 생성이 중지됩니다. 초과 사용분에 대한 후불 추가 요금은 청구되지 않습니다.</div>
-          <div style={S.noticeItem}>· 청약철회 및 환불 — 환불정책에 따르며, 사용한 생성 건수만큼 공제 후 잔액을 환불합니다.</div>
-          <div style={S.noticeItem}>· 이용요금은 부가세 포함 금액입니다.</div>
-        </div>
+        <PlanCards
+          currentPlanId={curPlan}
+          onComplete={handleComplete}
+          showNotice={true}
+        />
       </div>
 
       {Footer}
-
-      {/* [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] 반응형 — 인라인 style 객체로는 media query 를
-          쓸 수 없어 이 블록만 styled-jsx 를 신설한다. PC 5열이 정본이며, 좁아질 때만 접는다.
-          auto-fit 을 쓰지 않는 이유: 접히는 지점을 브라우저가 정하면 4+1 같은 형태가 나온다. */}
-      <style jsx>{`
-        .planGrid { grid-template-columns: repeat(5, 1fr); }
-        @media (max-width: 1260px) { .planGrid { grid-template-columns: repeat(3, 1fr); } }
-        @media (max-width: 820px)  { .planGrid { grid-template-columns: repeat(2, 1fr); } }
-        @media (max-width: 520px)  { .planGrid { grid-template-columns: 1fr; } }
-      `}</style>
     </div>
   );
 }
@@ -463,8 +112,8 @@ const S = {
   page:    { minHeight: '100vh', background: '#fafafd', fontFamily: 'system-ui, -apple-system, "Malgun Gothic", sans-serif', display: 'flex', flexDirection: 'column' },
 
   header:      { background: '#fff', borderBottom: '1px solid #E8E0F4' },
-  // [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] 960 → 1180. wrap 과 반드시 동일값이어야
-  //   헤더 로고선과 카드 좌단이 같은 축에 선다. 한쪽만 바꾸면 축이 어긋난다.
+  // headerInner 의 maxWidth 는 wrap 과 반드시 동일값이어야 헤더 로고선과 카드 좌단이
+  //   같은 축에 선다. 한쪽만 바꾸면 축이 어긋난다.
   headerInner: { maxWidth: 1260, margin: '0 auto', padding: '13px 24px', display: 'flex', alignItems: 'center', gap: 12 },
   brand:       { display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' },
   brandMark:   { width: 26, height: 26, borderRadius: 8, background: '#4A148C', color: '#fff', fontSize: 11.5, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', letterSpacing: '.02em' },
@@ -473,50 +122,8 @@ const S = {
   brandTag:    { fontSize: 11.5, color: '#8b83a0', fontWeight: 700 },
 
   wrap:    { flex: 1, width: '100%', maxWidth: 1260, margin: '0 auto', padding: '42px 24px 56px', boxSizing: 'border-box' },
-  loading: { padding: '60px 0', textAlign: 'center', color: '#8b83a0', fontSize: 14 },
   h1:      { fontSize: 28, fontWeight: 900, color: '#2c2340', margin: 0, letterSpacing: '-.02em' },
   sub:     { color: '#8b83a0', fontSize: 13.5, fontWeight: 700, marginTop: 8, marginBottom: 28 },
-
-  // gridTemplateColumns 는 style jsx 의 .planGrid 가 최종 결정한다(media query).
-  //   여기 값은 CSS 로드 전 1프레임 폴백이며, auto-fit 을 쓰면 접힘 지점이 어긋나므로 5열로 둔다.
-  grid:    { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 17, alignItems: 'stretch' },
-  card:    { display: 'flex', flexDirection: 'column', border: '1px solid #E8E0F4', borderRadius: 16, padding: '22px 20px 20px', background: '#fff', boxSizing: 'border-box' },
-
-  // 배지 자리를 항상 확보한다(minHeight). 배지 유무로 아래 요소가 밀리면 5장 가격선이 어긋난다.
-  labelRow:  { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, minHeight: 20 },
-  planLabel: { fontSize: 11.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em' },
-  badge:     { fontSize: 10, fontWeight: 900, padding: '3.5px 8px', borderRadius: 999, whiteSpace: 'nowrap', letterSpacing: '-.01em' },
-
-  price:     { fontSize: 28, fontWeight: 900, color: '#2c2340', marginTop: 9, letterSpacing: '-.02em' },
-
-  quotaBox: { marginTop: 15, padding: '11px 12px', borderRadius: 11, minHeight: 56, boxSizing: 'border-box' },
-  quota:    { fontSize: 13.5, fontWeight: 800 },
-  overage:  { marginTop: 3.5, fontSize: 11.5, color: '#8b83a0', fontWeight: 700 },
-
-  // minHeight 고정 = CTA Y축 일치의 근거. description 줄 수가 플랜마다 달라도 버튼선이 유지된다.
-  desc:    { marginTop: 13, fontSize: 12.5, color: '#4a4458', lineHeight: 1.6, borderTop: '1px solid #F4F0FA', paddingTop: 12, minHeight: 62 },
-
-  ctaZone: { marginTop: 'auto', paddingTop: 16 },
-  btn:     { width: '100%', padding: '11.5px 0', border: 0, borderRadius: 10, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit' },
-  btnDisabled: { width: '100%', padding: '11.5px 0', border: '1.5px solid #E8E0F4', borderRadius: 10, background: '#F7F5FB', color: '#b4adc4', cursor: 'not-allowed', fontSize: 14, fontWeight: 800, fontFamily: 'inherit' },
-
-  msg:     { marginTop: 22, padding: '12px 14px', background: '#fef3c7', border: '1px solid #f5dfa0', borderRadius: 10, fontSize: 13, color: '#6b5a2a', fontWeight: 700 },
-
-  notice:     { marginTop: 32, padding: '26px 30px 28px', background: '#fff', border: '1px solid #e8e4f0', borderRadius: 14, fontSize: 13.5, color: '#54546a', lineHeight: 1.8 },
-  noticeHead: { fontWeight: 900, color: '#4A148C', fontSize: 14.5, marginBottom: 13 },
-  noticeItem: { marginTop: 8, breakInside: 'avoid' },
-
-  // 완료 화면 — 기존 브랜드 토큰 재사용(신규 색 도입 없음)
-  doneCard:  { maxWidth: 440, margin: '40px auto 0', background: '#fff', border: '1px solid #E8E0F4', borderRadius: 16, padding: '30px 26px 26px', textAlign: 'center' },
-  doneMark:  { width: 46, height: 46, margin: '0 auto 14px', borderRadius: '50%', background: '#4A148C0d', border: '1px solid #4A148C1f', color: '#4A148C', fontSize: 22, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  doneTitle: { fontSize: 19, fontWeight: 900, color: '#2c2340', letterSpacing: '-.02em', marginBottom: 18 },
-  doneRow:   { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '9px 0', borderTop: '1px solid #F4F0FA', textAlign: 'left' },
-  doneKey:   { fontSize: 12, color: '#8b83a0', fontWeight: 700 },
-  doneVal:   { fontSize: 13.5, color: '#2c2340', fontWeight: 800 },
-  doneCode:  { fontSize: 11, color: '#8b83a0', fontWeight: 700, wordBreak: 'break-all', textAlign: 'right' },
-  doneNote:  { marginTop: 16, padding: '11px 12px', background: '#F7F5FB', borderRadius: 10, fontSize: 11.5, color: '#5a5a6a', lineHeight: 1.65, textAlign: 'left' },
-  doneBtn:   { display: 'block', width: '100%', marginTop: 18, padding: '12px 0', border: 0, borderRadius: 10, background: '#4A148C', color: '#fff', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px #4A148C3d' },
-  doneCount: { marginTop: 10, fontSize: 11.5, color: '#8b83a0', fontWeight: 700 },
 
   footerZone: { borderTop: '1px solid #E8E0F4', background: '#fff', padding: '18px 24px 8px' },
   policyRow:  { display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 },

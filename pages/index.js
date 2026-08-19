@@ -168,6 +168,10 @@ const CATALOG_COUNT = (() => {
 import RestaurantSelector from "../components/RestaurantSelector"; // ← restaurant 전용 4단 select UI
 import MainHero from "../components/MainHero";
 import SiteFooter from "../components/SiteFooter";
+// [PLAN-CARDS-SHARED-COMPONENT-01] 요금제 카드·결제 로직 공용 1벌.
+//   종전 요금제 탭은 plan-info.png + /billing/subscribe 링크로 결제를 외부 페이지에 위임했다
+//   (PLAN-TAB-SIMPLIFY-01 → SUPERSEDED). 이제 탭 안에서 조회→결제→완료까지 완결한다.
+import PlanCards from "../components/billing/PlanCards";
 
 // ============================================================
 // [howto-video] 사용방법 영상 가이드 — 좌측 목차(HowtoScreen) + 중앙 재생(HowtoVideoPanel)
@@ -6746,7 +6750,12 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   //   미전달(비병원·단일과) = undefined → 기존 currentIndustry 단일 로직 폴백(하위호환).
   isMultiDept, myMenuFlat, deptLabelOf, onRemoveMyMenuDept,
   // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 결제 완료 배너용 plan id. 미전달 = 배너 없음.
-  paidNotice }) {
+  paidNotice,
+  // [PLAN-CARDS-SHARED-COMPONENT-01] 요금제 탭 결제 완료 후 quota 재조회 콜백.
+  //   ★ NavPanel 내부에 조회 로직을 두지 않는다. NavPanel 은 resultTab 삼항 분기로
+  //     재마운트되므로 여기서 만든 상태는 탭 전환 시 소실된다.
+  //     갱신 대상(quotaInfo)의 소유자는 부모(Home)이며, 기존 check-quota 경로를 재사용한다.
+  onQuotaRefresh }) {
   // [요율/계획 상태] menuWeights·savedWeights·activePlan·calMonth 등은 부모(Home)에서 관리하고 props로 받는다.
   //   NavPanel은 resultTab 삼항 분기로 재마운트되므로, 내부 useState로 두면 글쓰기/예정클릭 시 초기화되어 저장값이 소실된다.
   //   (A 버그 수정: lift state up — 재마운트돼도 부모가 값 보존)
@@ -6762,18 +6771,12 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   })();
   // [PLAN-CARD-V2-POLICY-SYNC-01] 상품 상수 제거 — /api/billing/plans 단일 SoT로 전환.
   //   종전 로컬 PLANS는 가격·quota·문구를 하드코딩한 4번째 SoT였다(DB / lib/billing/plans.js
-  //   fallback / subscribe.js 화면 / 여기). 「하루 N건」·주간 도트는 이 상수에서만 나오던
-  //   표현이며 제공하지 않는 일일 한도 정책을 화면에 만들어 냈다.
-  //   ★ ACCENT / ORDER 는 표현·정렬 전용 상수다. 상품값(가격·quota·설명)은 API 응답만 쓴다.
-  //     subscribe.js 의 ACCENT 와 동일 목적·동일 값(표현 토큰, 상품 데이터 아님).
-  const PLAN_ACCENT = {
-    free: "#9C27B0", basic: "#1565C0", standard: "#03c75a",
-    pro: "#E65100", enterprise: "#7B1FA2",
-  };
-  const PLAN_ORDER = ["free", "basic", "standard", "pro", "enterprise"];
-  // 추천/최상위 배지 — 마이페이지 전용 판매 위계(확정 상품정책 A). 상품 데이터 아님.
-  const PLAN_HIGHLIGHT = "standard";
-  const PLAN_CROWN     = "enterprise";
+  //   fallback / subscribe.js 화면 / 여기).
+  // [PLAN-CARDS-SHARED-COMPONENT-01] PLAN_ACCENT / PLAN_ORDER / PLAN_HIGHLIGHT / PLAN_CROWN 삭제.
+  //   ★ 삭제 근거는 「카드가 없으니 필요 없다」가 아니라 grep 실측이다 — 이 4개 상수의
+  //     소비처는 파일 전체에서 0건이었다(PLAN-TAB-SIMPLIFY-01 로 카드 렌더만 제거되고
+  //     상수는 남아 死상수가 된 상태). 표현 토큰의 정본은 이제 PlanCards.jsx 1벌이다.
+  //   ★ planRows 는 삭제하지 않는다 — 아래 paidNotice 완료 배너가 표시명 조회에 계속 쓴다.
   // /api/billing/plans — is_active=true 필터 + sort_order ASC 를 서버가 보장한다.
   //   응답 필드: id · label · monthly_quota · price_krw · description · sort_order
   const [planRows, setPlanRows]     = useState([]);
@@ -7691,34 +7694,30 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               </div>
             );
           })()}
-          {/* [PLAN-TAB-SIMPLIFY-01] 요금제 카드·상단 카피·하단 안내박스 전량 제거.
-              ★ 이 탭의 역할은 「고르는 곳」이 아니라 「안내하고 결제로 보내는 곳」이다.
-                카드가 여기에도 있으면 사용자는 여기서 결제되는 줄 알고, 실제로는
-                /billing/subscribe 로 한 번 더 이동한다 — 결제 동선이 두 겹으로 보인다.
-              ★ 하단 「서비스 제공기간 및 이용 안내」도 제거한다. subscribe.js 에 동일 문안이
-                있으며, 고지는 결제 직전 화면에서 읽히면 성립한다. 두 곳에 두면 한쪽만
-                고쳐졌을 때 정책 문구가 어긋난다(S202 에서 실제로 발생).
-              ★ 상품 SoT 무접촉 — /api/billing/plans 는 상단 완료배너가 계속 쓴다. */}
-          {/* [PLAN-TAB-SIMPLIFY-01] 이미지는 설명 전용 — 링크로 감싸지 않는다.
-              이미지 전체가 클릭되면 광고 배너처럼 읽히고, 이미지 안의 버튼 그림과
-              아래 실제 버튼이 CTA 2개로 보인다. 이동 수단은 아래 버튼 하나로 고정한다. */}
-          <img
-            src="/plan-info.png"
-            alt="요금제 플랜 안내"
-            style={{ display: "block", width: "100%", height: "auto", borderRadius: 14,
-              border: "1px solid #E8E0F4", boxShadow: "0 4px 16px rgba(70,30,120,.07)" }}
+          {/* [PLAN-CARDS-SHARED-COMPONENT-01] PLAN-TAB-SIMPLIFY-01 → SUPERSEDED.
+              종전 결정은 「카드를 여기 두면 결제 동선이 두 겹으로 보인다」였고, 그 전제는
+              결제가 /billing/subscribe 에서만 일어난다는 것이었다. 이제 전제가 바뀐다 —
+              이 탭 안에서 조회→결제→완료까지 완결하므로 이동이 없고, 겹치는 동선도 없다.
+              ★ S202 정책문구 불일치 사고의 재발 방지책은 「한쪽을 지우기」가 아니라
+                「카드·결제·고지문을 컴포넌트 1벌로 합치기」다. 문안은 PlanCards.jsx 한 곳에만
+                존재하므로 두 화면이 어긋날 수 없다.
+              ★ plan-info.png(설명 이미지)와 /billing/subscribe 링크는 제거한다.
+                실제 카드가 그 자리에 오므로 설명 이미지는 같은 내용의 2벌이 되고,
+                링크는 목적지 없는 이동이 된다. */}
+          {/* [PLAN-CARDS-SHARED-COMPONENT-01] 결제 완료 후 동작.
+              ★ 페이지 이동을 하지 않는다. 5초 뒤 quota 를 재조회해 현재 플랜 표시만 갱신한다
+                (출시 체크리스트 「결제 성공 후 플랜 즉시 반영」).
+              ★ 현재 플랜은 quotaInfo.plan_id 를 그대로 넘긴다 — 신규 조회원을 만들지 않는다.
+                accounts.plan SoT 를 서버 check-quota 가 이미 내려주고 있다. */}
+          <PlanCards
+            currentPlanId={q.plan_id || null}
+            onComplete={() => { if (typeof onQuotaRefresh === "function") onQuotaRefresh(); }}
+            showNotice={true}
+            variant="compact"
+            doneActionLabel="지금 갱신하기"
+            doneCountText={(n) => `${n}초 후 이용권 정보가 갱신됩니다`}
+            doneDoneText="갱신 중…"
           />
-
-          {/* 이 탭에서 결제 페이지로 가는 유일한 경로. */}
-          <a
-            href="/billing/subscribe"
-            style={{ display: "block", marginTop: 14, padding: "15px 0", borderRadius: 12,
-              background: "linear-gradient(135deg,#4A148C,#7B1FA2)", color: "#fff",
-              fontSize: 15, fontWeight: 900, textAlign: "center", textDecoration: "none",
-              boxShadow: "0 6px 18px rgba(74,20,140,.26)", letterSpacing: "-.01em" }}
-          >
-            요금제 확인 · 결제하기 →
-          </a>
         </div>
       );
     }
@@ -9762,6 +9761,23 @@ export default function Home() {
   }, [fetchStoreName]);
 
   // [v15] 메인 인라인 로그인 성공 — 페이지 이동 없이 세션 재조회 → 우측이 작업화면으로 전환
+  // [PLAN-CARDS-SHARED-COMPONENT-01] quota 재조회 — 요금제 탭 결제 완료 후 현재 플랜 표시 갱신.
+  //   ★ 신규 API 를 만들지 않는다. 기존 check-quota 호출 규약(GET + auth_user_id)을 그대로 쓴다.
+  //     이 파일 안 4곳(L9725·L9772·L10302·L12298)이 이미 같은 경로를 쓰고 있으며,
+  //     여기서 다른 출처를 만들면 플랜 판정 SoT 가 분열한다.
+  //   ★ 실패해도 조용히 넘긴다. 결제는 이미 서버에서 확정됐고, 이 호출은 표시 갱신일 뿐이다.
+  //     여기서 오류를 띄우면 결제 성공 직후 화면에 실패로 읽히는 문구가 나온다.
+  const refreshQuotaInfo = useCallback(async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      if (!uid) return;
+      const r = await fetch(`/api/publish/check-quota?auth_user_id=${encodeURIComponent(uid)}`);
+      const j = await r.json();
+      if (j && j.ok !== false) setQuotaInfo(j);
+    } catch (_) {}
+  }, []);
+
   const handleInlineAuthed = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -13699,6 +13715,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                   ) : (
                   <NavPanel
                     paidNotice={paidNotice}
+                    onQuotaRefresh={refreshQuotaInfo}
                     view={navView}
                     isLoggedIn={authChecked && authUserId}
                     authUserId={authUserId}
