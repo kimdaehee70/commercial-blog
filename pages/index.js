@@ -7691,184 +7691,34 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               </div>
             );
           })()}
-          {/* [PLAN-CARD-V2-LAYOUT-5COL-01] 상단 카피 축소 — 카드 5열 폭 확보.
-              헤드 30→21, 설명 19×2줄 → 13.5 1줄. 문구 자체는 유지(의미 변경 없음). */}
-          <div style={{ textAlign: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 21, fontWeight: 900, color: "#1A1333", letterSpacing: "-.02em",
-              lineHeight: 1.3, marginBottom: 5 }}>
-              사업 규모에 맞는 플랜을 선택하세요.
-            </div>
-            <div style={{ fontSize: 13.5, fontWeight: 800, color: "#1a1a2e", lineHeight: 1.55 }}>
-              블로그는 한 번 쓰고 사라지는 광고가 아닙니다.{" "}
-              <span style={{ color: "#6A1B9A" }}>검색하면 언제든 다시 나오는, 내 사업장의 검색 자산입니다.</span>
-            </div>
-          </div>
-          {/* [PLAN-CARD-V2-POLICY-SYNC-01] 요금제 카드 v2 — /billing/subscribe 와 동일 카드 구조.
-              심사 화면과 실사용 화면을 하나로 통일한다. 상품값은 /api/billing/plans 만 사용.
-              제거: 하루 N건 · 주간 도트(발행 리듬) · feats 하드코딩 3줄 · 5열 1행 배열.
-              유지: OWNER · 현재 플랜 · 추천/최상위 배지(마이페이지 전용 사용자 상태·판매 위계). */}
-          <style>{`
-            .planCard { transition: transform .18s ease, box-shadow .18s ease; }
-            .planCard:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(70,30,120,.13); }
-            .planCard.isHi:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(70,30,120,.16); }
-            .planCta:focus-visible { outline: 2px solid #6A1B9A; outline-offset: 2px; }
-            /* 가격은 카드 내 최대 요소로 유지 — 5열 폭에 맞춰 clamp */
-            .planPrice { font-size: clamp(15px, 1.35vw, 21px); }
-            @media (max-width: 1100px) { .planPrice { font-size: 21px; } }
-            /* [PLAN-CARD-V2-LAYOUT-5COL-01] PC 5열 1행. 우측 영역 약 800px / 카드당 약 150px.
-               grid 1fr 균등 = 5장 폭·높이 동일. align-items:stretch 로 CTA 바닥선이 자동 일치한다. */
-            .planGrid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr));
-              gap: 9px; align-items: stretch; padding: 20px 0 6px; }
-            @media (max-width: 1100px) { .planGrid { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; } }
-            @media (max-width: 720px)  { .planGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
-            @media (max-width: 480px)  { .planGrid { grid-template-columns: 1fr; } }
-            @media (prefers-reduced-motion: reduce) {
-              .planCard, .planCard:hover, .planCard.isHi:hover { transition: none; transform: none; }
-            }
-            /* 안내박스 2단 — 항목(줄) 단위로만 컬럼을 나눈다. 문장 중간 분할 금지. */
-            .planNotice > div { break-inside: avoid; page-break-inside: avoid; }
-          `}</style>
-          {plansErr ? (
-            /* API 실패 — 빈 화면 금지. 카드 0개로 두면 심사 중 상품이 없는 화면이 노출된다. */
-            <div style={{ margin: "18px auto", maxWidth: 560, padding: "16px 18px", textAlign: "center",
-              background: "#fff", border: "1px solid #E8E0F4", borderRadius: 12,
-              fontSize: 13, fontWeight: 700, color: "#8b83a0" }}>
-              요금제 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.
-            </div>
-          ) : (
-          <div className="planGrid">
-            {planRows.map(p => {
-              const pid = String(p.id || "").toLowerCase();
-              const cur = !isUnlimited && String(planLabel).toLowerCase() === pid;
-              const isFree    = pid === "free";
-              const highlight = pid === PLAN_HIGHLIGHT;
-              const crown     = pid === PLAN_CROWN;
-              // Free = 무채색 톤다운(유료 플랜에 시선 양보). 나머지는 플랜 액센트.
-              const ac = isFree ? "#9b95aa" : (PLAN_ACCENT[pid] || "#4A148C");
-              const quotaText = isFree
-                ? `월 ${p.monthly_quota}건 포함`
-                : `이용기간 ${p.monthly_quota}건 포함`;
-              return (
-                <div key={p.id} className={"planCard" + (highlight ? " isHi" : "")} style={{
-                  /* [PLAN-CARD-V2-LAYOUT-5COL-01] 카드 내부 전 요소 중앙정렬 — 5열 가격 비교표 가독성.
-                     하단 「서비스 제공기간 안내」는 긴 문장이라 좌측정렬 유지(별도 지정). */
-                  textAlign: "center",
-                  background: crown ? "linear-gradient(180deg,#FFFDF6 0%,#fff 46%)" : "#fff",
-                  borderRadius: 15, display: "flex", flexDirection: "column",
-                  border: crown ? "1.5px solid #C9A227" : (highlight ? `1.5px solid ${ac}` : (cur ? `1.5px solid ${ac}55` : "1px solid #ECE7F5")),
-                  padding: "18px 11px 15px", position: "relative", textAlign: "center",
-                  /* [PLAN-CARD-V2-LAYOUT-5COL-01] 돌출(translateY/scale) 전면 제거 — 5장 상·하단선 완전 동일.
-                     추천 위계는 배지 + 테두리 + CTA 채움색으로 충분히 전달된다. */
-                  transform: "none", zIndex: highlight ? 2 : 1,
-                  boxShadow: crown ? "0 10px 28px rgba(201,162,39,.20)"
-                    : (highlight ? `0 14px 34px ${ac}22` : "0 2px 10px rgba(70,30,120,.05)") }}>
-                  {(highlight || crown) && (
-                    <div style={{ position: "absolute", top: -11, left: "50%", transform: "translateX(-50%)",
-                      background: crown ? "linear-gradient(135deg,#7B1FA2,#C9A227)" : ac,
-                      color: "#fff", fontSize: 9.5, fontWeight: 900,
-                      letterSpacing: ".02em", padding: "3px 8px", borderRadius: 999,
-                      boxShadow: crown ? "0 4px 12px rgba(201,162,39,.45)" : `0 4px 12px ${ac}40`,
-                      whiteSpace: "nowrap" }}>
-                      {crown ? "👑 가장 강력한 플랜" : "가장 많이 선택"}
-                    </div>
-                  )}
+          {/* [PLAN-TAB-SIMPLIFY-01] 요금제 카드·상단 카피·하단 안내박스 전량 제거.
+              ★ 이 탭의 역할은 「고르는 곳」이 아니라 「안내하고 결제로 보내는 곳」이다.
+                카드가 여기에도 있으면 사용자는 여기서 결제되는 줄 알고, 실제로는
+                /billing/subscribe 로 한 번 더 이동한다 — 결제 동선이 두 겹으로 보인다.
+              ★ 하단 「서비스 제공기간 및 이용 안내」도 제거한다. subscribe.js 에 동일 문안이
+                있으며, 고지는 결제 직전 화면에서 읽히면 성립한다. 두 곳에 두면 한쪽만
+                고쳐졌을 때 정책 문구가 어긋난다(S202 에서 실제로 발생).
+              ★ 상품 SoT 무접촉 — /api/billing/plans 는 상단 완료배너가 계속 쓴다. */}
+          {/* [PLAN-TAB-SIMPLIFY-01] 이미지는 설명 전용 — 링크로 감싸지 않는다.
+              이미지 전체가 클릭되면 광고 배너처럼 읽히고, 이미지 안의 버튼 그림과
+              아래 실제 버튼이 CTA 2개로 보인다. 이동 수단은 아래 버튼 하나로 고정한다. */}
+          <img
+            src="/plan-info.png"
+            alt="요금제 플랜 안내"
+            style={{ display: "block", width: "100%", height: "auto", borderRadius: 14,
+              border: "1px solid #E8E0F4", boxShadow: "0 4px 16px rgba(70,30,120,.07)" }}
+          />
 
-                  {/* 플랜명 — API label */}
-                  <div style={{ fontSize: 10.5, fontWeight: 900, color: ac,
-                    textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>
-                    {p.label}{crown ? " 👑" : ""}
-                  </div>
-
-                  {/* 가격 — API price_krw */}
-                  <div className="planPrice" style={{ marginTop: 7, fontWeight: 900, color: "#2c2340",
-                    letterSpacing: "-.03em", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                    {Number(p.price_krw || 0).toLocaleString()}원
-                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#b4adc4", marginLeft: 2 }}>/월</span>
-                  </div>
-
-                  {/* 제공량 — 이용기간 기준. 일별 한도 표현은 두지 않는다(상품정책 A). */}
-                  <div style={{ marginTop: 11, padding: "8px 6px", borderRadius: 10, minHeight: 46,
-                    display: "flex", flexDirection: "column", justifyContent: "center",
-                    background: ac + "0d", border: `1px solid ${ac}1f` }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 800, color: ac, lineHeight: 1.35 }}>{quotaText}</div>
-                    <div style={{ marginTop: 2, fontSize: 10, color: "#8b83a0", fontWeight: 700, lineHeight: 1.35 }}>
-                      이용기간 내 자유롭게 사용
-                    </div>
-                  </div>
-
-                  {/* 설명 — API description */}
-                  {/* [PLAN-CARD-V2-LAYOUT-5COL-01] 설명 영역 높이 고정 — description 이 1줄인 카드와
-                      2줄인 카드가 섞이면 CTA 의 Y축이 어긋난다. minHeight 로 5장을 같은 선에 맞춘다.
-                      description 이 없는 플랜도 자리를 유지해야 하므로 조건부 렌더를 쓰지 않는다. */}
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #F4F0FA",
-                    fontSize: 10.5, color: "#4a4458", lineHeight: 1.5, minHeight: 46 }}>
-                    {p.description || ""}
-                  </div>
-
-                  {/* CTA — 카드 바닥 정렬. 8267f59 배선 계승. */}
-                  <div style={{ marginTop: "auto", paddingTop: 12 }}>
-                  {isUnlimited ? (
-                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 9, textAlign: "center",
-                      background: "#F7F5FB", color: "#b4adc4", fontSize: 11.5, fontWeight: 800 }}>
-                      OWNER
-                    </div>
-                  ) : cur ? (
-                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 9, textAlign: "center",
-                      background: ac + "12", color: ac, fontSize: 11.5, fontWeight: 900 }}>
-                      현재 플랜
-                    </div>
-                  ) : isFree ? (
-                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 9, textAlign: "center",
-                      border: "1.5px solid #E8E0F4", background: "#F7F5FB", color: "#b4adc4",
-                      fontSize: 11.5, fontWeight: 800 }}>
-                      기본 플랜
-                    </div>
-                  ) : (
-                    <button className="planCta"
-                      onClick={() => { if (!isLoggedIn) { onLogin && onLogin(); return; } router.push("/billing/subscribe"); }}
-                      style={{ width: "100%", padding: "9px 0", borderRadius: 9,
-                        cursor: "pointer", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800,
-                        border: highlight ? "none" : "1.5px solid #E8E0F4",
-                        background: highlight ? ac : "#fff",
-                        color: highlight ? "#fff" : "#4A148C",
-                        boxShadow: highlight ? `0 4px 14px ${ac}3d` : "none" }}>
-                      {(() => {
-                        const ci = PLAN_ORDER.indexOf(String(planLabel).toLowerCase());
-                        const ti = PLAN_ORDER.indexOf(pid);
-                        return (ci >= 0 && ti > ci) ? "업그레이드" : "플랜 변경";
-                      })()}
-                    </button>
-                  )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          )}
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: "#444", textAlign: "center", marginTop: 26 }}>
-            광고를 멈추면 노출도 멈춥니다. 검색 자산은 계속 쌓입니다.
-          </div>
-          {/* ★ [S111] 서비스 제공기간·자동갱신 고지 — 전자상거래법 및 PG(KG이니시스) 심사 모니터링 항목.
-              심사관이 요금제 화면에서 직접 확인한다. 요금·한도 변경 시 PLANS / lib/billing/plans.js /
-              lib/policies/refund.js 건당 단가와 함께 갱신할 것(이중 관리 지점). */}
-          <div className="planNotice" style={{
-            width: "100%", boxSizing: "border-box", margin: "26px 0 0", padding: "15px 20px",
-            background: "#fafafd", border: "1px solid #e8e4f0", borderRadius: 12,
-            fontSize: 11.5, color: "#5a5a6a", lineHeight: 1.7, textAlign: "left",
-            columnCount: 2, columnGap: 26,
-          }}>
-            <div style={{ fontWeight: 900, color: "#4A148C", fontSize: 12.5, marginBottom: 6,
-              columnSpan: "all" }}>
-              서비스 제공기간 및 이용 안내
-            </div>
-            {/* 항목 1개 = div 1개. columnCount 2 가 문장 중간을 자르지 않도록 break-inside:avoid 대상이 된다. */}
-            <div style={{ marginBottom: 4 }}>· 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.</div>
-            <div style={{ marginBottom: 4 }}>· 자동갱신 — 월 정기결제이며 매 결제일에 동일 플랜으로 자동 갱신됩니다. 해지 시 다음 결제일부터 청구되지 않으며, 이미 결제된 이용기간은 만료일까지 이용할 수 있습니다.</div>
-            <div style={{ marginBottom: 4 }}>· 제공 건수 — 각 플랜의 제공 생성 건수는 이용기간 내 자유롭게 사용할 수 있으며, 이용기간 시작 시 초기화되고 다음 기간으로 이월되지 않습니다. 일별 사용 제한은 없습니다.</div>
-            <div style={{ marginBottom: 4 }}>· 초과 이용 — 제공 건수를 모두 사용하면 추가 생성이 중지됩니다. 초과 사용분에 대한 후불 추가 요금은 청구되지 않습니다.</div>
-            <div style={{ marginBottom: 4 }}>· 청약철회 및 환불 — 환불정책에 따르며, 사용한 생성 건수만큼 공제 후 잔액을 환불합니다.</div>
-            <div>· 이용요금은 부가세 포함 금액입니다.</div>
-          </div>
+          {/* 이 탭에서 결제 페이지로 가는 유일한 경로. */}
+          <a
+            href="/billing/subscribe"
+            style={{ display: "block", marginTop: 14, padding: "15px 0", borderRadius: 12,
+              background: "linear-gradient(135deg,#4A148C,#7B1FA2)", color: "#fff",
+              fontSize: 15, fontWeight: 900, textAlign: "center", textDecoration: "none",
+              boxShadow: "0 6px 18px rgba(74,20,140,.26)", letterSpacing: "-.01em" }}
+          >
+            요금제 확인 · 결제하기 →
+          </a>
         </div>
       );
     }
