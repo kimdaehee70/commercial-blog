@@ -328,6 +328,13 @@ export default async function handler(req, res) {
     const status = STATUSES.has(qp.status) ? qp.status : 'all';
     const kw = String(qp.q || '').trim().toLowerCase();
     const industry = String(qp.industry || '').trim();
+    // [ADMIN-PUBLISH-INDUSTRY-FILTER-01] 대분류 선택 시 화면이 보내는 복수형 파라미터.
+    //   publish.js L486~487 은 industry(개별) / industries(대분류 하위 전체) 중 하나만 보낸다.
+    //   서버가 단수형만 읽고 있어 대분류 선택이 무필터로 통과했다(전체 목록 표시).
+    //   ★ L413/L421 의 industries 는 '응답' 필드다. 이름이 같을 뿐 요청 파라미터가 아니었다.
+    const industrySet = new Set(
+      String(qp.industries || '').split(',').map((s) => s.trim()).filter(Boolean)
+    );
     const from = qp.from ? new Date(qp.from).getTime() : null;
     const to = qp.to ? new Date(qp.to).getTime() + 864e5 - 1 : null;
 
@@ -345,6 +352,8 @@ export default async function handler(req, res) {
         if (!seen || val != null) return false;
       }
       if (industry && r.industry !== industry) return false;
+      // 비어 있으면 무동작 — 기존 동작과 완전히 동일하다.
+      if (industrySet.size > 0 && !industrySet.has(r.industry)) return false;
       if (kw) {
         const hay = `${r.title || ''} ${r.industry || ''} ${r.region || ''} ${r.treatment_name || ''} ${r.observed_keyword || ''} ${r.author_email || ''} ${r.author_name || ''} ${r.id}`.toLowerCase();
         if (!hay.includes(kw)) return false;
