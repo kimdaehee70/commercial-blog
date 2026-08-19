@@ -4652,23 +4652,28 @@ const HELP_CONTENT = {
     intro: "블로그는 한 번 쓰고 사라지는 광고가 아니라, 검색하면 다시 나오는 내 사업장의 검색 자산입니다. 플랜은 ‘월 생성 한도’로 나뉘며, 업그레이드하면 권한이 자동 적용됩니다.",
     blocks: [
       { h: "Free — 0원 / 월", items: [
-        "체험용. 발행 3건 포함.",
+        "체험용. 월 3건 포함.",
         "블로그 글 생성·SEO 진단, 검색 노출 구조 미리보기.",
       ]},
       { h: "Basic — 69,000원 / 월", items: [
-        "하루 1건 운영. 발행 30건 포함.",
+        "이용기간 30건 포함. 기간 내 자유롭게 사용.",
         "검색 노출 블로그 운영, 경쟁 환경 관측, 지속형 검색 자산 축적.",
       ]},
       { h: "Standard — 119,000원 / 월 (추천)", items: [
-        "하루 2건 운영. 발행 60건 포함.",
+        "이용기간 60건 포함. 기간 내 자유롭게 사용.",
         "Basic 전체 + SEO 운영 코치 + 발행 관리·월간 계획.",
       ]},
       { h: "Pro — 179,000원 / 월", items: [
-        "하루 3건 운영. 발행 100건 포함.",
+        "이용기간 100건 포함. 기간 내 자유롭게 사용.",
         "Standard 전체 + 가장 많은 발행량 + ROI 리포트.",
+      ]},
+      { h: "Enterprise — 249,000원 / 월", items: [
+        "이용기간 150건 포함. 기간 내 자유롭게 사용.",
+        "Pro 전체 + 우선 생성 큐 + 신규 기능 우선 제공.",
       ]},
       { h: "꼭 알아두세요", items: [
         "‘발행 N건’은 생성기에서 글을 만드는 횟수 기준입니다(발행 여부 무관).",
+        "제공 건수는 이용기간 내 자유롭게 사용할 수 있으며, 일별 사용 제한은 없습니다.",
       ]},
     ],
     banner: {
@@ -4937,15 +4942,15 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
     },
     plansDetail: {
       tone: "tip",
-      lines: ["현재 4개의 플랜이 준비되어 있습니다.\n하루 몇 건 정도 발행할 계획인지 생각해 보세요."],
+      lines: ["Free를 포함해 5개의 플랜이 준비되어 있습니다.\n한 달에 몇 건 정도 발행할 계획인지 생각해 보세요."],
     },
     plansChoice: {
       tone: "tip",
-      lines: ["꾸준한 발행이 검색 자산을 만듭니다.\n하루 1건은 Basic, 하루 2건은 Standard, 하루 3건 집중 운영은 Pro가 적합합니다."],
+      lines: ["꾸준한 발행이 검색 자산을 만듭니다.\n30건은 Basic, 60건은 Standard, 100건 집중 운영은 Pro가 적합합니다."],
     },
     plansGuide: {
       tone: "tip",
-      lines: ["검색 상단을 적극적으로 공략하려면 발행량이 중요합니다.\n하루 3건까지 운영하려면 Pro 플랜을 고려해 보세요."],
+      lines: ["검색 상단을 적극적으로 공략하려면 발행량이 중요합니다.\n더 많은 발행이 필요하면 Pro·Enterprise 플랜을 고려해 보세요."],
     },
     plansClosing: {
       tone: "ok",
@@ -5812,7 +5817,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
   if (tabId === "plans") {
     // [세션59] 요금제 코치 — store 동형. 1박스 즉시출력(타이핑·누적 폐기). 설명은 영상이 담당.
     renderCards = [{ tone: "tip", _step: "plansFixed",
-      lines: ["하루 몇 건을 발행할지에 맞춰 플랜을 고르면 됩니다.",
+      lines: ["이용기간 동안 몇 건을 발행할지에 맞춰 플랜을 고르면 됩니다.",
               "먼저 3건까지 무료로 써보고 정해도 됩니다."] }];
   } else if (tabId === "account") {
     // [세션59] 마이페이지 코치 — store 동형. 1박스 즉시출력(타이핑·누적 폐기). 설명은 영상이 담당.
@@ -6753,33 +6758,37 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
     const dl = normalizeDepartments((hubStore && hubStore.departments) || [], hubStore && hubStore.industry);
     return dl.length ? dl : (hubStore && hubStore.industry ? [hubStore.industry] : []);
   })();
-  const PLANS = [
-    { id: "free",     name: "Free",     price: "0원",        unit: "/월",
-      desc: "시작하기", tagline: "체험용 · 월 3건", quota: "발행 3건 포함", daily: "체험용 3건", color: "#9C27B0",
-      big: "월 3건", sub: "체험용",
-      feats: ["블로그 글 생성·SEO 진단", "검색 노출 구조 미리보기", "발행 3건까지 무료"] },
-    { id: "basic",    name: "Basic",    price: "69,000원",   unit: "/월",
-      desc: "꾸준한 운영", tagline: "하루 1건 운영", quota: "발행 30건 포함", daily: "하루 1건 발행", color: "#1565C0",
-      big: "하루 1건", sub: "월 30건",
-      feats: ["검색 노출 블로그 운영", "경쟁 환경 관측", "지속형 검색 자산 축적"] },
-    { id: "standard", name: "Standard", price: "119,000원",  unit: "/월", highlight: true,
-      desc: "적극적인 운영", tagline: "하루 2건 운영", quota: "발행 60건 포함", daily: "하루 2건 발행", color: "#03c75a",
-      big: "하루 2건", sub: "월 60건",
-      feats: ["Basic 전체 포함", "SEO 운영 코치", "발행 관리 + 월간 계획"] },
-    { id: "pro",      name: "Pro",      price: "179,000원",  unit: "/월",
-      desc: "집중 운영", tagline: "하루 3건 운영", quota: "발행 100건 포함", daily: "하루 3건 발행", color: "#E65100",
-      big: "하루 3건", sub: "월 100건",
-      feats: ["Standard 전체 포함", "많은 발행량", "ROI 리포트"] },
-    // [세션74] Enterprise 복원 — 문의형이 아니라 정식 결제 플랜.
-    //   근거: 셀프서비스 SaaS에서 최상위만 상담 전환하면 결제 흐름이 끊긴다.
-    //   하루 5건은 대형 병원·인테리어·프랜차이즈·대행사에서 현실적인 수요.
-    //   ★ 3곳 동시 정합 필수 — DB plans 행 + lib/billing/plans.js fallback + ALLOWED_PLANS.
-    //     화면에만 있으면 "결제해도 지급할 등급이 DB에 없는" 세션73 유령등급 상태로 되돌아간다.
-    { id: "enterprise", name: "Enterprise", price: "249,000원", unit: "/월",
-      desc: "최고 성능", tagline: "하루 5건 운영", quota: "발행 150건 포함", daily: "하루 5건 발행", color: "#7B1FA2",
-      big: "하루 5건", sub: "월 150건", crown: true,
-      feats: ["Pro 전체 포함", "우선 생성 큐 · 최고 우선 처리", "신규 기능 우선 제공"] },
-  ];
+  // [PLAN-CARD-V2-POLICY-SYNC-01] 상품 상수 제거 — /api/billing/plans 단일 SoT로 전환.
+  //   종전 로컬 PLANS는 가격·quota·문구를 하드코딩한 4번째 SoT였다(DB / lib/billing/plans.js
+  //   fallback / subscribe.js 화면 / 여기). 「하루 N건」·주간 도트는 이 상수에서만 나오던
+  //   표현이며 제공하지 않는 일일 한도 정책을 화면에 만들어 냈다.
+  //   ★ ACCENT / ORDER 는 표현·정렬 전용 상수다. 상품값(가격·quota·설명)은 API 응답만 쓴다.
+  //     subscribe.js 의 ACCENT 와 동일 목적·동일 값(표현 토큰, 상품 데이터 아님).
+  const PLAN_ACCENT = {
+    free: "#9C27B0", basic: "#1565C0", standard: "#03c75a",
+    pro: "#E65100", enterprise: "#7B1FA2",
+  };
+  const PLAN_ORDER = ["free", "basic", "standard", "pro", "enterprise"];
+  // 추천/최상위 배지 — 마이페이지 전용 판매 위계(확정 상품정책 A). 상품 데이터 아님.
+  const PLAN_HIGHLIGHT = "standard";
+  const PLAN_CROWN     = "enterprise";
+  // /api/billing/plans — is_active=true 필터 + sort_order ASC 를 서버가 보장한다.
+  //   응답 필드: id · label · monthly_quota · price_krw · description · sort_order
+  const [planRows, setPlanRows]     = useState([]);
+  const [plansErr, setPlansErr]     = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/billing/plans")
+      .then(r => r.json())
+      .then(d => {
+        if (!alive) return;
+        const rows = Array.isArray(d?.plans) ? d.plans : [];
+        setPlanRows(rows);
+        setPlansErr(rows.length === 0);
+      })
+      .catch(() => { if (alive) { setPlanRows([]); setPlansErr(true); } });
+    return () => { alive = false; };
+  }, []);
 
 
   // ──────────────────────────────────────────────────────────
@@ -7675,151 +7684,123 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               검색하면 언제든 다시 나오는, 내 사업장의 검색 자산입니다.
             </div>
           </div>
-          {/* [세션59] 요금제 카드 리디자인 — 발행 리듬(주간 도트) 시그니처 + 카드 위계 정리. 데이터·동작 무변경. */}
+          {/* [PLAN-CARD-V2-POLICY-SYNC-01] 요금제 카드 v2 — /billing/subscribe 와 동일 카드 구조.
+              심사 화면과 실사용 화면을 하나로 통일한다. 상품값은 /api/billing/plans 만 사용.
+              제거: 하루 N건 · 주간 도트(발행 리듬) · feats 하드코딩 3줄 · 5열 1행 배열.
+              유지: OWNER · 현재 플랜 · 추천/최상위 배지(마이페이지 전용 사용자 상태·판매 위계). */}
           <style>{`
             .planCard { transition: transform .18s ease, box-shadow .18s ease; }
             .planCard:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(70,30,120,.13); }
             .planCard.isHi:hover { transform: translateY(-10px) scale(1.05); }
             .planCta:focus-visible { outline: 2px solid #6A1B9A; outline-offset: 2px; }
-            .planGrid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 10px;
-              align-items: stretch; padding: 16px 0 18px; }
-            @media (max-width: 1180px) { .planGrid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
-            @media (max-width: 720px)  { .planGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
-            .planBig { font-size: clamp(21px, 1.9vw, 29px); white-space: nowrap; }
+            /* PC 3+2 — 두 번째 줄 2장이 좌측에 붙지 않도록 auto-fit 대신 중앙 정렬 flex 사용 */
+            .planGrid { display: flex; flex-wrap: wrap; justify-content: center;
+              gap: 14px; align-items: stretch; padding: 16px 0 18px; }
+            .planGrid > .planCard { flex: 0 1 252px; max-width: 300px; }
+            @media (max-width: 860px) { .planGrid > .planCard { flex: 0 1 232px; } }
+            @media (max-width: 620px) { .planGrid > .planCard { flex: 1 1 100%; max-width: none; } }
             @media (prefers-reduced-motion: reduce) {
               .planCard, .planCard:hover, .planCard.isHi:hover { transition: none; transform: none; }
             }
           `}</style>
+          {plansErr ? (
+            /* API 실패 — 빈 화면 금지. 카드 0개로 두면 심사 중 상품이 없는 화면이 노출된다. */
+            <div style={{ margin: "18px auto", maxWidth: 560, padding: "16px 18px", textAlign: "center",
+              background: "#fff", border: "1px solid #E8E0F4", borderRadius: 12,
+              fontSize: 13, fontWeight: 700, color: "#8b83a0" }}>
+              요금제 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.
+            </div>
+          ) : (
           <div className="planGrid">
-            {PLANS.map(p => {
-              const cur = !isUnlimited && String(planLabel).toLowerCase() === p.id;
-              // [세션59] Free = 무채색 톤다운(유료 플랜에 시선 양보). 나머지는 플랜 고유색.
-              const ac = p.id === "free" ? "#9b95aa" : p.color;
-              const perDay = { free: 0, basic: 1, standard: 2, pro: 3, enterprise: 5 }[p.id] || 0;
-              const DAYS = ["월", "화", "수", "목", "금", "토", "일"];
+            {planRows.map(p => {
+              const pid = String(p.id || "").toLowerCase();
+              const cur = !isUnlimited && String(planLabel).toLowerCase() === pid;
+              const isFree    = pid === "free";
+              const highlight = pid === PLAN_HIGHLIGHT;
+              const crown     = pid === PLAN_CROWN;
+              // Free = 무채색 톤다운(유료 플랜에 시선 양보). 나머지는 플랜 액센트.
+              const ac = isFree ? "#9b95aa" : (PLAN_ACCENT[pid] || "#4A148C");
+              const quotaText = isFree
+                ? `월 ${p.monthly_quota}건 포함`
+                : `이용기간 ${p.monthly_quota}건 포함`;
               return (
-                <div key={p.id} className={"planCard" + (p.highlight ? " isHi" : "")} style={{
-                  background: p.crown ? "linear-gradient(180deg,#FFFDF6 0%,#fff 46%)" : "#fff",
+                <div key={p.id} className={"planCard" + (highlight ? " isHi" : "")} style={{
+                  background: crown ? "linear-gradient(180deg,#FFFDF6 0%,#fff 46%)" : "#fff",
                   borderRadius: 15, display: "flex", flexDirection: "column",
-                  border: p.crown ? "1.5px solid #C9A227" : (p.highlight ? `1.5px solid ${ac}` : (cur ? `1.5px solid ${ac}55` : "1px solid #ECE7F5")),
-                  padding: "16px 13px 14px", position: "relative",
-                  transform: p.highlight ? "translateY(-6px) scale(1.04)" : "none", zIndex: p.highlight ? 2 : 1,
-                  boxShadow: p.crown ? "0 10px 28px rgba(201,162,39,.20)"
-                    : (p.highlight ? `0 14px 34px ${ac}22` : "0 2px 10px rgba(70,30,120,.05)") }}>
-                  {(p.highlight || p.crown) && (
+                  border: crown ? "1.5px solid #C9A227" : (highlight ? `1.5px solid ${ac}` : (cur ? `1.5px solid ${ac}55` : "1px solid #ECE7F5")),
+                  padding: "18px 17px 17px", position: "relative",
+                  transform: highlight ? "translateY(-6px) scale(1.04)" : "none", zIndex: highlight ? 2 : 1,
+                  boxShadow: crown ? "0 10px 28px rgba(201,162,39,.20)"
+                    : (highlight ? `0 14px 34px ${ac}22` : "0 2px 10px rgba(70,30,120,.05)") }}>
+                  {(highlight || crown) && (
                     <div style={{ position: "absolute", top: -11, left: "50%", transform: "translateX(-50%)",
-                      background: p.crown ? "linear-gradient(135deg,#7B1FA2,#C9A227)" : ac,
+                      background: crown ? "linear-gradient(135deg,#7B1FA2,#C9A227)" : ac,
                       color: "#fff", fontSize: 10.5, fontWeight: 900,
                       letterSpacing: ".04em", padding: "4px 12px", borderRadius: 999,
-                      boxShadow: p.crown ? "0 4px 12px rgba(201,162,39,.45)" : `0 4px 12px ${ac}40`,
+                      boxShadow: crown ? "0 4px 12px rgba(201,162,39,.45)" : `0 4px 12px ${ac}40`,
                       whiteSpace: "nowrap" }}>
-                      {p.crown ? "👑 가장 강력한 플랜" : "가장 많이 선택"}
+                      {crown ? "👑 가장 강력한 플랜" : "가장 많이 선택"}
                     </div>
                   )}
 
-                  {/* 플랜명 · 한 줄 성격 */}
-                  <div style={{ fontSize: 14.5, fontWeight: 900, color: ac, letterSpacing: ".01em" }}>
-                    {p.name}{p.crown ? " 👑" : ""}
+                  {/* 플랜명 — API label */}
+                  <div style={{ fontSize: 11, fontWeight: 900, color: ac,
+                    textTransform: "uppercase", letterSpacing: ".06em" }}>
+                    {p.label}{crown ? " 👑" : ""}
                   </div>
-                  <div style={{ fontSize: 11.5, color: "#8b83a0", marginTop: 2 }}>{p.desc}</div>
 
-                  {/* [판매 포인트] 발행량 우선 — 가격보다 크게 */}
-                  <div style={{ marginTop: 10, whiteSpace: "nowrap" }}>
-                    <div className="planBig" style={{ fontWeight: 900, letterSpacing: "-.03em",
-                      color: p.id === "free" ? "#6f6980" : "#1A1333", lineHeight: 1.1 }}>{p.big}</div>
-                    <div style={{ fontSize: 11.5, fontWeight: 800, color: ac, marginTop: 3 }}>{p.sub}</div>
+                  {/* 가격 — API price_krw */}
+                  <div style={{ marginTop: 6, fontSize: 25, fontWeight: 900, color: "#2c2340",
+                    letterSpacing: "-.02em", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                    {Number(p.price_krw || 0).toLocaleString()}원
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: "#b4adc4", marginLeft: 3 }}>/월</span>
                   </div>
-                  {p.crown && (
-                    <div style={{ fontSize: 11, color: "#C9A227", letterSpacing: ".12em", marginTop: 6 }}>★★★★★</div>
+
+                  {/* 제공량 — 이용기간 기준. 일별 한도 표현은 두지 않는다(상품정책 A). */}
+                  <div style={{ marginTop: 12, padding: "9px 10px", borderRadius: 11,
+                    background: ac + "0d", border: `1px solid ${ac}1f` }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: ac }}>{quotaText}</div>
+                    <div style={{ marginTop: 3, fontSize: 11, color: "#8b83a0", fontWeight: 700 }}>
+                      이용기간 내 자유롭게 사용
+                    </div>
+                  </div>
+
+                  {/* 설명 — API description */}
+                  {p.description && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #F4F0FA",
+                      fontSize: 11.5, color: "#4a4458", lineHeight: 1.55 }}>{p.description}</div>
                   )}
 
-                  {/* 가격 — 보조 정보 */}
-                  <div style={{ marginTop: 8, display: "flex", alignItems: "baseline", gap: 2,
-                    whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: "#5d566f", letterSpacing: "-.02em" }}>{p.price}</span>
-                    <span style={{ fontSize: 10.5, color: "#a49cb8", fontWeight: 700 }}>{p.unit}</span>
-                  </div>
-
-                  {/* [시그니처] 발행 리듬 — 한 주에 몇 건을 올리는 플랜인지 눈으로 보이게 */}
-                  <div style={{ marginTop: 11, padding: "9px 9px 7px", borderRadius: 11,
-                    background: ac + "0d", border: `1px solid ${ac}1f` }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: ac,
-                      letterSpacing: ".03em", marginBottom: 6 }}>{p.tagline}</div>
-                    {perDay === 0 ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, height: 32 }}>
-                        {[0, 1, 2].map(i => (
-                          <span key={i} style={{ width: 16, height: 5, borderRadius: 3, background: ac }} />
-                        ))}
-                        <span style={{ fontSize: 10.5, color: "#8b83a0", marginLeft: 4 }}>체험 3건</span>
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 32 }}>
-                        {DAYS.map((d, di) => (
-                          <div key={d} style={{ flex: 1, display: "flex", flexDirection: "column",
-                            alignItems: "center", gap: 2 }}>
-                            <div style={{ display: "flex", flexDirection: "column-reverse", gap: 2 }}>
-                              {Array.from({ length: perDay }).map((_, k) => (
-                                <span key={k} style={{ width: "100%", minWidth: 7, height: 4,
-                                  borderRadius: 2, background: di >= 5 ? ac + "59" : ac }} />
-                              ))}
-                            </div>
-                            <span style={{ fontSize: 8.5, color: "#b4adc4", fontWeight: 700 }}>{d}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 포함 항목 */}
-                  <div style={{ display: "flex", flexDirection: "column", marginTop: 10, marginBottom: 12 }}>
-                    {p.feats.slice(0, 3).map((f, i) => (
-                      <div key={i} style={{ fontSize: 11.5, color: "#4a4458", display: "flex", gap: 6,
-                        alignItems: "flex-start", padding: "5px 0",
-                        borderTop: i === 0 ? "none" : "1px solid #F4F0FA" }}>
-                        <span style={{ flexShrink: 0, width: 14, height: 14, borderRadius: 5,
-                          background: ac + "1a", color: ac, fontSize: 9.5, fontWeight: 900,
-                          display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>✓</span>
-                        <span style={{ lineHeight: 1.45 }}>{f}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* CTA — 카드 바닥 정렬 */}
-                  <div style={{ marginTop: "auto" }}>
+                  {/* CTA — 카드 바닥 정렬. 8267f59 배선 계승. */}
+                  <div style={{ marginTop: "auto", paddingTop: 14 }}>
                   {isUnlimited ? (
-                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 10, textAlign: "center",
-                      background: "#F7F5FB", color: "#b4adc4", fontSize: 12.5, fontWeight: 800 }}>
+                    <div style={{ width: "100%", padding: "10px 0", borderRadius: 10, textAlign: "center",
+                      background: "#F7F5FB", color: "#b4adc4", fontSize: 13, fontWeight: 800 }}>
                       OWNER
                     </div>
                   ) : cur ? (
-                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 10, textAlign: "center",
-                      background: ac + "12", color: ac, fontSize: 12.5, fontWeight: 900 }}>
+                    <div style={{ width: "100%", padding: "10px 0", borderRadius: 10, textAlign: "center",
+                      background: ac + "12", color: ac, fontSize: 13, fontWeight: 900 }}>
                       현재 플랜
                     </div>
-                  ) : p.id === "free" ? (
-                    /* [PLAN-CARD-CTA-NO-CHECKOUT-01] Free는 결제 대상이 아니다.
-                       「플랜 변경」으로 보이면서 클릭만 안 되는 상태보다 비활성 「기본 플랜」이 정확하다.
-                       subscribe.js의 isFree → btnDisabled/'기본 플랜' 표현과 일치시킨다. */
-                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 10, textAlign: "center",
+                  ) : isFree ? (
+                    <div style={{ width: "100%", padding: "10px 0", borderRadius: 10, textAlign: "center",
                       border: "1.5px solid #E8E0F4", background: "#F7F5FB", color: "#b4adc4",
-                      fontSize: 12.5, fontWeight: 800 }}>
+                      fontSize: 13, fontWeight: 800 }}>
                       기본 플랜
                     </div>
                   ) : (
                     <button className="planCta"
-                      /* [PLAN-CARD-CTA-NO-CHECKOUT-01] 종전 alert(이메일 문의) → 결제 정본 페이지 이동.
-                         ?plan= 자동선택은 신설하지 않는다 — subscribe.js가 자체 카드/버튼을 그린다. */
                       onClick={() => { if (!isLoggedIn) { onLogin && onLogin(); return; } router.push("/billing/subscribe"); }}
-                      style={{ width: "100%", padding: "9px 0", borderRadius: 10,
+                      style={{ width: "100%", padding: "10px 0", borderRadius: 10,
                         cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800,
-                        border: p.highlight ? "none" : "1.5px solid #E8E0F4",
-                        background: p.highlight ? ac : "#fff",
-                        color: p.highlight ? "#fff" : "#4A148C",
-                        boxShadow: p.highlight ? `0 4px 14px ${ac}3d` : "none" }}>
+                        border: highlight ? "none" : "1.5px solid #E8E0F4",
+                        background: highlight ? ac : "#fff",
+                        color: highlight ? "#fff" : "#4A148C",
+                        boxShadow: highlight ? `0 4px 14px ${ac}3d` : "none" }}>
                       {(() => {
-                        const order = PLANS.map(x => x.id);
-                        const ci = order.indexOf(String(planLabel).toLowerCase());
-                        const ti = order.indexOf(p.id);
+                        const ci = PLAN_ORDER.indexOf(String(planLabel).toLowerCase());
+                        const ti = PLAN_ORDER.indexOf(pid);
                         return (ci >= 0 && ti > ci) ? "업그레이드" : "플랜 변경";
                       })()}
                     </button>
@@ -7829,6 +7810,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               );
             })}
           </div>
+          )}
           <div style={{ fontSize: 14.5, fontWeight: 700, color: "#444", textAlign: "center", marginTop: 26 }}>
             광고를 멈추면 노출도 멈춥니다. 검색 자산은 계속 쌓입니다.
           </div>
@@ -7845,8 +7827,9 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             </div>
             · 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.<br />
             · 자동갱신 — 월 정기결제이며 매 결제일에 동일 플랜으로 자동 갱신됩니다. 해지 시 다음 결제일부터 청구되지 않으며, 이미 결제된 이용기간은 만료일까지 이용할 수 있습니다.<br />
-            · 발행 한도 — 각 플랜의 월 발행 건수는 결제 주기 시작 시 초기화되며 다음 달로 이월되지 않습니다.<br />
-            · 청약철회 및 환불 — 환불정책에 따르며, 사용한 발행 건수만큼 공제 후 잔액을 환불합니다.<br />
+            · 제공 건수 — 각 플랜의 제공 생성 건수는 이용기간 내 자유롭게 사용할 수 있으며, 이용기간 시작 시 초기화되고 다음 기간으로 이월되지 않습니다. 일별 사용 제한은 없습니다.<br />
+            · 초과 이용 — 제공 건수를 모두 사용하면 추가 생성이 중지됩니다. 초과 사용분에 대한 후불 추가 요금은 청구되지 않습니다.<br />
+            · 청약철회 및 환불 — 환불정책에 따르며, 사용한 생성 건수만큼 공제 후 잔액을 환불합니다.<br />
             · 이용요금은 부가세 포함 금액입니다.
           </div>
         </div>
