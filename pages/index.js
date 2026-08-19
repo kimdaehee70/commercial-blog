@@ -7672,16 +7672,16 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
       // 💳 요금제 — NavPanel 내부 탭. 탭바 유지(동선 끊김 방지). 카드 비교 + 업그레이드(PG는 추후).
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ textAlign: "center", marginBottom: 26 }}>
-            <div style={{ fontSize: 30, fontWeight: 900, color: "#1A1333", letterSpacing: "-.02em",
-              lineHeight: 1.3, marginBottom: 12 }}>
+          {/* [PLAN-CARD-V2-LAYOUT-5COL-01] 상단 카피 축소 — 카드 5열 폭 확보.
+              헤드 30→21, 설명 19×2줄 → 13.5 1줄. 문구 자체는 유지(의미 변경 없음). */}
+          <div style={{ textAlign: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 21, fontWeight: 900, color: "#1A1333", letterSpacing: "-.02em",
+              lineHeight: 1.3, marginBottom: 5 }}>
               사업 규모에 맞는 플랜을 선택하세요.
             </div>
-            <div style={{ fontSize: 19, fontWeight: 800, color: "#1a1a2e", lineHeight: 1.55 }}>
-              블로그는 한 번 쓰고 사라지는 광고가 아닙니다.
-            </div>
-            <div style={{ fontSize: 19, fontWeight: 800, color: "#6A1B9A", lineHeight: 1.55 }}>
-              검색하면 언제든 다시 나오는, 내 사업장의 검색 자산입니다.
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: "#1a1a2e", lineHeight: 1.55 }}>
+              블로그는 한 번 쓰고 사라지는 광고가 아닙니다.{" "}
+              <span style={{ color: "#6A1B9A" }}>검색하면 언제든 다시 나오는, 내 사업장의 검색 자산입니다.</span>
             </div>
           </div>
           {/* [PLAN-CARD-V2-POLICY-SYNC-01] 요금제 카드 v2 — /billing/subscribe 와 동일 카드 구조.
@@ -7693,12 +7693,16 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             .planCard:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(70,30,120,.13); }
             .planCard.isHi:hover { transform: translateY(-10px) scale(1.05); }
             .planCta:focus-visible { outline: 2px solid #6A1B9A; outline-offset: 2px; }
-            /* PC 3+2 — 두 번째 줄 2장이 좌측에 붙지 않도록 auto-fit 대신 중앙 정렬 flex 사용 */
-            .planGrid { display: flex; flex-wrap: wrap; justify-content: center;
-              gap: 14px; align-items: stretch; padding: 16px 0 18px; }
-            .planGrid > .planCard { flex: 0 1 252px; max-width: 300px; }
-            @media (max-width: 860px) { .planGrid > .planCard { flex: 0 1 232px; } }
-            @media (max-width: 620px) { .planGrid > .planCard { flex: 1 1 100%; max-width: none; } }
+            /* 가격은 카드 내 최대 요소로 유지 — 5열 폭에 맞춰 clamp */
+            .planPrice { font-size: clamp(15px, 1.35vw, 21px); }
+            @media (max-width: 1100px) { .planPrice { font-size: 21px; } }
+            /* [PLAN-CARD-V2-LAYOUT-5COL-01] PC 5열 1행. 우측 영역 약 800px / 카드당 약 150px.
+               grid 1fr 균등 = 5장 폭·높이 동일. align-items:stretch 로 CTA 바닥선이 자동 일치한다. */
+            .planGrid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr));
+              gap: 8px; align-items: stretch; padding: 18px 0 18px; }
+            @media (max-width: 1100px) { .planGrid { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; } }
+            @media (max-width: 720px)  { .planGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+            @media (max-width: 480px)  { .planGrid { grid-template-columns: 1fr; } }
             @media (prefers-reduced-motion: reduce) {
               .planCard, .planCard:hover, .planCard.isHi:hover { transition: none; transform: none; }
             }
@@ -7728,15 +7732,16 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                   background: crown ? "linear-gradient(180deg,#FFFDF6 0%,#fff 46%)" : "#fff",
                   borderRadius: 15, display: "flex", flexDirection: "column",
                   border: crown ? "1.5px solid #C9A227" : (highlight ? `1.5px solid ${ac}` : (cur ? `1.5px solid ${ac}55` : "1px solid #ECE7F5")),
-                  padding: "18px 17px 17px", position: "relative",
-                  transform: highlight ? "translateY(-6px) scale(1.04)" : "none", zIndex: highlight ? 2 : 1,
+                  padding: "15px 10px 12px", position: "relative",
+                  /* 5열에서 scale 확대는 카드 폭을 넘겨 이웃과 겹친다 — 돌출은 translateY 만 사용 */
+                  transform: highlight ? "translateY(-6px)" : "none", zIndex: highlight ? 2 : 1,
                   boxShadow: crown ? "0 10px 28px rgba(201,162,39,.20)"
                     : (highlight ? `0 14px 34px ${ac}22` : "0 2px 10px rgba(70,30,120,.05)") }}>
                   {(highlight || crown) && (
                     <div style={{ position: "absolute", top: -11, left: "50%", transform: "translateX(-50%)",
                       background: crown ? "linear-gradient(135deg,#7B1FA2,#C9A227)" : ac,
-                      color: "#fff", fontSize: 10.5, fontWeight: 900,
-                      letterSpacing: ".04em", padding: "4px 12px", borderRadius: 999,
+                      color: "#fff", fontSize: 9.5, fontWeight: 900,
+                      letterSpacing: ".02em", padding: "3px 8px", borderRadius: 999,
                       boxShadow: crown ? "0 4px 12px rgba(201,162,39,.45)" : `0 4px 12px ${ac}40`,
                       whiteSpace: "nowrap" }}>
                       {crown ? "👑 가장 강력한 플랜" : "가장 많이 선택"}
@@ -7744,56 +7749,56 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                   )}
 
                   {/* 플랜명 — API label */}
-                  <div style={{ fontSize: 11, fontWeight: 900, color: ac,
-                    textTransform: "uppercase", letterSpacing: ".06em" }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 900, color: ac,
+                    textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>
                     {p.label}{crown ? " 👑" : ""}
                   </div>
 
                   {/* 가격 — API price_krw */}
-                  <div style={{ marginTop: 6, fontSize: 25, fontWeight: 900, color: "#2c2340",
-                    letterSpacing: "-.02em", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                  <div className="planPrice" style={{ marginTop: 5, fontWeight: 900, color: "#2c2340",
+                    letterSpacing: "-.03em", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
                     {Number(p.price_krw || 0).toLocaleString()}원
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: "#b4adc4", marginLeft: 3 }}>/월</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "#b4adc4", marginLeft: 2 }}>/월</span>
                   </div>
 
                   {/* 제공량 — 이용기간 기준. 일별 한도 표현은 두지 않는다(상품정책 A). */}
-                  <div style={{ marginTop: 12, padding: "9px 10px", borderRadius: 11,
+                  <div style={{ marginTop: 9, padding: "7px 7px", borderRadius: 10,
                     background: ac + "0d", border: `1px solid ${ac}1f` }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 800, color: ac }}>{quotaText}</div>
-                    <div style={{ marginTop: 3, fontSize: 11, color: "#8b83a0", fontWeight: 700 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 800, color: ac, lineHeight: 1.35 }}>{quotaText}</div>
+                    <div style={{ marginTop: 2, fontSize: 10, color: "#8b83a0", fontWeight: 700, lineHeight: 1.35 }}>
                       이용기간 내 자유롭게 사용
                     </div>
                   </div>
 
                   {/* 설명 — API description */}
                   {p.description && (
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #F4F0FA",
-                      fontSize: 11.5, color: "#4a4458", lineHeight: 1.55 }}>{p.description}</div>
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #F4F0FA",
+                      fontSize: 10.5, color: "#4a4458", lineHeight: 1.5 }}>{p.description}</div>
                   )}
 
                   {/* CTA — 카드 바닥 정렬. 8267f59 배선 계승. */}
-                  <div style={{ marginTop: "auto", paddingTop: 14 }}>
+                  <div style={{ marginTop: "auto", paddingTop: 11 }}>
                   {isUnlimited ? (
-                    <div style={{ width: "100%", padding: "10px 0", borderRadius: 10, textAlign: "center",
-                      background: "#F7F5FB", color: "#b4adc4", fontSize: 13, fontWeight: 800 }}>
+                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 9, textAlign: "center",
+                      background: "#F7F5FB", color: "#b4adc4", fontSize: 11.5, fontWeight: 800 }}>
                       OWNER
                     </div>
                   ) : cur ? (
-                    <div style={{ width: "100%", padding: "10px 0", borderRadius: 10, textAlign: "center",
-                      background: ac + "12", color: ac, fontSize: 13, fontWeight: 900 }}>
+                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 9, textAlign: "center",
+                      background: ac + "12", color: ac, fontSize: 11.5, fontWeight: 900 }}>
                       현재 플랜
                     </div>
                   ) : isFree ? (
-                    <div style={{ width: "100%", padding: "10px 0", borderRadius: 10, textAlign: "center",
+                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 9, textAlign: "center",
                       border: "1.5px solid #E8E0F4", background: "#F7F5FB", color: "#b4adc4",
-                      fontSize: 13, fontWeight: 800 }}>
+                      fontSize: 11.5, fontWeight: 800 }}>
                       기본 플랜
                     </div>
                   ) : (
                     <button className="planCta"
                       onClick={() => { if (!isLoggedIn) { onLogin && onLogin(); return; } router.push("/billing/subscribe"); }}
-                      style={{ width: "100%", padding: "10px 0", borderRadius: 10,
-                        cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800,
+                      style={{ width: "100%", padding: "9px 0", borderRadius: 9,
+                        cursor: "pointer", fontFamily: "inherit", fontSize: 11.5, fontWeight: 800,
                         border: highlight ? "none" : "1.5px solid #E8E0F4",
                         background: highlight ? ac : "#fff",
                         color: highlight ? "#fff" : "#4A148C",
