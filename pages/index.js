@@ -7699,7 +7699,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             /* [PLAN-CARD-V2-LAYOUT-5COL-01] PC 5열 1행. 우측 영역 약 800px / 카드당 약 150px.
                grid 1fr 균등 = 5장 폭·높이 동일. align-items:stretch 로 CTA 바닥선이 자동 일치한다. */
             .planGrid { display: grid; grid-template-columns: repeat(5, minmax(0,1fr));
-              gap: 8px; align-items: stretch; padding: 18px 0 18px; }
+              gap: 9px; align-items: stretch; padding: 20px 0 6px; }
             @media (max-width: 1100px) { .planGrid { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; } }
             @media (max-width: 720px)  { .planGrid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
             @media (max-width: 480px)  { .planGrid { grid-template-columns: 1fr; } }
@@ -7729,10 +7729,13 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                 : `이용기간 ${p.monthly_quota}건 포함`;
               return (
                 <div key={p.id} className={"planCard" + (highlight ? " isHi" : "")} style={{
+                  /* [PLAN-CARD-V2-LAYOUT-5COL-01] 카드 내부 전 요소 중앙정렬 — 5열 가격 비교표 가독성.
+                     하단 「서비스 제공기간 안내」는 긴 문장이라 좌측정렬 유지(별도 지정). */
+                  textAlign: "center",
                   background: crown ? "linear-gradient(180deg,#FFFDF6 0%,#fff 46%)" : "#fff",
                   borderRadius: 15, display: "flex", flexDirection: "column",
                   border: crown ? "1.5px solid #C9A227" : (highlight ? `1.5px solid ${ac}` : (cur ? `1.5px solid ${ac}55` : "1px solid #ECE7F5")),
-                  padding: "15px 10px 12px", position: "relative",
+                  padding: "18px 11px 15px", position: "relative", textAlign: "center",
                   /* 5열에서 scale 확대는 카드 폭을 넘겨 이웃과 겹친다 — 돌출은 translateY 만 사용 */
                   transform: highlight ? "translateY(-6px)" : "none", zIndex: highlight ? 2 : 1,
                   boxShadow: crown ? "0 10px 28px rgba(201,162,39,.20)"
@@ -7755,14 +7758,15 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                   </div>
 
                   {/* 가격 — API price_krw */}
-                  <div className="planPrice" style={{ marginTop: 5, fontWeight: 900, color: "#2c2340",
+                  <div className="planPrice" style={{ marginTop: 7, fontWeight: 900, color: "#2c2340",
                     letterSpacing: "-.03em", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
                     {Number(p.price_krw || 0).toLocaleString()}원
                     <span style={{ fontSize: 10.5, fontWeight: 700, color: "#b4adc4", marginLeft: 2 }}>/월</span>
                   </div>
 
                   {/* 제공량 — 이용기간 기준. 일별 한도 표현은 두지 않는다(상품정책 A). */}
-                  <div style={{ marginTop: 9, padding: "7px 7px", borderRadius: 10,
+                  <div style={{ marginTop: 11, padding: "8px 6px", borderRadius: 10, minHeight: 46,
+                    display: "flex", flexDirection: "column", justifyContent: "center",
                     background: ac + "0d", border: `1px solid ${ac}1f` }}>
                     <div style={{ fontSize: 11.5, fontWeight: 800, color: ac, lineHeight: 1.35 }}>{quotaText}</div>
                     <div style={{ marginTop: 2, fontSize: 10, color: "#8b83a0", fontWeight: 700, lineHeight: 1.35 }}>
@@ -7771,13 +7775,16 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                   </div>
 
                   {/* 설명 — API description */}
-                  {p.description && (
-                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #F4F0FA",
-                      fontSize: 10.5, color: "#4a4458", lineHeight: 1.5 }}>{p.description}</div>
-                  )}
+                  {/* [PLAN-CARD-V2-LAYOUT-5COL-01] 설명 영역 높이 고정 — description 이 1줄인 카드와
+                      2줄인 카드가 섞이면 CTA 의 Y축이 어긋난다. minHeight 로 5장을 같은 선에 맞춘다.
+                      description 이 없는 플랜도 자리를 유지해야 하므로 조건부 렌더를 쓰지 않는다. */}
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #F4F0FA",
+                    fontSize: 10.5, color: "#4a4458", lineHeight: 1.5, minHeight: 46 }}>
+                    {p.description || ""}
+                  </div>
 
                   {/* CTA — 카드 바닥 정렬. 8267f59 배선 계승. */}
-                  <div style={{ marginTop: "auto", paddingTop: 11 }}>
+                  <div style={{ marginTop: "auto", paddingTop: 12 }}>
                   {isUnlimited ? (
                     <div style={{ width: "100%", padding: "9px 0", borderRadius: 9, textAlign: "center",
                       background: "#F7F5FB", color: "#b4adc4", fontSize: 11.5, fontWeight: 800 }}>
@@ -7823,11 +7830,13 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               심사관이 요금제 화면에서 직접 확인한다. 요금·한도 변경 시 PLANS / lib/billing/plans.js /
               lib/policies/refund.js 건당 단가와 함께 갱신할 것(이중 관리 지점). */}
           <div style={{
-            maxWidth: 900, margin: "22px auto 0", padding: "16px 18px",
+            width: "100%", boxSizing: "border-box", margin: "28px 0 0", padding: "15px 20px",
             background: "#fafafd", border: "1px solid #e8e4f0", borderRadius: 12,
-            fontSize: 12.5, color: "#5a5a6a", lineHeight: 1.75,
+            fontSize: 11.5, color: "#5a5a6a", lineHeight: 1.7, textAlign: "left",
+            columnCount: 2, columnGap: 26,
           }}>
-            <div style={{ fontWeight: 900, color: "#4A148C", fontSize: 13, marginBottom: 6 }}>
+            <div style={{ fontWeight: 900, color: "#4A148C", fontSize: 12.5, marginBottom: 6,
+              columnSpan: "all" }}>
               서비스 제공기간 및 이용 안내
             </div>
             · 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.<br />
