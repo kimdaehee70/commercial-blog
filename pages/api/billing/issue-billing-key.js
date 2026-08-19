@@ -214,6 +214,61 @@ export default async function handler(req, res) {
       });
     }
 
+    // ─────────────────────────────────────────────────────
+    // ②-a2 [PLAN-APPLY-RECOVERY-REQUIRED-01] 결제완료·등급미반영 상태 차단
+    //   ACCOUNT-PLAN-UPDATE-SILENT-FAIL-01 의 최종 분기(503 PLAN_APPLY_FAILED)로
+    //   빠진 계정은 DB 가 이렇게 남는다:
+    //     subscriptions = active / plan_id = 신규 / 기간 유효
+    //     accounts.plan = 이전 등급  ← UPDATE 실패분
+    //   이 상태로 재진입하면 curPlanId(=accounts.plan)가 이전 등급이므로
+    //   ②-c 가 이를 「정상 상향」으로 읽고 잔량 판정까지 건너뛴 채 통과시킨다.
+    //   → chargeBillingKey() 재호출 = 이중과금. 실패가 게이트를 여는 구조였다.
+    //
+    //   ★ 방향을 고정한다. sub 서열 > accounts.plan 서열 인 경우만 막는다.
+    //     반대 방향(accounts.plan > sub.plan_id)은 관리자 지급의 정상 상태다
+    //     (ADMIN-GRANT-NO-SUBSCRIPTION-01). 단순 불일치로 만들면 지급 계정이 전부 막힌다.
+    //
+    //   ★ subOrderKnown=false 는 fail-open + 로그다. 여기까지 fail-closed 로 넓히면
+    //     정상 예외를 오차단한다(선장 승인).
+    //
+    //   ★ 재결제를 유도하지 않는다. 돈은 이미 나갔다. 복구는 운영 경로로 처리한다.
+    // ─────────────────────────────────────────────────────
+    const subPlanId    = String(existingSub.plan_id || '');
+    const subPlanObj   = getPlan(subPlanId);
+    const subOrder     = Number(subPlanObj?.sort_order);
+    const subOrderKnown =
+      String(subPlanObj?.id) === subPlanId && Number.isFinite(subOrder);
+
+    if (!subOrderKnown && subPlanId && subPlanId !== curPlanId) {
+      // 판정 불가. 차단하지 않는다(관리자 지급 오차단 방지). 관측만 남긴다.
+      console.error(
+        '[issue-billing-key] sub plan order unknown', account.id, subPlanId, curPlanId
+      );
+    }
+
+    if (
+      existingSub.status === 'active' &&
+      periodValid &&
+      subOrderKnown &&
+      subOrder > curOrder
+    ) {
+      console.error(
+        '[issue-billing-key] PLAN_APPLY_RECOVERY_REQUIRED',
+        account.id, 'sub=', subPlanId, 'accounts.plan=', curPlanId
+      );
+      return res.status(409).json({
+        error:           'PLAN_APPLY_RECOVERY_REQUIRED',
+        charged:         true,   // ★ 이미 청구 완료. 재결제 유도 금지.
+        plan_applied:    false,
+        recovery_needed: true,
+        subscription_id: existingSub.id,
+        paid_plan_id:    subPlanId,
+        current_plan_id: curPlanId,
+        period_end:      existingSub.current_period_end,
+        message:         '이전 결제가 정상 완료되었으나 이용권 등급 반영이 처리 중입니다. 다시 결제하지 마시고 고객센터로 문의해 주세요.',
+      });
+    }
+
     // ②-b 하위 전환 — V1 미지원.
     //   ★ 허용하면 quota 분모가 즉시 낮아져 이미 사용한 건수가 새 분모를 넘길 수 있다
     //     (60건 중 40건 사용 → 30건 플랜 = 즉시 소진). 잔량·환불·기간 정산 정책이
@@ -502,17 +557,58 @@ export default async function handler(req, res) {
   // 5) accounts.plan 업데이트
   //    ★ 생략 금지. check-quota의 분모가 accounts.plan이므로 이 UPDATE가 빠지면
   //      결제는 됐는데 제공량이 이전 등급으로 남는다.
-  const { error: accUpdErr } = await supabase
-    .from('accounts')
-    .update({ plan: plan.id, updated_at: now.toISOString() })
-    .eq('id', account.id);
+  //
+  //    [ACCOUNT-PLAN-UPDATE-SILENT-FAIL-01]
+  //      과거에는 실패해도 로그만 남기고 200 ok:true 를 내렸다. 그 결과
+  //      응답(plan_id=신규) / 화면(완료카드) / DB(accounts.plan=이전등급) 가
+  //      3중으로 어긋났고, 장애가 정상 성공으로 집계됐다.
+  //      ★ 이제 이 UPDATE 성공을 결제 완료의 조건으로 삼는다.
+  //
+  //      단, 이 지점은 이미 실청구가 끝난 뒤다.
+  //        - 롤백하지 않는다(청구 취소 API 호출 없음). 증거를 지우는 쪽이 더 위험하다.
+  //        - "결제 실패"로 표시해 재결제를 유도하면 절대 안 된다. 이중과금이 된다.
+  async function applyAccountPlan() {
+    const { error } = await supabase
+      .from('accounts')
+      .update({ plan: plan.id, updated_at: new Date().toISOString() })
+      .eq('id', account.id);
+    return error;
+  }
+
+  let accUpdErr = await applyAccountPlan();
 
   if (accUpdErr) {
-    console.error('[issue-billing-key] accounts.plan update failed', accUpdErr);
+    console.error('[issue-billing-key] accounts.plan update failed (1st)', account.id, accUpdErr);
+    // 순간적인 커넥션 장애를 흡수하기 위한 1회 재시도. 그 이상은 하지 않는다.
+    accUpdErr = await applyAccountPlan();
+    if (accUpdErr) {
+      console.error('[issue-billing-key] accounts.plan update failed (retry)', account.id, accUpdErr);
+    }
+  }
+
+  if (accUpdErr) {
+    // ★ 200 금지. 2xx 로 내리면 프록시·모니터링에서 성공군으로 집계된다.
+    //   503 을 쓰되, 프론트가 error 코드로 먼저 분기하므로
+    //   일반 "결제 실패" 안내로 떨어지지 않는다.
+    return res.status(503).json({
+      ok:              false,
+      error:           'PLAN_APPLY_FAILED',
+      charged:         true,    // ★ 돈은 이미 나갔다. 재결제 유도 금지.
+      plan_applied:    false,
+      recovery_needed: true,
+      mode:            isRepurchase ? 'repurchase' : 'new',
+      subscription_id: sub.id,
+      plan_id:         plan.id,
+      payment_id:      paymentId,
+      period_start:    now.toISOString(),
+      next_billing_at: nextBillingAt.toISOString(),
+      message:         '결제는 정상 완료되었으나 이용권 등급 반영에 실패했습니다. 다시 결제하지 마시고 고객센터로 문의해 주세요.',
+    });
   }
 
   return res.status(200).json({
     ok:              true,
+    plan_applied:    true,
     mode:            isRepurchase ? 'repurchase' : 'new',
     subscription_id: sub.id,
     plan_id:         plan.id,
