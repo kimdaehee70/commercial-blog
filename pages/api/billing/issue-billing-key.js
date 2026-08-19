@@ -185,8 +185,56 @@ export default async function handler(req, res) {
       });
     }
 
-    // ② 기간이 유효하고 미납 canceled가 아니면 → 실제 소진 여부로 판정
-    if (periodValid && !unpaidCanceled) {
+    // ─────────────────────────────────────────────────────
+    // ② [PLAN-CHANGE-POLICY-V1-01] 플랜 서열 판정
+    //   현재 플랜 SoT = accounts.plan (quota 분모와 동일 값을 봐야 한다.
+    //     existingSub.plan_id 를 쓰면 관리자 지급 계정에서 분모와 판정이 갈린다
+    //     — ADMIN-GRANT-NO-SUBSCRIPTION-01).
+    //   서열 SoT = plans.sort_order (가격은 프로모션으로 뒤집히고, quota 는 상품 정책값이다).
+    //   ★ getPlan() 은 미등록 id 에 free 를 돌려준다. 그대로 쓰면 DB 에만 있고
+    //     fallback 미러가 빠진 신규 플랜이 「최하위」로 오판된다. id 일치까지 확인한다.
+    // ─────────────────────────────────────────────────────
+    const curPlanId  = String(account.plan || DEFAULT_PLAN_ID);
+    const curPlanObj = getPlan(curPlanId);
+    const reqPlanObj = getPlan(plan.id);
+    const curOrder   = Number(curPlanObj?.sort_order);
+    const reqOrder   = Number(reqPlanObj?.sort_order);
+    const orderKnown =
+      String(curPlanObj?.id) === curPlanId &&
+      String(reqPlanObj?.id) === String(plan.id) &&
+      Number.isFinite(curOrder) && Number.isFinite(reqOrder);
+
+    // ②-a 서열 확인 불가 — fail-closed. 순서를 모른 채 통과시키면 하향이 섞인다.
+    if (!orderKnown) {
+      console.error('[issue-billing-key] plan order unknown', curPlanId, plan.id);
+      return res.status(409).json({
+        error:           'PLAN_ORDER_UNKNOWN',
+        message:         '플랜 정보를 확인할 수 없어 결제를 진행할 수 없습니다. 고객센터로 문의해 주세요.',
+        subscription_id: existingSub.id,
+      });
+    }
+
+    // ②-b 하위 전환 — V1 미지원.
+    //   ★ 허용하면 quota 분모가 즉시 낮아져 이미 사용한 건수가 새 분모를 넘길 수 있다
+    //     (60건 중 40건 사용 → 30건 플랜 = 즉시 소진). 잔량·환불·기간 정산 정책이
+    //     함께 열리는 사안이므로 출시 V1 에서는 닫는다.
+    if (reqOrder < curOrder) {
+      return res.status(409).json({
+        error:           'PLAN_DOWNGRADE_NOT_SUPPORTED',
+        message:         '현재 이용 중인 플랜보다 낮은 등급으로는 변경할 수 없습니다. 이용기간 만료 후 선택해 주세요.',
+        subscription_id: existingSub.id,
+        current_plan_id: curPlanId,
+        period_end:      existingSub.current_period_end,
+      });
+    }
+
+    // ②-c 상위 전환 — 잔량과 무관하게 허용한다.
+    //   상품이 「기간 내 사용량 구매」 구조이므로, 더 많은 사용량을 원하는 고객의
+    //   상위 상품 구매를 막으면 판매 구조와 충돌한다. 아래 잔량 판정을 건너뛴다.
+
+    // ②-d 동일 플랜 + 기간 유효 + 미납 canceled 아님 → 실제 소진 여부로 판정
+    //   ★ 전량 소진 후 같은 플랜 재구매는 계속 허용된다(기존 동작 보존).
+    if (reqOrder === curOrder && periodValid && !unpaidCanceled) {
       let used;
       try {
         const usedRaw = await countGeneratedInPeriod(
