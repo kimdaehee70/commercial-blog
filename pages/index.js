@@ -6745,6 +6745,10 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   //   (A 버그 수정: lift state up — 재마운트돼도 부모가 값 보존)
   // [UI-SCOPE-VS-CORE-INDUSTRY-CONFLATION-01] 표시 범위 = 등록 departments(없으면 대표업종 fallback).
   //   deptList(Home 스코프)는 여기서 접근 불가 → hubStore prop 에서 동일 SoT 재파생.
+  // [PLAN-CARD-CTA-NO-CHECKOUT-01] 요금제 카드 CTA → /billing/subscribe 이동용.
+  //   router 인스턴스는 Home(L9326)에만 있었고 NavPanel에서는 접근 불가였다.
+  //   useRouter import는 L5에 이미 존재 — 신규 import 없음.
+  const router = useRouter();
   const _scopeInds = (() => {
     const dl = normalizeDepartments((hubStore && hubStore.departments) || [], hubStore && hubStore.industry);
     return dl.length ? dl : (hubStore && hubStore.industry ? [hubStore.industry] : []);
@@ -7792,9 +7796,20 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                       background: ac + "12", color: ac, fontSize: 12.5, fontWeight: 900 }}>
                       현재 플랜
                     </div>
+                  ) : p.id === "free" ? (
+                    /* [PLAN-CARD-CTA-NO-CHECKOUT-01] Free는 결제 대상이 아니다.
+                       「플랜 변경」으로 보이면서 클릭만 안 되는 상태보다 비활성 「기본 플랜」이 정확하다.
+                       subscribe.js의 isFree → btnDisabled/'기본 플랜' 표현과 일치시킨다. */
+                    <div style={{ width: "100%", padding: "9px 0", borderRadius: 10, textAlign: "center",
+                      border: "1.5px solid #E8E0F4", background: "#F7F5FB", color: "#b4adc4",
+                      fontSize: 12.5, fontWeight: 800 }}>
+                      기본 플랜
+                    </div>
                   ) : (
                     <button className="planCta"
-                      onClick={() => { if (!isLoggedIn) { onLogin && onLogin(); } else { alert("플랜 변경 안내를 위해 support@ai-post.ai 로 문의해 주세요."); } }}
+                      /* [PLAN-CARD-CTA-NO-CHECKOUT-01] 종전 alert(이메일 문의) → 결제 정본 페이지 이동.
+                         ?plan= 자동선택은 신설하지 않는다 — subscribe.js가 자체 카드/버튼을 그린다. */
+                      onClick={() => { if (!isLoggedIn) { onLogin && onLogin(); return; } router.push("/billing/subscribe"); }}
                       style={{ width: "100%", padding: "9px 0", borderRadius: 10,
                         cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800,
                         border: p.highlight ? "none" : "1.5px solid #E8E0F4",
