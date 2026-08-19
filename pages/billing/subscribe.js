@@ -48,6 +48,13 @@ const ACCENT = {
 const FALLBACK_AC = '#4A148C';
 const acOf = (id) => ACCENT[String(id || '').toLowerCase()] || FALLBACK_AC;
 
+// [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] 배지 — index.js 표현 그대로 이식.
+// ★ 표현 전용 상수다. 추천 로직·판정 로직을 새로 만들지 않는다. id 고정 매핑뿐이다.
+const BADGE = {
+  standard:   '가장 많이 선택',
+  enterprise: '가장 강력한 플랜',
+};
+
 export default function SubscribePage() {
   const router = useRouter();
   const [plans, setPlans]       = useState([]);
@@ -278,10 +285,10 @@ export default function SubscribePage() {
       {Header}
 
       <div style={S.wrap}>
-        <h1 style={S.h1}>요금제</h1>
-        <p style={S.sub}>월 정기결제 (가입일 기준 매월 청구)</p>
+        <h1 style={S.h1}>요금제 선택</h1>
+        <p style={S.sub}>구매일부터 1개월 · 이용기간 내 제공량 자유사용</p>
 
-        <div style={S.grid}>
+        <div className="planGrid" style={S.grid}>
           {plans.map(p => {
             const ac = acOf(p.id);
             const isFree = p.id === 'free';
@@ -294,21 +301,36 @@ export default function SubscribePage() {
                   boxShadow: isFree ? 'none' : `0 6px 20px ${ac}14`,
                 }}
               >
-                <div style={{ ...S.planLabel, color: ac }}>{p.label}</div>
+                <div style={S.labelRow}>
+                  <div style={{ ...S.planLabel, color: ac }}>{p.label}</div>
+                  {BADGE[p.id] && (
+                    <span style={{ ...S.badge, color: ac, background: `${ac}12`, border: `1px solid ${ac}2e` }}>
+                      {BADGE[p.id]}
+                    </span>
+                  )}
+                </div>
 
+                {/* [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] 「/월」 삭제.
+                    캘린더 월 이용권 오해를 만든다. 이용기간은 상단 보조문구와
+                    하단 안내가 설명한다(구매일부터 1개월). 자동갱신도 하단 소관. */}
                 <div style={S.price}>
-                  {p.price_krw.toLocaleString()}원<span style={S.unit}>/월</span>
+                  {p.price_krw.toLocaleString()}원
                 </div>
 
                 <div style={{ ...S.quotaBox, background: `${ac}0d`, border: `1px solid ${ac}1f` }}>
-                  <div style={{ ...S.quota, color: ac }}>월 {p.monthly_quota}건 포함</div>
+                  {/* free 는 결제 상품이 아니므로 「월」 기준이 유지된다(index.js 와 동일 규칙). */}
+                  <div style={{ ...S.quota, color: ac }}>
+                    {isFree
+                      ? `월 ${p.monthly_quota}건 포함`
+                      : `이용기간 ${p.monthly_quota}건 포함`}
+                  </div>
                   {/* [SUBSCRIBE-OVERAGE-TEXT-UNBACKED-01] 「초과 1건당 N원」 제거.
                       후불 초과청구는 제공하지 않는다(상품정책 A). 제공하지 않는 과금정책을
                       화면에 남기면 KG 심사에 그것이 증거로 제출된다. 스타일 키는 유지. */}
                   <div style={S.overage}>이용기간 내 자유롭게 사용</div>
                 </div>
 
-                {p.description && <div style={S.desc}>{p.description}</div>}
+                <div style={S.desc}>{p.description || ''}</div>
 
                 <div style={S.ctaZone}>
                   <button
@@ -333,16 +355,29 @@ export default function SubscribePage() {
         {/* 서비스 제공기간·자동갱신 고지 — 전자상거래법 및 PG 심사 모니터링 항목. */}
         <div style={S.notice}>
           <div style={S.noticeHead}>서비스 제공기간 및 이용 안내</div>
-          · 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.<br />
-          · 자동갱신 — 월 정기결제이며 매 결제일에 동일 플랜으로 자동 갱신됩니다. 해지 시 다음 결제일부터 청구되지 않으며, 이미 결제된 이용기간은 만료일까지 이용할 수 있습니다.<br />
-          · 제공 건수 — 각 플랜의 월 제공 생성 건수는 이용기간 내 자유롭게 사용할 수 있으며, 이용기간 시작 시 초기화되고 다음 기간으로 이월되지 않습니다. 일별 사용 제한은 없습니다.<br />
-          · 초과 이용 — 제공 건수를 모두 사용하면 추가 생성이 중지됩니다. 초과 사용분에 대한 후불 추가 요금은 청구되지 않습니다.<br />
-          · 청약철회 및 환불 — 환불정책에 따르며, 사용한 생성 건수만큼 공제 후 잔액을 환불합니다.<br />
-          · 이용요금은 부가세 포함 금액입니다.
+          {/* [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] <br/> 연속 → 항목별 div.
+              문안은 1글자도 변경하지 않는다(전자상거래법·PG 심사 고지문). 분리 목적은
+              항목 경계를 시각적으로 살려 가독성을 확보하는 것뿐이다. 1단 유지. */}
+          <div style={S.noticeItem}>· 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.</div>
+          <div style={S.noticeItem}>· 자동갱신 — 월 정기결제이며 매 결제일에 동일 플랜으로 자동 갱신됩니다. 해지 시 다음 결제일부터 청구되지 않으며, 이미 결제된 이용기간은 만료일까지 이용할 수 있습니다.</div>
+          <div style={S.noticeItem}>· 제공 건수 — 각 플랜의 월 제공 생성 건수는 이용기간 내 자유롭게 사용할 수 있으며, 이용기간 시작 시 초기화되고 다음 기간으로 이월되지 않습니다. 일별 사용 제한은 없습니다.</div>
+          <div style={S.noticeItem}>· 초과 이용 — 제공 건수를 모두 사용하면 추가 생성이 중지됩니다. 초과 사용분에 대한 후불 추가 요금은 청구되지 않습니다.</div>
+          <div style={S.noticeItem}>· 청약철회 및 환불 — 환불정책에 따르며, 사용한 생성 건수만큼 공제 후 잔액을 환불합니다.</div>
+          <div style={S.noticeItem}>· 이용요금은 부가세 포함 금액입니다.</div>
         </div>
       </div>
 
       {Footer}
+
+      {/* [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] 반응형 — 인라인 style 객체로는 media query 를
+          쓸 수 없어 이 블록만 styled-jsx 를 신설한다. PC 5열이 정본이며, 좁아질 때만 접는다.
+          auto-fit 을 쓰지 않는 이유: 접히는 지점을 브라우저가 정하면 4+1 같은 형태가 나온다. */}
+      <style jsx>{`
+        .planGrid { grid-template-columns: repeat(5, 1fr); }
+        @media (max-width: 1260px) { .planGrid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 820px)  { .planGrid { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 520px)  { .planGrid { grid-template-columns: 1fr; } }
+      `}</style>
     </div>
   );
 }
@@ -351,39 +386,48 @@ const S = {
   page:    { minHeight: '100vh', background: '#fafafd', fontFamily: 'system-ui, -apple-system, "Malgun Gothic", sans-serif', display: 'flex', flexDirection: 'column' },
 
   header:      { background: '#fff', borderBottom: '1px solid #E8E0F4' },
-  headerInner: { maxWidth: 960, margin: '0 auto', padding: '13px 24px', display: 'flex', alignItems: 'center', gap: 12 },
+  // [SUBSCRIBE-PAYMENT-PAGE-V2-LAYOUT-01] 960 → 1180. wrap 과 반드시 동일값이어야
+  //   헤더 로고선과 카드 좌단이 같은 축에 선다. 한쪽만 바꾸면 축이 어긋난다.
+  headerInner: { maxWidth: 1260, margin: '0 auto', padding: '13px 24px', display: 'flex', alignItems: 'center', gap: 12 },
   brand:       { display: 'flex', alignItems: 'center', gap: 8, textDecoration: 'none' },
   brandMark:   { width: 26, height: 26, borderRadius: 8, background: '#4A148C', color: '#fff', fontSize: 11.5, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', letterSpacing: '.02em' },
   brandName:   { fontSize: 15, fontWeight: 900, color: '#4A148C', letterSpacing: '-.01em' },
   brandDot:    { color: '#9C27B0' },
   brandTag:    { fontSize: 11.5, color: '#8b83a0', fontWeight: 700 },
 
-  wrap:    { flex: 1, width: '100%', maxWidth: 960, margin: '0 auto', padding: '36px 24px 44px', boxSizing: 'border-box' },
+  wrap:    { flex: 1, width: '100%', maxWidth: 1260, margin: '0 auto', padding: '42px 24px 56px', boxSizing: 'border-box' },
   loading: { padding: '60px 0', textAlign: 'center', color: '#8b83a0', fontSize: 14 },
-  h1:      { fontSize: 26, fontWeight: 900, color: '#2c2340', margin: 0, letterSpacing: '-.02em' },
-  sub:     { color: '#8b83a0', fontSize: 13, fontWeight: 700, marginTop: 7, marginBottom: 26 },
+  h1:      { fontSize: 28, fontWeight: 900, color: '#2c2340', margin: 0, letterSpacing: '-.02em' },
+  sub:     { color: '#8b83a0', fontSize: 13.5, fontWeight: 700, marginTop: 8, marginBottom: 28 },
 
-  grid:    { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(232px, 1fr))', gap: 14, alignItems: 'stretch' },
-  card:    { display: 'flex', flexDirection: 'column', border: '1px solid #E8E0F4', borderRadius: 15, padding: '18px 17px 17px', background: '#fff' },
+  // gridTemplateColumns 는 style jsx 의 .planGrid 가 최종 결정한다(media query).
+  //   여기 값은 CSS 로드 전 1프레임 폴백이며, auto-fit 을 쓰면 접힘 지점이 어긋나므로 5열로 둔다.
+  grid:    { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 17, alignItems: 'stretch' },
+  card:    { display: 'flex', flexDirection: 'column', border: '1px solid #E8E0F4', borderRadius: 16, padding: '22px 20px 20px', background: '#fff', boxSizing: 'border-box' },
 
-  planLabel: { fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em' },
-  price:     { fontSize: 25, fontWeight: 900, color: '#2c2340', marginTop: 6, letterSpacing: '-.02em' },
-  unit:      { fontSize: 12.5, fontWeight: 700, color: '#b4adc4', marginLeft: 3 },
+  // 배지 자리를 항상 확보한다(minHeight). 배지 유무로 아래 요소가 밀리면 5장 가격선이 어긋난다.
+  labelRow:  { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, minHeight: 20 },
+  planLabel: { fontSize: 11.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em' },
+  badge:     { fontSize: 10, fontWeight: 900, padding: '3.5px 8px', borderRadius: 999, whiteSpace: 'nowrap', letterSpacing: '-.01em' },
 
-  quotaBox: { marginTop: 12, padding: '9px 10px', borderRadius: 11 },
-  quota:    { fontSize: 12.5, fontWeight: 800 },
-  overage:  { marginTop: 3, fontSize: 11, color: '#8b83a0', fontWeight: 700 },
+  price:     { fontSize: 28, fontWeight: 900, color: '#2c2340', marginTop: 9, letterSpacing: '-.02em' },
 
-  desc:    { marginTop: 10, fontSize: 11.5, color: '#4a4458', lineHeight: 1.55, borderTop: '1px solid #F4F0FA', paddingTop: 10 },
+  quotaBox: { marginTop: 15, padding: '11px 12px', borderRadius: 11, minHeight: 56, boxSizing: 'border-box' },
+  quota:    { fontSize: 13.5, fontWeight: 800 },
+  overage:  { marginTop: 3.5, fontSize: 11.5, color: '#8b83a0', fontWeight: 700 },
 
-  ctaZone: { marginTop: 'auto', paddingTop: 14 },
-  btn:     { width: '100%', padding: '10px 0', border: 0, borderRadius: 10, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' },
-  btnDisabled: { width: '100%', padding: '10px 0', border: '1.5px solid #E8E0F4', borderRadius: 10, background: '#F7F5FB', color: '#b4adc4', cursor: 'not-allowed', fontSize: 13, fontWeight: 800, fontFamily: 'inherit' },
+  // minHeight 고정 = CTA Y축 일치의 근거. description 줄 수가 플랜마다 달라도 버튼선이 유지된다.
+  desc:    { marginTop: 13, fontSize: 12.5, color: '#4a4458', lineHeight: 1.6, borderTop: '1px solid #F4F0FA', paddingTop: 12, minHeight: 62 },
+
+  ctaZone: { marginTop: 'auto', paddingTop: 16 },
+  btn:     { width: '100%', padding: '11.5px 0', border: 0, borderRadius: 10, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit' },
+  btnDisabled: { width: '100%', padding: '11.5px 0', border: '1.5px solid #E8E0F4', borderRadius: 10, background: '#F7F5FB', color: '#b4adc4', cursor: 'not-allowed', fontSize: 14, fontWeight: 800, fontFamily: 'inherit' },
 
   msg:     { marginTop: 22, padding: '12px 14px', background: '#fef3c7', border: '1px solid #f5dfa0', borderRadius: 10, fontSize: 13, color: '#6b5a2a', fontWeight: 700 },
 
-  notice:     { marginTop: 24, padding: '16px 18px', background: '#fff', border: '1px solid #e8e4f0', borderRadius: 12, fontSize: 12.5, color: '#5a5a6a', lineHeight: 1.75 },
-  noticeHead: { fontWeight: 900, color: '#4A148C', fontSize: 13, marginBottom: 6 },
+  notice:     { marginTop: 32, padding: '26px 30px 28px', background: '#fff', border: '1px solid #e8e4f0', borderRadius: 14, fontSize: 13.5, color: '#54546a', lineHeight: 1.8 },
+  noticeHead: { fontWeight: 900, color: '#4A148C', fontSize: 14.5, marginBottom: 13 },
+  noticeItem: { marginTop: 8, breakInside: 'avoid' },
 
   // 완료 화면 — 기존 브랜드 토큰 재사용(신규 색 도입 없음)
   doneCard:  { maxWidth: 440, margin: '40px auto 0', background: '#fff', border: '1px solid #E8E0F4', borderRadius: 16, padding: '30px 26px 26px', textAlign: 'center' },
