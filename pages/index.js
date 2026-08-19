@@ -6744,7 +6744,9 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   calMonth, setCalMonth, menuWeights, setMenuWeights, savedWeights, setSavedWeights, weightsDirty, setWeightsDirty, activePlan, setActivePlan, extraMenus, setExtraMenus, newMenuInput, setNewMenuInput, masterMenuNames, currentIndustry, myMenusMap, setMyMenusMap, editingMenus, setEditingMenus, menuToast, setMenuToast, onCoachMessage, onTabChange, onCalendarPick, onOpenTools, toolsActive, onGoIndustryCenter, onCoachVideo, authUserId, storeEditRef, publishApi,
   // [MultiDeptMenu 2026-07-12] 병원 다중 진료과 — 우측 '나의 메뉴' 통합 뷰용.
   //   미전달(비병원·단일과) = undefined → 기존 currentIndustry 단일 로직 폴백(하위호환).
-  isMultiDept, myMenuFlat, deptLabelOf, onRemoveMyMenuDept }) {
+  isMultiDept, myMenuFlat, deptLabelOf, onRemoveMyMenuDept,
+  // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 결제 완료 배너용 plan id. 미전달 = 배너 없음.
+  paidNotice }) {
   // [요율/계획 상태] menuWeights·savedWeights·activePlan·calMonth 등은 부모(Home)에서 관리하고 props로 받는다.
   //   NavPanel은 resultTab 삼항 분기로 재마운트되므로, 내부 useState로 두면 글쓰기/예정클릭 시 초기화되어 저장값이 소실된다.
   //   (A 버그 수정: lift state up — 재마운트돼도 부모가 값 보존)
@@ -7672,6 +7674,23 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
       // 💳 요금제 — NavPanel 내부 탭. 탭바 유지(동선 끊김 방지). 카드 비교 + 업그레이드(PG는 추후).
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* [SUBSCRIBE-POST-PAYMENT-RETURN-01] 결제 완료 배너.
+              표시명은 planRows 에서 조회한다 — URL 값을 그대로 그리지 않는다.
+              planRows 로드 전이면 그리지 않는다(잘못된 라벨보다 미표시가 낫다). */}
+          {paidNotice && (() => {
+            const _row = planRows.find(p => String(p.id) === String(paidNotice));
+            if (!_row) return null;
+            return (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
+                padding: "14px 18px", borderRadius: 12, marginBottom: 4,
+                background: "#E8F5E9", border: "1.5px solid #A5D6A7" }}>
+                <span style={{ fontSize: 16, fontWeight: 900, color: "#2E7D32" }}>✓</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: "#1B5E20" }}>
+                  {_row.label} 이용권이 정상 적용되었습니다
+                </span>
+              </div>
+            );
+          })()}
           {/* [PLAN-CARD-V2-LAYOUT-5COL-01] 상단 카피 축소 — 카드 5열 폭 확보.
               헤드 30→21, 설명 19×2줄 → 13.5 1줄. 문구 자체는 유지(의미 변경 없음). */}
           <div style={{ textAlign: "center", marginBottom: 12 }}>
@@ -9715,6 +9734,11 @@ export default function Home() {
   const [coachOpen,   setCoachOpen]   = useState(false);  // [v24] 운영코치 펼침(기본 접힘=스크롤 절감)
   const [navOpen,     setNavOpen]     = useState(false);  // [v41] 좌측 메뉴 기본 접힘(아이콘만). 펼침 버튼 클릭 시에만 라벨 표시. 로그인/비로그인 공통.
   // [v32] footerDoc state 제거 — 정책문서는 좌측 대화 버블로 직접 출력(상태 불필요).
+  // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 결제 완료 복귀 배너용 plan id.
+  //   ★ URL 로 받은 값을 그대로 화면에 그리지 않는다. 조작 가능하고 상품 SoT 가 분열한다.
+  //     표시명은 NavPanel 이 planRows(/api/billing/plans)에서 조회한다.
+  const [paidNotice, setPaidNotice] = useState(null);
+  const paidHandledRef = useRef(false);
   const [helpTab,     setHelpTab]     = useState(null);   // [v28] 좌측 도움말 패널: null=대화창 | stats|coach|posts|survival|store. 탭 클릭 시 표시, 같은 탭 재클릭 시 대화창 복귀.
   // [v26] 좌측 세로띠 IndustrySideMenu 클릭값 → NavPanel centerPick으로 흘려보내는 통로.
   //   좌측에서 "이 업종으로 시작하기" 확정 시 set → NavPanel이 prop으로 받아 centerPick에 반영(미확정 계정만).
@@ -10230,6 +10254,24 @@ export default function Home() {
     setResultTab("nav");
     if (authUserId && hubPosts === null && !hubLoading) fetchHub();
   };
+
+  // [SUBSCRIBE-POST-PAYMENT-RETURN-01] /?tab=plans&paid=<planId> 수신.
+  //   ★ 쿼리 소유자는 Home 단독이다. NavPanel 이 직접 읽으면 자식 effect 가 먼저 돌아
+  //     부모가 읽기 전에 URL 이 지워진다.
+  //   ★ ref 1회 가드 필수 — router.replace 로 URL 을 지우면 이 effect 가 재실행된다.
+  //   ★ 탭 이동은 goHubTab 재사용. showHome/helpTab/navView/resultTab/stage 5개를 한 번에
+  //     세팅하므로 개별 setter 를 직접 부르면 상태가 어긋난다.
+  useEffect(() => {
+    if (!router.isReady || paidHandledRef.current) return;
+    const q = router.query || {};
+    if (q.tab !== "plans") return;
+    paidHandledRef.current = true;
+    goHubTab("plans");
+    if (q.paid) setPaidNotice(String(q.paid));
+    // shallow — 데이터 재요청 없이 주소만 정리한다. 새로고침 시 배너가 되살아나지 않는다.
+    router.replace("/", undefined, { shallow: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query]);
 
   const messagesEndRef = useRef(null);
   const isGenerating   = useRef(false);
@@ -13806,6 +13848,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     <MainHero />
                   ) : (
                   <NavPanel
+                    paidNotice={paidNotice}
                     view={navView}
                     isLoggedIn={authChecked && authUserId}
                     authUserId={authUserId}

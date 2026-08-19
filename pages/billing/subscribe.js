@@ -31,7 +31,7 @@
 //     실패는 throw가 아니라 code 필드로 온다. undefined 반환도 가능하다.
 //     ★ displayAmount는 "표시 전용"이며 청구액이 아니다. 혼동을 막기 위해 넘기지 않는다.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { supabase } from '../../lib/supabase';
@@ -45,6 +45,14 @@ const ACCENT = {
   pro:        '#E65100',
   enterprise: '#7B1FA2',
 };
+// [SUBSCRIBE-POST-PAYMENT-RETURN-01] 완료 카드 노출 시간(초).
+//   결제금액·다음 결제일·주문번호를 사용자가 읽을 시간이다. 짧게 만들지 않는다.
+const RETURN_SEC = 5;
+// 복귀 목적지 — 마이페이지 요금제 탭. plan id 만 싣는다.
+//   ★ label 을 URL 에 싣지 않는다. 조작 가능하고 상품 SoT 가 하나 더 늘어난다.
+//     표시명은 도착 화면이 /api/billing/plans 응답에서 찾는다.
+const returnUrl = (planId) => `/?tab=plans&paid=${encodeURIComponent(planId || '')}`;
+
 const FALLBACK_AC = '#4A148C';
 const acOf = (id) => ACCENT[String(id || '').toLowerCase()] || FALLBACK_AC;
 
@@ -65,6 +73,12 @@ export default function SubscribePage() {
   // done: issue-billing-key가 200을 반환한 뒤에만 채워진다.
   //       = 첫 달 실청구까지 성공한 상태. 카드등록만으로는 절대 채우지 않는다.
   const [done, setDone]         = useState(null);
+  // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 자동 복귀 가드.
+  //   타이머와 버튼이 같은 목적지로 각각 navigate 하면 히스토리가 2개 쌓인다.
+  //   먼저 실행된 쪽만 통과시킨다. state 가 아니라 ref 인 이유: 리렌더를 유발하면
+  //   완료 카드가 다시 그려지며 effect 가 재실행된다.
+  const navRef = useRef(false);
+  const [leftSec, setLeftSec] = useState(RETURN_SEC);
 
   useEffect(() => {
     fetch('/api/billing/plans')
@@ -178,6 +192,8 @@ export default function SubscribePage() {
       // ── 4. 여기부터가 진짜 완료 ──
       //    실청구 성공 + subscription active + accounts.plan 승격이 끝난 상태다.
       setDone({
+        // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 복귀 URL 생성용. 표시에는 쓰지 않는다.
+        planId,
         planLabel:     plan?.label || planId,
         priceKrw:      plan?.price_krw ?? null,
         nextBillingAt: sd.next_billing_at || null,
@@ -188,6 +204,30 @@ export default function SubscribePage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 완료 카드 → 5초 후 자동 복귀.
+  //   ★ 조건부 return(loading/done) 보다 위에 있어야 한다. 훅은 매 렌더 같은 순서로 호출돼야 한다.
+  //   done 이 채워진 뒤에만 동작하며, 언마운트·즉시이동 시 cleanup 이 타이머를 지운다.
+  useEffect(() => {
+    if (!done) return;
+    let n = RETURN_SEC;
+    setLeftSec(n);
+    const tick = setInterval(() => {
+      n -= 1;
+      setLeftSec(n > 0 ? n : 0);
+    }, 1000);
+    const timer = setTimeout(() => goService(done.planId), RETURN_SEC * 1000);
+    return () => { clearInterval(tick); clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done]);
+
+  // 타이머·버튼 공용 이동 함수. navRef 로 1회만 통과시킨다.
+  //   replace 인 이유: 뒤로가기로 완료 화면(=이미 끝난 결제)에 되돌아오지 못하게 한다.
+  function goService(planId) {
+    if (navRef.current) return;
+    navRef.current = true;
+    router.replace(returnUrl(planId));
   }
 
   function fmtDate(iso) {
@@ -272,7 +312,15 @@ export default function SubscribePage() {
             <div style={S.doneNote}>
               결제 완료 즉시 이용할 수 있습니다. 매월 같은 날짜에 동일 플랜으로 자동 갱신됩니다.
             </div>
-            <Link href="/" style={S.doneBtn}>서비스로 이동</Link>
+            {/* [SUBSCRIBE-POST-PAYMENT-RETURN-01] Link → button.
+                Link 는 클릭을 가로채 이동해 버려 타이머 취소와 중복 navigation 가드를
+                걸 수 없다. 목적지는 타이머와 동일하다. */}
+            <button type="button" style={S.doneBtn} onClick={() => goService(done.planId)}>
+              서비스로 이동
+            </button>
+            <div style={S.doneCount}>
+              {leftSec > 0 ? `${leftSec}초 후 자동으로 이동합니다` : '이동 중…'}
+            </div>
           </div>
         </div>
         {Footer}
@@ -438,7 +486,8 @@ const S = {
   doneVal:   { fontSize: 13.5, color: '#2c2340', fontWeight: 800 },
   doneCode:  { fontSize: 11, color: '#8b83a0', fontWeight: 700, wordBreak: 'break-all', textAlign: 'right' },
   doneNote:  { marginTop: 16, padding: '11px 12px', background: '#F7F5FB', borderRadius: 10, fontSize: 11.5, color: '#5a5a6a', lineHeight: 1.65, textAlign: 'left' },
-  doneBtn:   { display: 'block', marginTop: 18, padding: '11px 0', borderRadius: 10, background: '#4A148C', color: '#fff', fontSize: 13, fontWeight: 800, textDecoration: 'none', boxShadow: '0 4px 14px #4A148C3d' },
+  doneBtn:   { display: 'block', width: '100%', marginTop: 18, padding: '12px 0', border: 0, borderRadius: 10, background: '#4A148C', color: '#fff', fontSize: 13.5, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 4px 14px #4A148C3d' },
+  doneCount: { marginTop: 10, fontSize: 11.5, color: '#8b83a0', fontWeight: 700 },
 
   footerZone: { borderTop: '1px solid #E8E0F4', background: '#fff', padding: '18px 24px 8px' },
   policyRow:  { display: 'flex', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 },
