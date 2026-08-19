@@ -73,6 +73,10 @@ export default function SubscribePage() {
   // done: issue-billing-key가 200을 반환한 뒤에만 채워진다.
   //       = 첫 달 실청구까지 성공한 상태. 카드등록만으로는 절대 채우지 않는다.
   const [done, setDone]         = useState(null);
+  // [SUBSCRIBE-CURRENT-PLAN-NOT-REFLECTED-01] 현재 이용 중인 플랜 id.
+  //   ★ 신규 API 를 만들지 않는다. check-quota 가 이미 plan_id 를 반환한다(accounts.plan SoT).
+  //     여기서 별도 조회원을 만들면 플랜 판정 출처가 2개가 된다.
+  const [curPlan, setCurPlan]   = useState(null);
   // [SUBSCRIBE-POST-PAYMENT-RETURN-01] 자동 복귀 가드.
   //   타이머와 버튼이 같은 목적지로 각각 navigate 하면 히스토리가 2개 쌓인다.
   //   먼저 실행된 쪽만 통과시킨다. state 가 아니라 ref 인 이유: 리렌더를 유발하면
@@ -88,6 +92,24 @@ export default function SubscribePage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  }, []);
+
+  // [SUBSCRIBE-CURRENT-PLAN-NOT-REFLECTED-01] 현재 플랜 조회.
+  //   index.js 와 동일 호출 규약(GET + auth_user_id). 실패해도 화면은 그대로 뜬다 —
+  //   현재 플랜 표시는 보조 정보이며, 결제 차단의 정본은 서버 게이트다.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const uid = session?.user?.id;
+        if (!uid) return;
+        const r = await fetch(`/api/publish/check-quota?auth_user_id=${encodeURIComponent(uid)}`);
+        const j = await r.json();
+        if (alive && j && j.ok !== false && j.plan_id) setCurPlan(String(j.plan_id).toLowerCase());
+      } catch (_) {}
+    })();
+    return () => { alive = false; };
   }, []);
 
   async function handleSubscribe(planId) {
@@ -181,7 +203,10 @@ export default function SubscribePage() {
         return;
       }
       if (subRes.status === 409) {
-        setMsg('이미 이용 중인 구독이 있습니다.');
+        // [SUBSCRIBE-409-REASON-COLLAPSED-01] 서버가 보낸 사유를 그대로 쓴다.
+        //   PAYMENT_PAST_DUE 와 QUOTA_REMAINING 은 다른 상황이다. 하나로 뭉개면
+        //   미납 사용자에게 「이용 중」으로 표시돼 정반대 뜻이 된다.
+        setMsg(sd?.message || '현재 상태에서는 새 이용권을 구매할 수 없습니다.');
         return;
       }
       if (!subRes.ok || !sd?.ok) {
@@ -340,6 +365,10 @@ export default function SubscribePage() {
           {plans.map(p => {
             const ac = acOf(p.id);
             const isFree = p.id === 'free';
+            // [SUBSCRIBE-CURRENT-PLAN-NOT-REFLECTED-01] 현재 이용 중 판정.
+            //   ★ 배지 슬롯은 1개다. 「현재 이용 중」이 추천배지보다 우선한다.
+            //     두 개를 나란히 두면 labelRow minHeight 20 이 깨져 5장 가격선이 어긋난다.
+            const isCur = !!curPlan && String(p.id).toLowerCase() === curPlan;
             return (
               <div
                 key={p.id}
@@ -351,9 +380,9 @@ export default function SubscribePage() {
               >
                 <div style={S.labelRow}>
                   <div style={{ ...S.planLabel, color: ac }}>{p.label}</div>
-                  {BADGE[p.id] && (
+                  {(isCur || BADGE[p.id]) && (
                     <span style={{ ...S.badge, color: ac, background: `${ac}12`, border: `1px solid ${ac}2e` }}>
-                      {BADGE[p.id]}
+                      {isCur ? '현재 이용 중' : BADGE[p.id]}
                     </span>
                   )}
                 </div>
@@ -383,14 +412,14 @@ export default function SubscribePage() {
                 <div style={S.ctaZone}>
                   <button
                     style={
-                      isFree
+                      (isFree || isCur)
                         ? S.btnDisabled
                         : { ...S.btn, background: ac, boxShadow: `0 4px 14px ${ac}3d` }
                     }
-                    disabled={isFree || submitting}
+                    disabled={isFree || isCur || submitting}
                     onClick={() => handleSubscribe(p.id)}
                   >
-                    {isFree ? '기본 플랜' : '결제하기'}
+                    {isFree ? '기본 플랜' : (isCur ? '현재 이용 중' : '결제하기')}
                   </button>
                 </div>
               </div>
