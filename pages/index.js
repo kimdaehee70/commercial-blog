@@ -7691,7 +7691,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
           <style>{`
             .planCard { transition: transform .18s ease, box-shadow .18s ease; }
             .planCard:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(70,30,120,.13); }
-            .planCard.isHi:hover { transform: translateY(-10px) scale(1.05); }
+            .planCard.isHi:hover { transform: translateY(-4px); box-shadow: 0 14px 34px rgba(70,30,120,.16); }
             .planCta:focus-visible { outline: 2px solid #6A1B9A; outline-offset: 2px; }
             /* 가격은 카드 내 최대 요소로 유지 — 5열 폭에 맞춰 clamp */
             .planPrice { font-size: clamp(15px, 1.35vw, 21px); }
@@ -7706,6 +7706,8 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             @media (prefers-reduced-motion: reduce) {
               .planCard, .planCard:hover, .planCard.isHi:hover { transition: none; transform: none; }
             }
+            /* 안내박스 2단 — 항목(줄) 단위로만 컬럼을 나눈다. 문장 중간 분할 금지. */
+            .planNotice > div { break-inside: avoid; page-break-inside: avoid; }
           `}</style>
           {plansErr ? (
             /* API 실패 — 빈 화면 금지. 카드 0개로 두면 심사 중 상품이 없는 화면이 노출된다. */
@@ -7736,8 +7738,9 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                   borderRadius: 15, display: "flex", flexDirection: "column",
                   border: crown ? "1.5px solid #C9A227" : (highlight ? `1.5px solid ${ac}` : (cur ? `1.5px solid ${ac}55` : "1px solid #ECE7F5")),
                   padding: "18px 11px 15px", position: "relative", textAlign: "center",
-                  /* 5열에서 scale 확대는 카드 폭을 넘겨 이웃과 겹친다 — 돌출은 translateY 만 사용 */
-                  transform: highlight ? "translateY(-6px)" : "none", zIndex: highlight ? 2 : 1,
+                  /* [PLAN-CARD-V2-LAYOUT-5COL-01] 돌출(translateY/scale) 전면 제거 — 5장 상·하단선 완전 동일.
+                     추천 위계는 배지 + 테두리 + CTA 채움색으로 충분히 전달된다. */
+                  transform: "none", zIndex: highlight ? 2 : 1,
                   boxShadow: crown ? "0 10px 28px rgba(201,162,39,.20)"
                     : (highlight ? `0 14px 34px ${ac}22` : "0 2px 10px rgba(70,30,120,.05)") }}>
                   {(highlight || crown) && (
@@ -7829,8 +7832,8 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
           {/* ★ [S111] 서비스 제공기간·자동갱신 고지 — 전자상거래법 및 PG(KG이니시스) 심사 모니터링 항목.
               심사관이 요금제 화면에서 직접 확인한다. 요금·한도 변경 시 PLANS / lib/billing/plans.js /
               lib/policies/refund.js 건당 단가와 함께 갱신할 것(이중 관리 지점). */}
-          <div style={{
-            width: "100%", boxSizing: "border-box", margin: "28px 0 0", padding: "15px 20px",
+          <div className="planNotice" style={{
+            width: "100%", boxSizing: "border-box", margin: "26px 0 0", padding: "15px 20px",
             background: "#fafafd", border: "1px solid #e8e4f0", borderRadius: 12,
             fontSize: 11.5, color: "#5a5a6a", lineHeight: 1.7, textAlign: "left",
             columnCount: 2, columnGap: 26,
@@ -7839,12 +7842,13 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               columnSpan: "all" }}>
               서비스 제공기간 및 이용 안내
             </div>
-            · 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.<br />
-            · 자동갱신 — 월 정기결제이며 매 결제일에 동일 플랜으로 자동 갱신됩니다. 해지 시 다음 결제일부터 청구되지 않으며, 이미 결제된 이용기간은 만료일까지 이용할 수 있습니다.<br />
-            · 제공 건수 — 각 플랜의 제공 생성 건수는 이용기간 내 자유롭게 사용할 수 있으며, 이용기간 시작 시 초기화되고 다음 기간으로 이월되지 않습니다. 일별 사용 제한은 없습니다.<br />
-            · 초과 이용 — 제공 건수를 모두 사용하면 추가 생성이 중지됩니다. 초과 사용분에 대한 후불 추가 요금은 청구되지 않습니다.<br />
-            · 청약철회 및 환불 — 환불정책에 따르며, 사용한 생성 건수만큼 공제 후 잔액을 환불합니다.<br />
-            · 이용요금은 부가세 포함 금액입니다.
+            {/* 항목 1개 = div 1개. columnCount 2 가 문장 중간을 자르지 않도록 break-inside:avoid 대상이 된다. */}
+            <div style={{ marginBottom: 4 }}>· 서비스 제공기간 — 결제일로부터 1개월(월 단위). 별도 배송이 없는 온라인 서비스로, 결제 완료 즉시 이용할 수 있습니다.</div>
+            <div style={{ marginBottom: 4 }}>· 자동갱신 — 월 정기결제이며 매 결제일에 동일 플랜으로 자동 갱신됩니다. 해지 시 다음 결제일부터 청구되지 않으며, 이미 결제된 이용기간은 만료일까지 이용할 수 있습니다.</div>
+            <div style={{ marginBottom: 4 }}>· 제공 건수 — 각 플랜의 제공 생성 건수는 이용기간 내 자유롭게 사용할 수 있으며, 이용기간 시작 시 초기화되고 다음 기간으로 이월되지 않습니다. 일별 사용 제한은 없습니다.</div>
+            <div style={{ marginBottom: 4 }}>· 초과 이용 — 제공 건수를 모두 사용하면 추가 생성이 중지됩니다. 초과 사용분에 대한 후불 추가 요금은 청구되지 않습니다.</div>
+            <div style={{ marginBottom: 4 }}>· 청약철회 및 환불 — 환불정책에 따르며, 사용한 생성 건수만큼 공제 후 잔액을 환불합니다.</div>
+            <div>· 이용요금은 부가세 포함 금액입니다.</div>
           </div>
         </div>
       );
