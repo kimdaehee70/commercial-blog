@@ -482,11 +482,49 @@ export default async function handler(req, res) {
     const rankVals = Object.values(rankDetail);
     const observedRank = rankVals.length ? Math.min(...rankVals) : null;
 
+    // ─── [OBSERVATION-KEYWORD-IDENTITY-01] 관측 검색어 Identity 1회 확정 ───
+    // 원칙: 한 글의 관측 검색어는 최초 확정 후 변경 금지.
+    //
+    // 실측된 결함 — 화면(admin/publish.js · admin/observations.js)이 저장 직전
+    //   buildNaverLinks() 로 '현재 규칙의 Core' 를 재계산해 observed_keyword 로 보낸다.
+    //   그 결과 코드가 바뀌면 과거 글의 검색어까지 소급해 바뀌었다.
+    //     #1611  08-06·08-10 「평내동 거실수납장제작」 1위 alive
+    //          → 08-19 「평내동 인테리어」 fossil        (검색시장 자체가 교체됨)
+    //     #1583  「평내동 전체장판」 2위 → 「평내동 인테리어」 fossil
+    //     #1643 · #1788 동일 구조. 운영 4건 확인.
+    //   서로 다른 검색시장의 관측치가 한 Timeline 에 섞이면 ORBIT 상관분석의
+    //   입력 자체가 거짓이 된다. 되돌릴 수 없으므로 출시 후 이월 불가.
+    //
+    // 조치: 이 글에 이미 Timeline 이 있으면 최초 observed_keyword 를 정본으로 고정한다.
+    //   화면이 무엇을 보내오든 서버가 최종 판정한다(안전장치 정본은 서버).
+    //   ★ 클라이언트 2곳이 아니라 이 1지점에서 막는다 — 두 화면이 여기로 수렴하므로
+    //     화면별 중복 로직·신규 화면 누락이 생기지 않는다.
+    //   ★ 참조 구현: observe-batch.js L83 (prev?.observed_keyword 유지) 와 동일 사상.
+    //   ★ 신규 글(Timeline 없음) → _fixedKeyword=null → 기존 동작 그대로. 무영향.
+    //   ★ 과거 행은 읽기만 한다. UPDATE/DELETE 0건. 스키마 무변경.
+    let _fixedKeyword = null;
+    try {
+      const { data: _firstObs, error: _foErr } = await supabaseAdmin
+        .from('publish_metrics')
+        .select('observed_keyword')
+        .eq('publish_id', publishId)
+        .not('observed_keyword', 'is', null)
+        .order('created_at', { ascending: true })
+        .limit(1);
+      if (_foErr) throw _foErr;
+      _fixedKeyword = _firstObs?.[0]?.observed_keyword || null;
+    } catch (e) {
+      // Identity 조회 실패 시 관측 저장을 막지 않는다 — 관측 기회 상실이 더 큰 손실.
+      // 다만 어느 글에서 고정에 실패했는지는 반드시 남긴다(추후 오염 판별 근거).
+      console.warn('[observations:POST] identity lookup failed', publishId, e.message);
+    }
+
     const insertRow = {
       publish_id: publishId,
       observed_date: new Date().toISOString().slice(0, 10),
       days_since_publish: daysSincePublish,
-      observed_keyword: b.observed_keyword || null,
+      // [OBSERVATION-KEYWORD-IDENTITY-01] 최초 확정값 우선. 없을 때만 화면 전달값.
+      observed_keyword: _fixedKeyword || b.observed_keyword || null,
       observed_rank: observedRank,
       alive_status: b.alive_status || null,
       check_cycle: b.check_cycle || null,

@@ -149,12 +149,23 @@ const fmtDate = (s) => {
 
 // [LENS-CORE-SOT-01] 검색어 우선순위 — 3단.
 //   ① row.core_keyword          생성 시점 확정 Core(관측축 SoT). 정본.
-//   ② buildObservationCore(...)  legacy(core_keyword NULL) 행 폴백. lib 단일 계산.
-//   ③ 제목 앞머리                 축 자체가 없는 행의 최후 폴백(기존 동작 보존).
+//   ② row.full_keyword          [OBSERVATION-KEYWORD-IDENTITY-01] legacy(core NULL) 행의 실제 검색시장.
+//   ③ buildObservationCore(...)  축 자체가 없는 행 폴백. lib 단일 계산.
+//   ④ 제목 앞머리                 최후 폴백(기존 동작 보존).
 //   ★ region+treatment_name 재조립은 폐기. 화면마다 다른 검색어를 열던 원인.
+//
+// [OBSERVATION-KEYWORD-IDENTITY-01] ② full_keyword 삽입 근거 — 실측.
+//   core_keyword NULL 행이 ③으로 떨어져 「지역+업종」으로 재계산되고 있었다.
+//   #1611: 최초 관측 「평내동 거실수납장제작」(1위) → 화면 재계산 「평내동 인테리어」
+//   #1583: 최초 관측 「평내동 전체장판」(2위)     → 화면 재계산 「평내동 인테리어」
+//   두 값 모두 full_keyword 와 일치한다. 즉 full_keyword 가 그 글의 실제 검색시장이다.
+//   ★ enqueue.js L55 의 폴백 순서(core → full → active → keyword)와 동일화.
+//     화면과 관측 큐가 같은 글을 서로 다른 검색어로 재던 불일치를 제거한다.
+//   ★ core_keyword 가 있는 신규 행은 ①에서 끝나므로 무영향.
 const extractSearchKeyword = (row) => {
   if (!row) return '';
   const core = row.core_keyword
+    || row.full_keyword
     || buildObservationCore(row.industry, row.region, row.cluster);
   if (core) return core;
   const title = row.title || '';
