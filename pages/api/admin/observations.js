@@ -181,7 +181,7 @@ async function buildList(q = {}) {
   const posts = await fetchAll(() =>
     supabaseAdmin
       .from('publish_history')
-      .select('id, title, industry, region, treatment_name, core_keyword, cluster, naver_post_url, source_post_id, created_at, published_at, publish_status')
+      .select('id, title, industry, region, treatment_name, core_keyword, full_keyword, cluster, naver_post_url, source_post_id, created_at, published_at, publish_status')
       .order('created_at', { ascending: false })
   );
 
@@ -269,6 +269,14 @@ async function buildList(q = {}) {
         region: p.region || null,
         naver_post_url: p.naver_post_url || null,
         treatment_name: p.treatment_name || null,   // [세션84] 관측 패널 검색어 조립용(region+treatment_name)
+        // [OBSERVATION-KEYWORD-IDENTITY-01] 검색어 축 3개 전달 — 매핑 누락 보강.
+        //   화면의 extractSearchKeyword 는 core_keyword → full_keyword → buildObservationCore(cluster)
+        //   순으로 판단하는데, 이 LIST 응답에 세 값이 전부 빠져 있었다.
+        //   그 결과 관측 화면은 항상 최후 폴백(제목 앞머리)으로 떨어지고 있었다.
+        //   ★ select 에 컬럼을 넣는 것만으로는 부족하다 — 이 응답은 스프레드가 아니라 명시 매핑이다.
+        core_keyword: p.core_keyword || null,
+        full_keyword: p.full_keyword || null,
+        cluster: p.cluster || null,
         created_at: p.created_at || null,
         published_at: p.published_at || null,
         obs_admin_count: aCnt,

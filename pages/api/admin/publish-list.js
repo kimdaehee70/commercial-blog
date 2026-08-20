@@ -120,7 +120,7 @@ export default async function handler(req, res) {
         .from('publish_history')
         .select(`
           id, title, industry, region, treatment_name,
-          core_keyword, cluster,
+          core_keyword, full_keyword, cluster,
           naver_post_url, publish_status, source_post_id,
           account_id,
           created_at, published_at, deleted_at
