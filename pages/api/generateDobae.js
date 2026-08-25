@@ -31,7 +31,7 @@ import {
 import { DOBAE_FLOW, DOBAE_SECTION_PHOTO } from "../../lib/dobae-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
 import { parseSite, buildSiteTitleOrNull, insertSiteBeforeHashtags } from "../../lib/siteBlock.js";
-import { buildIntentTitleOrNull } from "../../lib/titleEngine.js";
+import { buildIntentTitleOrNull, resolveIntentOrNull } from "../../lib/titleEngine.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -184,7 +184,10 @@ export default async function handleDobae(req, res) {
 
     const kw = treatment.name;
     const mat = formatMaterial(material);
-    const ctx = { site, material: mat };
+    // [S217 DOBAE-INTENT-BODY-ALIGNMENT-01] Intent value into body prompt ctx.
+    //   Title string is NOT passed. Only the intent id decided by titleEngine SoT.
+    const _intent = resolveIntentOrNull(region, treatment, "dobae");
+    const ctx = { site, material: mat, intent: _intent && _intent.id ? _intent.id : null };
     const systemPrompt = buildSystemPrompt(region, treatment, ctx);
 
     const writtenSections = new Set();
