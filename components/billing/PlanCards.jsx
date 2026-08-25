@@ -323,10 +323,14 @@ export default function PlanCards({
   //   여백·최소높이는 이 플래그가 정한다. 색·글자크기·버튼크기는 어느 쪽도 건드리지 않는다.
   const dense = variant === 'compact';
 
+  // [PLAN-CARD-FREE-01] free 는 판매상품이 아니다. 렌더에서만 제외한다.
+  //   ★ plans 원본·DB·quota·currentPlanId 로직 무접촉. 표시 계층 단독 변경.
+  const visiblePlans = plans.filter((p) => p.id !== 'free');
+
   return (
     <div className="planCardsRoot">
       <div className="planGrid" style={dense ? { ...S.grid, ...S.gridDense } : S.grid}>
-        {plans.map((p, i) => {
+        {visiblePlans.map((p, i) => {
           const ac = acOf(p.id);
           const isFree = p.id === 'free';
           // [SUBSCRIBE-CURRENT-PLAN-NOT-REFLECTED-01] 현재 이용 중 판정.
@@ -342,7 +346,7 @@ export default function PlanCards({
                  BASIC↔PRO / STANDARD↔ENTERPRISE 로 세로가 맞는다.
                  ★ 인라인이 아니라 클래스인 이유: 2열·1열로 더 접힐 때 이 규칙이
                    남아 있으면 안 되며, 해제는 @container 가 해야 한다. */
-              className={dense && i === 3 && plans.length === 5 ? 'shiftStart' : undefined}
+              className={dense && i === 3 && visiblePlans.length === 5 ? 'shiftStart' : undefined}
               style={{
                 ...S.card,
                 ...(dense ? S.cardDense : null),
@@ -413,19 +417,19 @@ export default function PlanCards({
           ★ @supports 폴백: 컨테이너 쿼리 미지원 브라우저에서는 종전 뷰포트 규칙 그대로. */}
       <style jsx>{`
         .planCardsRoot { container-type: inline-size; }
-        .planGrid { grid-template-columns: repeat(5, 1fr); }
-        @container (max-width: 1180px) {
+        .planGrid { grid-template-columns: repeat(4, 1fr); }
+        @container (max-width: 820px) {
           .planGrid { grid-template-columns: repeat(3, 1fr); }
           .planGrid .shiftStart { grid-column-start: 2; }
         }
-        @container (max-width: 780px)  {
+        @container (max-width: 620px)  {
           .planGrid { grid-template-columns: repeat(2, 1fr); }
           .planGrid .shiftStart { grid-column-start: auto; }
         }
-        @container (max-width: 500px)  { .planGrid { grid-template-columns: 1fr; } }
+        @container (max-width: 420px)  { .planGrid { grid-template-columns: 1fr; } }
         @supports not (container-type: inline-size) {
-          @media (max-width: 1260px) { .planGrid { grid-template-columns: repeat(3, 1fr); } }
-          @media (max-width: 820px)  { .planGrid { grid-template-columns: repeat(2, 1fr); } }
+          @media (max-width: 900px)  { .planGrid { grid-template-columns: repeat(3, 1fr); } }
+          @media (max-width: 660px)  { .planGrid { grid-template-columns: repeat(2, 1fr); } }
           @media (max-width: 520px)  { .planGrid { grid-template-columns: 1fr; } }
         }
       `}</style>
@@ -461,8 +465,8 @@ const S = {
   //     여기에 repeat(5,1fr) 이 남아 있으면 접힘 규칙이 영원히 적용되지 않는다.
   //     종전 subscribe.js 에도 동일 결함이 있었으나 뷰포트 1920 에서 5열이 정답이라
   //     증상이 드러나지 않았을 뿐이다(DevTools 실측: 컨테이너 460px 에서도 5열 유지).
-  //   ★ 열 수 결정권은 아래 .planGrid 규칙 1곳뿐이다. 기본값이 repeat(5,1fr) 이므로
-  //     5열 정본은 그대로다. <style jsx> 는 SSR 시 함께 인라인되어 깜빡임도 없다.
+  //   ★ 열 수 결정권은 아래 .planGrid 규칙 1곳뿐이다. 기본값이 repeat(4,1fr) 이므로
+  //     [PLAN-CARD-FREE-01] 유료 4카드 한 줄이 정본이다. <style jsx> 는 SSR 시 함께 인라인되어 깜빡임도 없다.
   grid:    { display: 'grid', gap: 17, alignItems: 'stretch' },
   card:    { display: 'flex', flexDirection: 'column', border: '1px solid #E8E0F4', borderRadius: 16, padding: '22px 20px 20px', background: '#fff', boxSizing: 'border-box' },
 
