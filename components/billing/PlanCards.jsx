@@ -496,12 +496,12 @@ const S = {
   //     상품 카드가 아니라 설정 목록처럼 보인다(스틱형 기각 사유와 동일).
   //   ★ desc 의 minHeight 를 유지하는 이유는 grid 모드와 같다 — CTA 버튼선 일치의 근거다.
   //     값만 62 → 41 로 줄이고 역할은 그대로 둔다.
-  gridDense:     { gap: 10 },
-  cardDense:     { padding: '12px 16px 11px' },
-  priceDense:    { marginTop: 3 },
-  quotaBoxDense: { marginTop: 7, padding: '6px 10px', minHeight: 42 },
-  descDense:     { marginTop: 6, paddingTop: 6, minHeight: 41 },
-  ctaZoneDense:  { paddingTop: 8 },
+  gridDense:     { gap: 10, marginTop: 10 },
+  cardDense:     { padding: '18px 18px 16px' },
+  priceDense:    { marginTop: 7 },
+  quotaBoxDense: { marginTop: 12, padding: '9px 12px', minHeight: 52 },
+  descDense:     { marginTop: 10, paddingTop: 10, minHeight: 54 },
+  ctaZoneDense:  { paddingTop: 13 },
   btn:     { width: '100%', padding: '11.5px 0', border: 0, borderRadius: 10, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit' },
   btnDisabled: { width: '100%', padding: '11.5px 0', border: '1.5px solid #E8E0F4', borderRadius: 10, background: '#F7F5FB', color: '#b4adc4', cursor: 'not-allowed', fontSize: 14, fontWeight: 800, fontFamily: 'inherit' },
 
@@ -514,7 +514,7 @@ const S = {
   //   ★ 목적은 첫 화면에서 3+2 카드 + 이용안내 6항목이 스크롤 없이 함께 보이는 것이다.
   //     항목을 줄이거나 접는 방식은 쓰지 않는다. 이 문안은 전자상거래법·PG 심사 고지문이라
   //     화면에 전량 노출되어 있어야 한다.
-  noticeCompact:     { marginTop: 12, padding: '14px 16px 15px', fontSize: 12, lineHeight: 1.55 },
+  noticeCompact:     { marginTop: 4, padding: '14px 16px 15px', fontSize: 12, lineHeight: 1.55 },
   noticeHeadCompact: { fontSize: 13, marginBottom: 9 },
   noticeItemCompact: { marginTop: 5 },
 
