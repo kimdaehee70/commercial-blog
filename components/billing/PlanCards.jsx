@@ -372,11 +372,13 @@ export default function PlanCards({
                 {/* free 는 결제 상품이 아니므로 「월」 기준이 유지된다. */}
                 {/* [PLAN-CARD-PERIOD-01] KG 심사 요건 — 비실물(컨텐츠) 서비스는 이용기간 표기 필수.
                     ★ 「30일」 금지. 확정 정책은 달력 30일 고정이 아니라 결제일 +1개월이다.
-                    하단 안내 「서비스 제공기간 — 결제일로부터 1개월(월 단위)」와 동일 기준. */}
-                <div style={{ ...S.quota, color: ac }}>
+                    하단 안내 「서비스 제공기간 — 결제일로부터 1개월(월 단위)」와 동일 기준.
+                    ★ 개행은 명시(\n + pre-line)한다. 자연 줄바꿈에 맡기면 건수 자릿수(30/60/100/150)에
+                      따라 BASIC만 1줄로 남아 4카드 정렬이 어긋난다. 실측으로 확인된 사항. */}
+                <div style={{ ...S.quota, ...S.quotaWrap, color: ac }}>
                   {isFree
                     ? `월 ${p.monthly_quota}건 포함`
-                    : `이용기간 1개월 · ${p.monthly_quota}건 포함`}
+                    : `이용기간 1개월 ·\n${p.monthly_quota}건 포함`}
                 </div>
                 {/* [SUBSCRIBE-OVERAGE-TEXT-UNBACKED-01] 후불 초과청구는 제공하지 않는다. */}
                 <div style={S.overage}>이용기간 내 자유롭게 사용</div>
@@ -478,14 +480,18 @@ const S = {
   planLabel: { fontSize: 11.5, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.06em' },
   badge:     { fontSize: 10, fontWeight: 900, padding: '3.5px 8px', borderRadius: 999, whiteSpace: 'nowrap', letterSpacing: '-.01em' },
 
-  price:     { fontSize: 28, fontWeight: 900, color: '#2c2340', marginTop: 9, letterSpacing: '-.02em' },
+  // [PLAN-CARD-CENTER-01] 플랜명·배지(labelRow)는 좌우 분할 유지. 금액부터 아래만 중앙 정렬한다.
+  price:     { fontSize: 28, fontWeight: 900, color: '#2c2340', marginTop: 9, letterSpacing: '-.02em', textAlign: 'center' },
 
-  quotaBox: { marginTop: 15, padding: '11px 12px', borderRadius: 11, minHeight: 56, boxSizing: 'border-box' },
+  quotaBox: { marginTop: 15, padding: '11px 12px', borderRadius: 11, minHeight: 84, boxSizing: 'border-box', textAlign: 'center' },
   quota:    { fontSize: 13.5, fontWeight: 800 },
+  // [PLAN-CARD-PERIOD-01] 2줄 확정 토큰. pre-line 이 \n 을 살리고, lineHeight 명시로
+  //   상속값 변동에 관계없이 4카드 줄높이가 동일해진다. 폰트크기·굵기 무접촉.
+  quotaWrap: { whiteSpace: 'pre-line', lineHeight: 1.45 },
   overage:  { marginTop: 3.5, fontSize: 11.5, color: '#8b83a0', fontWeight: 700 },
 
   // minHeight 고정 = CTA Y축 일치의 근거. description 줄 수가 플랜마다 달라도 버튼선이 유지된다.
-  desc:    { marginTop: 13, fontSize: 12.5, color: '#4a4458', lineHeight: 1.6, borderTop: '1px solid #F4F0FA', paddingTop: 12, minHeight: 62 },
+  desc:    { marginTop: 13, fontSize: 12.5, color: '#4a4458', lineHeight: 1.6, borderTop: '1px solid #F4F0FA', paddingTop: 12, minHeight: 62, textAlign: 'center' },
 
   ctaZone: { marginTop: 'auto', paddingTop: 16 },
 
@@ -502,7 +508,7 @@ const S = {
   gridDense:     { gap: 10, marginTop: 10 },
   cardDense:     { padding: '18px 18px 16px' },
   priceDense:    { marginTop: 7 },
-  quotaBoxDense: { marginTop: 12, padding: '9px 12px', minHeight: 52 },
+  quotaBoxDense: { marginTop: 12, padding: '9px 12px', minHeight: 80 },
   descDense:     { marginTop: 10, paddingTop: 10, minHeight: 54 },
   ctaZoneDense:  { paddingTop: 13 },
   btn:     { width: '100%', padding: '11.5px 0', border: 0, borderRadius: 10, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 800, fontFamily: 'inherit' },
