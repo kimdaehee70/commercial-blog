@@ -370,10 +370,13 @@ export default function PlanCards({
 
               <div style={{ ...S.quotaBox, ...(dense ? S.quotaBoxDense : null), background: `${ac}0d`, border: `1px solid ${ac}1f` }}>
                 {/* free 는 결제 상품이 아니므로 「월」 기준이 유지된다. */}
+                {/* [PLAN-CARD-PERIOD-01] KG 심사 요건 — 비실물(컨텐츠) 서비스는 이용기간 표기 필수.
+                    ★ 「30일」 금지. 확정 정책은 달력 30일 고정이 아니라 결제일 +1개월이다.
+                    하단 안내 「서비스 제공기간 — 결제일로부터 1개월(월 단위)」와 동일 기준. */}
                 <div style={{ ...S.quota, color: ac }}>
                   {isFree
                     ? `월 ${p.monthly_quota}건 포함`
-                    : `이용기간 ${p.monthly_quota}건 포함`}
+                    : `이용기간 1개월 · ${p.monthly_quota}건 포함`}
                 </div>
                 {/* [SUBSCRIBE-OVERAGE-TEXT-UNBACKED-01] 후불 초과청구는 제공하지 않는다. */}
                 <div style={S.overage}>이용기간 내 자유롭게 사용</div>
