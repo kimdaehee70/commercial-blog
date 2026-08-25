@@ -677,6 +677,47 @@ const INDUSTRY_TREATMENTS = {
   shaman: SHAMAN_TREATMENTS,  // ← 무속 상담 (공감형·상담소화자, 상황35 + 분야소개6 = 41 / cat=분야 라벨)
 };
 
+// ─────────────────────────────────────────────────────────────
+// [ORTHO-MENU-CONTAMINATION-01 · S216] 메뉴 → 소유업종 역참조 인덱스.
+//
+//   근거(실측): ALL_TREATMENTS_FLAT 은 전 업종을 가로질러 메뉴를 "검색"하는데,
+//     소유업종 "판정"은 등록 진료과(_deptOfMenuMap)에서만 한다. 이 비대칭 때문에
+//     단일과 계정이 타과 메뉴를 골라 생성하면 industry 가 대표업종으로 저장됐다.
+//     eye-v2 / urology-v2 등은 treatment 객체에 industry 필드가 없어 폴백이 새어나갔다.
+//
+//   ★ SoT 재사용 — 위 INDUSTRY_TREATMENTS(업종 id → 메뉴배열) 를 그대로 뒤집는다.
+//     새 목록을 만들지 않는다(이중 SoT 금지). *-data.js 변경 0 · 엔진 변경 0.
+//   ★ 모호(2개 이상 업종 중복) 키는 매핑하지 않는다 → 기존 CURRENT_INDUSTRY 폴백 유지.
+//     추측 귀속 금지. 정형외과↔신경외과 유사 메뉴명 등에서 오귀속을 만들지 않기 위함.
+//   ★ id 우선 · name 차선. 둘 다 미검출/모호면 undefined → 호출부 폴백.
+// ─────────────────────────────────────────────────────────────
+const _AMBIG = "__AMBIGUOUS__";
+const _TREATMENT_OWNER_INDEX = (() => {
+  const byId = new Map();
+  const byName = new Map();
+  const put = (m, k, ind) => {
+    const key = String(k || "").trim();
+    if (!key) return;
+    if (!m.has(key)) m.set(key, ind);
+    else if (m.get(key) !== ind) m.set(key, _AMBIG);
+  };
+  for (const ind of Object.keys(INDUSTRY_TREATMENTS)) {
+    const arr = INDUSTRY_TREATMENTS[ind];
+    if (!Array.isArray(arr)) continue;
+    for (const t of arr) { put(byId, t?.id, ind); put(byName, t?.name, ind); }
+  }
+  return { byId, byName };
+})();
+
+// ownerIndustryOf — 메뉴의 소유업종. 미검출·모호면 undefined(호출부 폴백).
+function ownerIndustryOf(treatment, treatmentId, treatmentName) {
+  const id = String(treatment?.id   || treatmentId   || "").trim();
+  const nm = String(treatment?.name || treatmentName || "").trim();
+  let own = id ? _TREATMENT_OWNER_INDEX.byId.get(id) : undefined;
+  if (!own || own === _AMBIG) own = nm ? _TREATMENT_OWNER_INDEX.byName.get(nm) : undefined;
+  return (own && own !== _AMBIG) ? own : undefined;
+}
+
 // 업종별 인사말 + 예시문장
 const INDUSTRY_CONFIG = {
   clinic: {
@@ -9378,7 +9419,13 @@ export default function Home() {
     return m;
   }, [hospitalMenuSections]);
   //   메뉴명 → 진료과. 미등록(사용자 직접추가 extraMenus 등)이면 CURRENT_INDUSTRY 폴백.
-  const deptOfMenu = (name) => _deptOfMenuMap[String(name || "")] || CURRENT_INDUSTRY;
+  // [ORTHO-MENU-CONTAMINATION-01 · S216] 내부 폴백 제거.
+  //   근거(실측): 호출부 3곳(addMyMenuDept·removeMyMenuDept·_genIndustry) 전부
+  //   뒤에 `|| CURRENT_INDUSTRY` 를 이미 갖고 있다 = 폴백 이중.
+  //   내부 폴백이 _genIndustry 체인을 조기 확정시켜, 단일과 계정에서 타과 메뉴를
+  //   생성하면 industry 가 대표업종으로 저장됐다(실측 #1998~2001 tonometry·cystoscopy → ortho).
+  //   맵 미스 = "판정 불가" 신호(undefined). 폴백 결정은 호출부가 한다.
+  const deptOfMenu = (name) => _deptOfMenuMap[String(name || "")];
 
   // 우측 「나의 메뉴」 통합 — 전 진료과 flat merge(읽기 전용). 저장은 여전히 dept별.
   //   [{ name, dept, deptLabel, emoji, cat }] — 카드에 진료과 배지 표시.
@@ -10387,6 +10434,10 @@ export default function Home() {
                       //   __dept 최우선 유지 → 병원 다중과 경로 영향 0.
                       || treatment?.industry
                       || deptOfMenu(treatment?.name || treatmentName)
+                      // [ORTHO-MENU-CONTAMINATION-01 · S216] 등록 진료과에 없는 메뉴의 소유업종 역참조.
+                      //   ALL_TREATMENTS_FLAT 로 "검색"된 타과 메뉴가 여기서 제 업종을 되찾는다.
+                      //   deptOfMenu 가 맞으면 여기까지 오지 않는다 → 기존 경로 회귀 0.
+                      || ownerIndustryOf(treatment, treatmentId, treatmentName)
                       || CURRENT_INDUSTRY;
 
     // 최종 방어: 그래도 없으면 최소 program 객체 만들기
