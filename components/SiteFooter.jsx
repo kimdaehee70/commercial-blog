@@ -82,6 +82,18 @@ export default function SiteFooter({ onDoc }) {
       <LinkItem id="privacy" label="개인정보처리방침" />
       {sep}
       <LinkItem id="refund" label="환불정책" />
+
+      {/* [FOOTER-LIABILITY-01] KG이니시스 심사 요건 — 「메인화면 하단 또는 별도페이지에
+          판매상품에 대한 책임여부 기재 필수」. 문안은 KG 요구자료 원문의 예시문구에서
+          상호명만 치환한 것이다. ★ 임의 수정 금지 — 심사 반려 사유가 된다.
+          width:100% — 부모가 flexWrap:wrap 이므로 강제 줄바꿈된다. 상단 한 줄 무접촉. */}
+      <div style={{ width: "100%", marginTop: 6 }}>
+        <span>
+          다원테크에서 운영하는 사이트에서 판매되는 모든 상품은 다원테크에서 책임지고 있습니다.
+        </span>
+        {sep}
+        <span>민원 담당자 김대희 / 연락처 02-979-4546</span>
+      </div>
     </footer>
   );
 }
