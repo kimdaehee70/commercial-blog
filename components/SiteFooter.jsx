@@ -75,7 +75,7 @@ export default function SiteFooter({ onDoc }) {
       {sep}
       <span>support@ai-post.ai</span>
       {sep}
-      <span>010-9020-4545</span>
+      <span>02-979-4546</span>
       {sep}
       <LinkItem id="terms" label="이용약관" />
       {sep}
