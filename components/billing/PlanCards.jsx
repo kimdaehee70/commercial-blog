@@ -136,6 +136,21 @@ export default function PlanCards({
         return;
       }
 
+      // ── 1-b. 결제 고객정보(KG 필수: name / phoneNumber) 조회 ──
+      //    [BILLINGKEY-CUSTOMER-REQUIRED-01] KG이니시스 빌링키 발급은
+      //    customer.fullName·phoneNumber 가 REQUIRED. 누락 시 400 INVALID_REQUEST.
+      //    SoT = store_profiles(업체정보). 여기서 값을 새로 만들지 않는다(fallback 금지).
+      const stRes = await fetch('/api/me/store', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const st = await stRes.json();
+      const custName  = st?.store?.store_name || st?.storeName || '';
+      const custPhone = st?.store?.phone || '';
+      if (!custName || !custPhone) {
+        setMsg('업체정보에서 연락처를 먼저 등록해 주세요.');
+        return;
+      }
+
       // ── 2. 카드등록(빌링키 발급) 창 호출 ──
       //    이 단계에서는 돈이 빠져나가지 않는다. 카드 등록만 한다.
       const PortOne = (await import('@portone/browser-sdk/v2')).default;
@@ -152,6 +167,8 @@ export default function PlanCards({
         customer: {
           customerId: session.user?.id || undefined,
           email:      session.user?.email || undefined,
+          fullName:    custName,
+          phoneNumber: custPhone,
         },
         // 모바일 리디렉션 방식 대비. 복귀 후 처리는 미구현
         //   (PORTONE-MOBILE-REDIRECT-RETURN-01 / 운영키 이후 별도 축).
