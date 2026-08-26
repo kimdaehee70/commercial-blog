@@ -30,7 +30,7 @@ import {
 } from "../../lib/window-prompts";
 import { WINDOW_FLOW, WINDOW_SECTION_PHOTO } from "../../lib/window-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
-import { buildIntentTitleOrNull } from "../../lib/titleEngine.js";
+import { buildIntentTitleOrNull, resolveIntentOrNull } from "../../lib/titleEngine.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -178,7 +178,9 @@ export default async function handleWindow(req, res) {
     const kw = treatment.name;
     const sym = formatSymptom(symptom);
     const pt = getPartNote(part);
-    const ctx = { symptom: sym, part: part || "" };
+    // [S220 WINDOW-INTENT-BODY-ALIGNMENT-02] 제목과 동일 resolver. 본문용 재추첨 금지.
+    const _intent = resolveIntentOrNull(region, treatment, "window");
+    const ctx = { symptom: sym, part: part || "", intent: (_intent && _intent.id) ? _intent.id : null };
     const systemPrompt = buildSystemPrompt(region, treatment, ctx);
 
     const writtenSections = new Set();
