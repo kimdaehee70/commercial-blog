@@ -1,19 +1,31 @@
 // pages/signup.js
+// v0.4 — EMAIL-CONFIRM-REDIRECT-ENSURE-MISSING-01 : emailRedirectTo 명시
+//   변경 vs v0.3 (110차):
+//     1) signUp() options.emailRedirectTo = `${origin}/auth/callback` 추가. 그 외 무변경.
+//
+//   배경 (Confirm email ON 전환으로 드러난 연결 누락):
+//     Confirm email OFF 시절엔 가입 즉시 세션이 나와 이 파일이 직접 ensure 를 호출했다.
+//     ON 으로 바꾸자 세션이 없는 분기로 흐르고, 인증메일 링크가 Supabase Site URL
+//     (https://ai-post.ai = pages/index.js) 로 착지했다. index.js 에는 ensure 호출이 없다.
+//     결과: auth.users 는 email_confirmed_at 이 찍히고 로그인도 되는데
+//           accounts 행이 생성되지 않았다. (실측: auth 1행 / accounts 0행)
+//
+//   Site URL 을 /auth/callback 으로 바꾸는 방식(A안)은 기각.
+//     Site URL 은 비밀번호 재설정 등 다른 메일 템플릿의 기본 착지에도 쓰인다.
+//     가입 인증메일에만 국한해서 지정하는 것이 정확하다.
+//
+//   착지 후 흐름 (pages/auth/callback.js 기존 구현, 무수정):
+//     getSession → /api/account/ensure → accounts INSERT (plan=free)
+//     → enforceActiveStatus → resolveLanding(role)
+//
+//   FREEZE 준수: ensure.js / callback.js / login.js / 엔진 / publish.js 무영향
+//
+// ── 이하 110차 v0.3 주석 유지 ──
 // 110차 v0.3 — 즉시세션 가입 동선 정렬 (login.js 107차 / callback.js 109차와 1:1 일치)
-//   변경 vs 57차:
-//     1) resolveLanding(role) 추가 — owner→/admin/publish, 그 외(user 등)→/dashboard
-//        (기존: 가입 성공 시 무조건 /admin/publish 직행 → 신규 user가 owner 콘솔로 착지하던 버그)
-//     2) enforceActiveStatus(ensured) 추가 — active 외 상태 강제 로그아웃 + 차단 (login.js 58차와 동일)
-//     3) 착지 분기: ensure 응답 j.role 사용 (추가 조회 불필요)
-//   ※ confirm 활성 환경(세션 없음)은 종전대로 메일 확인 안내만 → 동선 분기 대상 아님
-//   FREEZE 준수: 엔진/publish.js/ensure.js/callback.js 무영향 (ensure 응답만 추가 소비)
-//
+//     1) resolveLanding(role) — owner→/admin/publish, 그 외→/
+//     2) enforceActiveStatus(ensured) — active 외 강제 로그아웃
+//     3) 착지 분기: ensure 응답 j.role 사용
 // 57차 v0.2: 클라이언트 직접 INSERT 제거 → /api/account/ensure 호출로 교체
-//   - 기존: supabase.from('accounts').insert() 클라이언트 직접 호출 → RLS 401
-//   - 변경: signUp 성공 후 access_token 확보 → ensure API (service_role) 호출
-//   - ensure.js와 callback.js는 FREEZE 유지
-//   - 이메일 confirm 활성 환경에서는 세션 없음 → INSERT 보류 (callback에서 처리)
-//
 // 46차 v0.1: signup 직후 클라이언트 INSERT (RLS 충돌로 실패 확인됨)
 
 import { useState } from 'react';
@@ -21,14 +33,11 @@ import Link from 'next/link';
 import { supabase } from '../lib/supabase';
 
 // 110차 — role별 진입 동선 (login.js 107차 resolveLanding / callback.js 109차와 1:1 동일)
-// owner → /admin/publish (운영 콘솔) / 그 외(user 등) → /dashboard (내 운영 현황)
-// role 출처: ensure 응답(j.role). 추가 조회 불필요.
 function resolveLanding(role) {
   return role === 'owner' ? '/admin/publish' : '/';
 }
 
 // 110차 — status 가드 (login.js 58차 enforceActiveStatus와 동일 규약)
-// active가 아닌 경우 강제 로그아웃 + 차단 사유 반환
 async function enforceActiveStatus(ensured) {
   if (!ensured?.ok) return { blocked: false };
   if (ensured.status && ensured.status !== 'active') {
@@ -64,9 +73,15 @@ export default function SignupPage() {
     }
 
     setLoading(true);
+    // EMAIL-CONFIRM-REDIRECT-ENSURE-MISSING-01
+    // emailRedirectTo 미지정 시 Supabase Site URL(= /) 로 착지하여 ensure 가 호출되지 않는다.
+    // /auth/callback 은 Redirect URLs 의 https://ai-post.ai/** 로 이미 허용돼 있다.
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
     setLoading(false);
 
@@ -75,15 +90,14 @@ export default function SignupPage() {
       return;
     }
 
-    // ── confirm 활성 환경 — session 없음 ─────────────────
-    // accounts INSERT는 사용자가 메일 확인 후 첫 로그인 시 callback/login에서 ensure 호출로 처리
+    // ── confirm 활성 환경 — session 없음 (현행 정본 경로) ─────────────
+    // accounts INSERT 는 인증링크 클릭 후 /auth/callback 의 ensure 호출로 처리된다.
     if (data?.user && !data?.session) {
       setMsg(`가입 요청 완료. ${email} 메일함에서 확인 링크를 클릭한 뒤 로그인하세요.`);
       return;
     }
 
-    // ── confirm 비활성 환경 — 즉시 세션 발급 ──────────────
-    // /api/account/ensure 호출 → accounts row 보장 (service_role 사용)
+    // ── confirm 비활성 환경 — 즉시 세션 발급 (현재 미사용 경로, 회귀 대비 유지) ──
     if (data?.session) {
       let ensured;
       try {
@@ -107,14 +121,12 @@ export default function SignupPage() {
         return;
       }
 
-      // 110차 — status 가드 (active 외 차단). 가입 직후엔 보통 active지만 규약 일치 위해 적용.
       const guard = await enforceActiveStatus(ensured);
       if (guard.blocked) {
         setErr(guard.message);
         return;
       }
 
-      // 110차 — role별 착지 (owner→/admin/publish, user→/dashboard)
       const landing = resolveLanding(ensured.role);
       setMsg(`가입 + 로그인 완료. 이동합니다... (role: ${ensured.role || 'user'})`);
       setTimeout(() => {
