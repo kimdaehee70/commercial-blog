@@ -51,7 +51,7 @@ import {
 import { requireOwner } from '../../../lib/guards';
 // [BOARD-PERIOD-SYNC-01] 캘린더 폴백식을 인라인 재구현하지 않는다.
 //   check-quota.js / me.js와 같은 함수를 써야 세 화면의 경계가 갈라지지 않는다.
-import { calendarMonthPeriod } from '../../../lib/billing/subscription';
+import { calendarMonthPeriod, lifetimeTrialPeriod } from '../../../lib/billing/subscription';
 
 // getActiveSubscription과 동일한 유효 구독 정의(정의부 기준).
 const VALID_SUB_STATUSES = ['active', 'canceled'];
@@ -158,7 +158,30 @@ export default async function handler(req, res) {
         }
       }
     }
-    const periodOf = aid => periodByAccount.get(aid) || calendarPeriod;
+    // [FREE-LIFETIME-TRIAL-3-01] FREE 계정은 가입일~현재 누적. 캘린더로 내리지 않는다.
+    //   check-quota.js / me.js 가 resolveBillingPeriod 로 내리는 판정과 같은 경계를 재현한다.
+    //   accounts 는 위에서 이미 전량 조회했으므로 추가 쿼리 0 (N+1 회피 원칙 유지).
+    const accById = new Map((accounts || []).map(a => [a.id, a]));
+    const periodCache = new Map();
+    const periodOf = aid => {
+      const sub = periodByAccount.get(aid);
+      if (sub) return sub;
+      if (periodCache.has(aid)) return periodCache.get(aid);
+      const a = accById.get(aid);
+      let per = calendarPeriod;
+      if (a && (a.plan || DEFAULT_PLAN_ID) === 'free') {
+        const lt = lifetimeTrialPeriod(a.created_at, now);
+        per = {
+          startMs: Date.parse(lt.start),
+          endMs: Date.parse(lt.end),
+          start: lt.start,
+          end: lt.end,
+          basis: 'lifetime',
+        };
+      }
+      periodCache.set(aid, per);
+      return per;
+    };
 
     // 4. account_id별 집계 — monthly는 계정별 [period.start, period.end) 범위만
     //    (구독 계정=구독기간 / 그 외=달력월. 정본 lt 상한 정합)
@@ -220,7 +243,7 @@ export default async function handler(req, res) {
         // BOARD-PERIOD-SYNC-01 신규(가산 — 기존 키 무변경)
         period_start: per.start,
         period_end: per.end,
-        period_basis: per.basis, // 'subscription' | 'calendar'
+        period_basis: per.basis, // 'subscription' | 'lifetime' | 'calendar'
       };
     });
 
@@ -258,6 +281,8 @@ export default async function handler(req, res) {
       // BOARD-PERIOD-SYNC-01: 달력월이 아닌 구독기간으로 집계된 계정 수.
       //   0이면 전 계정이 캘린더 기준 = 이전 동작과 동일하다는 뜻(회귀 판단용).
       subscription_period_accounts: rows.filter(r => r.period_basis === 'subscription').length,
+      // [FREE-LIFETIME-TRIAL-3-01] FREE 누적 기준으로 집계된 계정 수(회귀 판단용).
+      lifetime_period_accounts: rows.filter(r => r.period_basis === 'lifetime').length,
       over_quota_count: rows.filter(r => r.over_quota).length,
       // 87차 추가
       plans_source: planSourceInfo.source, // 'db' | 'fallback'

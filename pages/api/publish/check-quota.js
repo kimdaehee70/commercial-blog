@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     // 3. accounts 조회
     const { data: account, error: accErr } = await supabase
       .from('accounts')
-      .select('id, email, plan, role, status')
+      .select('id, email, plan, role, status, created_at')  // [FREE-LIFETIME-TRIAL-3-01] created_at = FREE 누적 기간 시작점
       .eq('auth_user_id', auth_user_id)
       .maybeSingle();
 
@@ -108,7 +108,8 @@ export default async function handler(req, res) {
     //   resolveBillingPeriod 내부 조회 실패 시에도 캘린더 폴백을 돌려주므로
     //   fail-open(quota 열림)이 발생하지 않는다.
     const now = new Date();
-    const period = await resolveBillingPeriod(account.id, now);
+    // [FREE-LIFETIME-TRIAL-3-01] account 재사용 — plan/created_at 재조회 없이 lifetime 판정.
+    const period = await resolveBillingPeriod(account.id, now, account);
     const monthStartUtc = period.start;
     const monthEndUtc = period.end;
 

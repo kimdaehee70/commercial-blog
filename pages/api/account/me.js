@@ -174,7 +174,8 @@ export default async function handler(req, res) {
     //   (응답의 plan / subscription 필드는 구독 정보 표시용으로 그대로 유지 — 용도가 다르다)
     let quota = null;
     try {
-      const period = normalizePeriod(await resolveBillingPeriod(account.id));
+      // [FREE-LIFETIME-TRIAL-3-01] account 재사용 — FREE는 basis 'lifetime'(가입일~현재 누적).
+      const period = normalizePeriod(await resolveBillingPeriod(account.id, new Date(), account));
       const used = await countGeneratedInPeriod(account.id, period.start, period.end);
 
       // 분모 — 차단 정본과 동일
@@ -204,7 +205,7 @@ export default async function handler(req, res) {
         limit: quotaPlan.monthly_quota,
         period_start: period.start,
         period_end: period.end,
-        period_basis: period.basis, // 'subscription' | 'calendar'
+        period_basis: period.basis, // 'subscription' | 'lifetime' | 'calendar'
         plan_id: quotaPlan.id,
         bypass: isOwner,            // true = 한도 미적용(owner)
       };

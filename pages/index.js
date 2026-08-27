@@ -140,6 +140,16 @@ import {
 import { INDUSTRY_CATALOG, INDUSTRY_STATUS_META, getCatalogByCategory, getCatalogItem } from "../lib/industry-catalog";
 // [Tree Spine] tree 헬퍼(treeNodeOf/treeItemsOf/treeEngineOf) + 온보딩 선택구조는
 //   industry-tree.js(SoT)로 이관 — 아래 import에서 소비.
+// [FREE-LIFETIME-TRIAL-3-01] 사용량 기간 라벨 SoT.
+//   서버 resolveBillingPeriod 의 period_basis 3값을 화면 표현으로 1:1 대응시킨다.
+//     'subscription' = 결제 이용기간 / 'lifetime' = FREE 누적 체험(월 리셋 없음) / 'calendar' = 달력 월
+//   ★ 화면마다 삼항을 따로 쓰면 lifetime 이 "이번 달"로 새어 거짓 안내가 된다. 여기 1곳만 고친다.
+const periodLabelOf = (basis) =>
+  basis === "subscription" ? "이용기간"
+  : basis === "lifetime"   ? "무료 체험"
+  : "이번 달";
+const isLifetimeBasis = (basis) => basis === "lifetime";
+
 // ★ [로그인 훅] 업종/메뉴 집계 — catalog SoT 자동 반영(업종 추가 시 숫자 자동 증가)
 const CATALOG_COUNT = (() => {
   const leaf = (it) => { const t = treeItemsOf(it); return t.length ? t.length : 1; };
@@ -4696,8 +4706,9 @@ const HELP_CONTENT = {
     ic: "💳", title: "요금제 — 검색 자산을 쌓는 구독",
     intro: "블로그는 한 번 쓰고 사라지는 광고가 아니라, 검색하면 다시 나오는 내 사업장의 검색 자산입니다. 플랜은 ‘월 생성 한도’로 나뉘며, 업그레이드하면 권한이 자동 적용됩니다.",
     blocks: [
-      { h: "Free — 0원 / 월", items: [
-        "체험용. 월 3건 포함.",
+      { h: "Free — 0원", items: [
+        // [FREE-LIFETIME-TRIAL-3-01] 월 지급 아님. 계정당 최초 3건 1회.
+        "가입 후 최초 3건 무료 체험. 매월 재지급 없음.",
         "블로그 글 생성·SEO 진단, 검색 노출 구조 미리보기.",
       ]},
       { h: "Basic — 69,000원 / 월", items: [
@@ -5813,7 +5824,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
       if (!isOwner && lim != null) {
         const recs = [`권장 발행량: 월 ${lim}건`];
         // [MYPAGE-SUBSCRIPTION-PERIOD-DISPLAY-01] 집계 기간은 서버 period_basis 를 따른다.
-        const _pl = q.period_basis === "subscription" ? "이용기간" : "이번 달";
+        const _pl = periodLabelOf(q.period_basis);
         if (rem != null) recs.push(rem > 0 ? `${_pl} 남은 발행: ${rem}건` : `${_pl} 한도 소진 — 새 이용권 구매 시 바로 이어집니다`);
         cards.push({ tone: rem === 0 ? "warn" : "tip",
           lines: [`현재 ${planName} 플랜입니다.`, `달력의 계획은 플랜 한도(${lim}건) 기준 추천입니다(강제 아님).`],
@@ -5867,7 +5878,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
   } else if (tabId === "account") {
     // [세션59] 마이페이지 코치 — store 동형. 1박스 즉시출력(타이핑·누적 폐기). 설명은 영상이 담당.
     renderCards = [{ tone: "tip", _step: "acctFixed",
-      lines: [`계정 정보와 ${(ctx && ctx.quotaInfo && ctx.quotaInfo.period_basis === "subscription") ? "이용기간" : "이번 달"} 사용량을 확인하는 공간입니다.`,
+      lines: [`계정 정보와 ${periodLabelOf(ctx && ctx.quotaInfo && ctx.quotaInfo.period_basis)} 사용량을 확인하는 공간입니다.`,
               "지난 발행 기록은 아래 ‘전체 이용내역 보기’에서 확인하세요."] }];
   } else if (tabId === "posts") {
     // [세션59] 최근발행 코치 — store 동형. 1박스 상태 분기, 타이핑·누적 폐기(설명은 영상이 담당).
@@ -5899,7 +5910,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
     //   서버(check-quota)가 period_basis / period_end 로 정답을 내려주므로 표시만 한다.
     //   Free/비구독(calendar)은 종료일을 표시하지 않는다 — period_end 는 다음 달 1일 00:00 이라
     //   그대로 쓰면 "종료일"과 어긋나고, -1일 보정은 프론트 추정이 되므로 금지.
-    const _cqLabel = _cq.period_basis === "subscription" ? "이용기간" : "이번 달";
+    const _cqLabel = periodLabelOf(_cq.period_basis);
     const _periodEndText = (() => {
       if (_cq.period_basis !== "subscription" || !_cq.period_end) return null;
       const d = new Date(_cq.period_end);
@@ -6940,7 +6951,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   // [MYPAGE-PERIOD-LABEL-MISMATCH-01] 집계 기간이 구독 결제주기인데 라벨은 '이번 달'이었다.
   //   서버(check-quota)가 resolveBillingPeriod로 정한 period_basis를 그대로 따른다.
   //   구독행 있음 → 'subscription'(결제주기) / 없음 → 'calendar'(KST 월). 숫자·계산 무접촉.
-  const periodLabel = q.period_basis === "subscription" ? "이용기간" : "이번 달";
+  const periodLabel = periodLabelOf(q.period_basis);
   const used  = Number.isFinite(q.monthly_publish) ? q.monthly_publish : null;
   const limit = Number.isFinite(q.monthly_quota)   ? q.monthly_quota   : null;
   const hasUsage = used != null && limit != null && limit > 0;
@@ -6957,7 +6968,13 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   // [v42] 월 계획 총량 상한. 이번 달은 남은 발행 가능 건수(remaining), 다음 달 이후는 월 한도(limit).
   //   quotaInfo 미연동/OWNER 무제한이면 null → 캡 미적용(기존 동작).
   const planCapThisMonth = Number.isFinite(remaining) ? remaining : (Number.isFinite(limit) ? limit : null);
-  const planCapFullMonth = Number.isFinite(limit) ? limit : null;
+  // [FREE-LIFETIME-TRIAL-3-01] 무료 체험은 누적이다 — 다음 달로 넘어가도 한도가 복구되지 않는다.
+  //   여기서 limit(3)을 그대로 쓰면 서버는 평생 3건인데 달력은 매달 3건을 배치한다 = 거짓 안내.
+  //   따라서 lifetime 은 다음 달 이후에도 잔여(remaining)를 상한으로 쓴다.
+  const isLifetimeTrial = isLifetimeBasis(q.period_basis);
+  const planCapFullMonth = isLifetimeTrial
+    ? planCapThisMonth
+    : (Number.isFinite(limit) ? limit : null);
 
   // [v62] 이번 달 생성 한도 소진 여부 — 계획 단계(발행비율설정·달력)는 막지 않고 배너로만 고지.
   //   소진해도 전략 수정/저장·달력 확인은 자유(다음 달 미리 준비). 차단은 생성 진입(글 작성하기 등)에서만.
@@ -6976,7 +6993,9 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
           {periodLabel} 생성 한도 사용 완료{(used != null && limit != null) ? ` (${used}/${limit})` : ""}
         </span>
         <span style={{ fontSize: 12.5, fontWeight: 700, color: "#BF360C", lineHeight: 1.5 }}>
-          새 이용권을 구매하면 결제 시점부터 바로 다시 생성할 수 있어요. 지금은 전략·달력을 미리 준비해 둘 수 있습니다.
+          {isLifetimeTrial
+            ? "무료 체험 3건을 모두 사용했습니다. 계속 이용하려면 요금제를 선택해 주세요."
+            : "새 이용권을 구매하면 결제 시점부터 바로 다시 생성할 수 있어요. 지금은 전략·달력을 미리 준비해 둘 수 있습니다."}
         </span>
       </div>
     </div>
@@ -7305,6 +7324,10 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
     // [v42] 플랜 기준 안내 — 계획이 플랜 한도에 맞춰졌음을 사용자에게 명확히. (FREE도 한 달 가득 차던 문제의 사용자 설명)
     if (isUnlimited) {
       lines.push(`🧭 운영자 계정 — 발행 한도 제한 없이 계획을 배치합니다 (현재 ${total}건).`);
+    } else if (isLifetimeTrial && Number.isFinite(remaining) && Number.isFinite(limit)) {
+      // [FREE-LIFETIME-TRIAL-3-01] 무료 체험은 월 개념이 없다. "이번 달"·"다음 달" 표현 금지.
+      lines.push(`🧭 무료 체험 · 잔여 ${remaining}건(총 ${limit}건). 계획을 ${total}건으로 맞췄습니다.`);
+      if (remaining <= 0) lines.push(`• 무료 체험 3건을 모두 사용했습니다. 계속 이용하려면 요금제를 선택해 주세요.`);
     } else if (Number.isFinite(remaining) && Number.isFinite(limit)) {
       lines.push(`🧭 ${planLabel} 플랜 · 이번 달 발행 가능 ${remaining}건(한도 ${limit}건). 계획을 ${total}건으로 맞췄습니다.`);
       if (remaining <= 0) lines.push(`• 이번 달 한도를 모두 사용했습니다. 다음 달 또는 상위 플랜에서 이어서 계획됩니다.`);
@@ -14385,11 +14408,11 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
               <>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>📛</div>
                 <div style={{ fontSize: 18, fontWeight: 900, color: "#c62828", marginBottom: 8 }}>
-                  {quotaModal.detail?.period_basis === "subscription" ? "이용기간" : "이번 달"} 발행 한도에 도달했습니다
+                  {periodLabelOf(quotaModal.detail?.period_basis)} 발행 한도에 도달했습니다
                 </div>
                 <div style={{ fontSize: 13, color: "#555", lineHeight: 1.7, marginBottom: 14 }}>
                   현재 플랜: <b>{quotaModal.detail?.plan_id || "free"}</b><br/>
-                  {quotaModal.detail?.period_basis === "subscription" ? "이용기간" : "이번 달"} 발행: <b>{quotaModal.detail?.monthly_publish ?? "?"}건</b>
+                  {periodLabelOf(quotaModal.detail?.period_basis)} 발행: <b>{quotaModal.detail?.monthly_publish ?? "?"}건</b>
                   {" / "}한도 <b>{quotaModal.detail?.monthly_quota ?? "?"}건</b>
                 </div>
                 <div style={{
