@@ -1,13 +1,15 @@
 /**
  * pages/api/billing/webhook/portone.js
  *
- * 포트원(PortOne) V2 webhook 수신 엔드포인트 (skeleton B 수준)
+ * 포트원(PortOne) V2 webhook 수신 엔드포인트
  *
  * 책임:
  *  - 포트원에서 전송하는 결제/빌링키 이벤트 수신
- *  - 서명 검증 (현재 stub · 본 구현 후 production)
+ *  - 서명 검증 (@portone/server-sdk 공식 Webhook.verify · fail-closed)
  *  - 이벤트 타입별 분기 → lib/billing/* helper 호출
- *  - 멱등성 보장 (webhookLog.js 의 isDuplicate 활용)
+ *  - 멱등성 보장 — 미구현. WEBHOOK-EVENT-LOG-TABLE-01 축에서 처리.
+ *    ★ routeEvent 의 TODO 를 실제 구현으로 바꾸기 전에 반드시 선행 완료할 것.
+ *      상태변경 코드가 살아난 상태에서 재시도 중복 수신 = 중복 결제 반영.
  *
  * 수신 이벤트 (V2 공식 6류):
  *  - payment.paid              : 결제 완료
@@ -18,6 +20,7 @@
  *  - billing_key.deleted       : 빌링키 삭제
  *
  * 에러 정책:
+ *  - Secret 미설정 → 500 (검증 불가 = 통과 아님. fail-closed)
  *  - 서명 불일치 → 401 (재시도 무의미)
  *  - 본문 파싱 실패 → 400 (재시도 무의미)
  *  - 알 수 없는 event type → 200 (silent ignore)
@@ -25,21 +28,28 @@
  *  - 정상 처리 → 200
  *
  * env:
- *  - PORTONE_WEBHOOK_SECRET (포트원 가입 후 발급 · 현재 미설정)
+ *  - PORTONE_V2_WEBHOOK_SECRET
+ *    ★ Vercel 실제 등록명. 구 주석의 PORTONE_WEBHOOK_SECRET 은 오기였음(v0.2 정정).
  *
- * URL:
- *  - 운영: https://www.ai-post.ai/api/billing/webhook/portone
+ * URL (2026-08-27 실측):
+ *  - 운영: https://ai-post.ai/api/billing/webhook/portone   ← apex. www. 아님
+ *    ★ www. 로 등록하면 308 리다이렉트 구간이 생겨 POST body 유실 위험.
+ *      PortOne 콘솔 등록값을 위 문자열과 한 글자까지 일치시킬 것.
  *  - 베타: https://commercial-blog.vercel.app/api/billing/webhook/portone
  *  - 로컬: ngrok 등 외부 노출 필요
  *
  * FREEZE: 라우팅 구조 / 에러 정책 — 본 구현 시 case 본문만 교체
  *
+ * v0.2 · 2026-08-27 · WEBHOOK-PORTONE-STUB-SIGNATURE-01
+ *   서명검증 stub 제거. 공식 SDK 도입. Secret env 정정. signatureValid 실값 기록.
+ *   routeEvent 6 case 및 webhookLog.js 는 무접촉.
  * v0.1 · 71차 · 2026-05-20
  */
 
+import * as PortOne from '@portone/server-sdk';
 import { logWebhookEvent } from '../../../../lib/billing/webhookLog';
 
-// raw body 수신 — 서명 검증은 raw 기반 HMAC 필수
+// raw body 수신 — 서명 검증은 raw 기반 필수 (bodyParser 를 켜면 검증 불가)
 export const config = {
   api: {
     bodyParser: false,
@@ -61,28 +71,32 @@ async function readRawBody(req) {
 }
 
 /**
- * 포트원 서명 검증 (현재 stub)
+ * 포트원 V2 서명 검증
  *
- * @param {string} rawBody  - 수신 raw body
- * @param {string} signature- 수신 헤더 X-Portone-Signature (포트원 V2 공식 헤더명 확인 필요)
- * @returns {boolean}
+ * 규격: Standard Webhooks. 헤더 3종(webhook-id / webhook-timestamp / webhook-signature)이
+ * 모두 있어야 성립하므로 개별 헤더를 뽑지 않고 req.headers 를 통째로 넘긴다.
+ * 타임스탬프 허용오차(리플레이 방어)와 시크릿 prefix 처리도 SDK 가 담당한다.
  *
- * TODO (본 구현):
- *  - HMAC-SHA256(rawBody, PORTONE_WEBHOOK_SECRET) 계산
- *  - timing-safe equal 비교 (crypto.timingSafeEqual)
- *  - 포트원 V2 공식 시그니처 알고리즘 재확인 (가입 후 문서 접근)
- *  - 헤더명 확정 (X-Portone-Signature ? webhook-signature ?)
+ * @param {string} rawBody
+ * @param {Object} headers - req.headers 원본
+ * @param {string} secret  - PORTONE_V2_WEBHOOK_SECRET
+ * @returns {Promise<boolean>}
  */
-function verifyPortoneSignature(rawBody, signature) {
-  // stub: 검증 통과 (실 환경 진입 전 반드시 본 구현)
-  if (process.env.NODE_ENV === 'production') {
-    console.warn('[portone-webhook] signature verification is STUB in production');
+async function verifyPortoneSignature(rawBody, headers, secret) {
+  try {
+    await PortOne.Webhook.verify(secret, rawBody, headers);
+    return true;
+  } catch (e) {
+    console.warn('[portone-webhook] signature verification failed:', e?.message || e);
+    return false;
   }
-  return true;
 }
 
 /**
  * 이벤트 타입별 분기
+ *
+ * ★ 무접촉 구간 — 본 구현은 결제 E2E 축 소관.
+ *   여기를 살리기 전에 WEBHOOK-EVENT-LOG-TABLE-01(멱등성) 을 먼저 닫는다.
  *
  * @param {Object} payload - 파싱된 JSON body
  * @returns {Promise<{ ok: boolean, handlerStatus: string, reason?: string }>}
@@ -146,6 +160,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, reason: 'method_not_allowed' });
   }
 
+  // 0. Secret 확인 — 검증 불가 상태를 통과로 처리하지 않는다 (fail-closed)
+  const secret = process.env.PORTONE_V2_WEBHOOK_SECRET;
+  if (!secret) {
+    console.error('[portone-webhook] PORTONE_V2_WEBHOOK_SECRET is not set — refusing request');
+    return res.status(500).json({ ok: false, reason: 'webhook_secret_missing' });
+  }
+
   // 1. raw body 수신
   let rawBody;
   try {
@@ -156,8 +177,8 @@ export default async function handler(req, res) {
   }
 
   // 2. 서명 검증
-  const signature = req.headers['x-portone-signature'] || req.headers['webhook-signature'] || '';
-  const signatureValid = verifyPortoneSignature(rawBody, signature);
+  const signature = req.headers['webhook-signature'] || '';
+  const signatureValid = await verifyPortoneSignature(rawBody, req.headers, secret);
   if (!signatureValid) {
     await logWebhookEvent({
       pg: 'portone',
@@ -182,7 +203,7 @@ export default async function handler(req, res) {
       eventType: 'unknown',
       rawBody,
       signature,
-      signatureValid: true,
+      signatureValid,
       handlerStatus: 'failed',
       errorMessage: 'json_parse_failed',
     });
@@ -193,7 +214,9 @@ export default async function handler(req, res) {
   const impUid = payload?.imp_uid || payload?.paymentId;
   const merchantUid = payload?.merchant_uid || payload?.orderId;
 
-  // 4. 수신 로깅 (stub)
+  // 4. 수신 로깅
+  //    ★ webhookLog.js 는 현재 stub(NOT_IMPLEMENTED) — 실제 적재 없음.
+  //      WEBHOOK-EVENT-LOG-TABLE-01 에서 본 구현.
   await logWebhookEvent({
     pg: 'portone',
     eventType,
@@ -202,7 +225,7 @@ export default async function handler(req, res) {
     payload,
     rawBody,
     signature,
-    signatureValid: true,
+    signatureValid,
     handlerStatus: 'received',
   });
 
