@@ -4341,39 +4341,42 @@ function LoginCard({ onAuthed, onExplore }) {
         {err && <div style={L.err}>{err}</div>}
       </div>
 
-      {/* [SIGNUP-EMAIL-VERIFY-UX-01] 가입 성공 = 독립 인증메일 안내 박스 */}
+      {/* [SIGNUP-EMAIL-VERIFY-UX-01] 가입 성공 = 독립 인증메일 안내 박스 (가로형 · 무스크롤) */}
       {sentTo && (
-        <div style={{ width: "100%", maxWidth: 340, marginTop: 16,
-          background: "#fff", border: "2px solid #EC407A", borderRadius: 14,
-          boxShadow: "0 6px 24px rgba(194,24,91,.14)", padding: "20px 18px", textAlign: "center" }}>
-          <div style={{ fontSize: 30, marginBottom: 8 }}>✉️</div>
-          <div style={{ fontSize: 16, fontWeight: 900, color: "#AD1457", marginBottom: 8 }}>
-            가입 확인 메일을 보냈습니다
+        <div style={{ width: "100%", maxWidth: 340, marginTop: 12,
+          background: "#fff", border: "2px solid #EC407A", borderRadius: 12,
+          boxShadow: "0 4px 18px rgba(194,24,91,.14)", padding: "12px 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 20, lineHeight: 1 }}>✉️</span>
+            <span style={{ fontSize: 14, fontWeight: 900, color: "#AD1457", lineHeight: 1.3 }}>
+              가입 확인 메일을 보냈습니다
+            </span>
           </div>
-          <div style={{ fontSize: 13.5, fontWeight: 800, color: "#fff",
+          <div style={{ fontSize: 12.5, fontWeight: 800, color: "#fff",
             background: "linear-gradient(135deg,#AD1457,#EC407A)",
-            borderRadius: 9, padding: "11px 12px", lineHeight: 1.5, marginBottom: 12 }}>
-            메일의 링크를 눌러야<br />인증이 완료됩니다.
+            borderRadius: 8, padding: "8px 10px", lineHeight: 1.4, marginBottom: 8, textAlign: "center" }}>
+            메일의 링크를 눌러야 인증이 완료됩니다.
           </div>
-          <div style={{ fontSize: 13, fontWeight: 800, color: "#4A148C",
-            background: "#faf5ff", border: "1px solid #e6d8f7", borderRadius: 8,
-            padding: "9px 10px", wordBreak: "break-all", marginBottom: 12 }}>
-            {sentTo}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 800, color: "#4A148C",
+              background: "#faf5ff", border: "1px solid #e6d8f7", borderRadius: 7,
+              padding: "8px 9px", wordBreak: "break-all", lineHeight: 1.3 }}>
+              {sentTo}
+            </div>
+            {/@naver\.com$/i.test(sentTo) && (
+              <a href="https://mail.naver.com" target="_blank" rel="noopener noreferrer"
+                style={{ flexShrink: 0, textDecoration: "none", padding: "8px 11px",
+                  borderRadius: 7, background: "#03C75A", color: "#fff",
+                  fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}>
+                메일 열기
+              </a>
+            )}
           </div>
-          {/@naver\.com$/i.test(sentTo) && (
-            <a href="https://mail.naver.com" target="_blank" rel="noopener noreferrer"
-              style={{ display: "block", textDecoration: "none", padding: "11px 0",
-                borderRadius: 9, background: "#03C75A", color: "#fff",
-                fontSize: 13.5, fontWeight: 700, marginBottom: 10 }}>
-              네이버 메일 열기
-            </a>
-          )}
-          <div style={{ fontSize: 11.5, color: "#8a7a9a", lineHeight: 1.5 }}>
+          <div style={{ fontSize: 11, color: "#8a7a9a", lineHeight: 1.4, textAlign: "center" }}>
             메일이 보이지 않으면 스팸메일함도 확인해주세요.
           </div>
         </div>
       )}
-
     </div>
   );
 }
