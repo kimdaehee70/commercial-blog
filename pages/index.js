@@ -10731,7 +10731,9 @@ export default function Home() {
                 cluster:        hallName || undefined,
             }).then(() => {
               // 저장 성공 → 허브 갱신(달력/목록 즉시 반영). 미인증/실패 시 조용히 skip.
-              if (authUserId) fetchHub();
+              // [POST-GENERATE-MYPAGE-NOSYNC-01] quotaInfo 도 함께 갱신 —
+              //   목록은 fetchHub 로 즉시 반영되나 사용량 카드는 stale 로 남아 F5 를 요구했다.
+              if (authUserId) { fetchHub(); refreshQuotaInfo(); }
             });
           } catch (e) {
             console.warn("[save-generated] skip:", e?.message);
