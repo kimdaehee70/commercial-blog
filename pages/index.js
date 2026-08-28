@@ -4169,7 +4169,12 @@ function LoginCard({ onAuthed, onExplore }) {
     if (!email || !password) { setErr("이메일과 비밀번호를 입력하세요."); return; }
     if (password.length < 6) { setErr("비밀번호는 6자 이상 입력하세요."); return; }
     setLoading(true);
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({
+      email, password,
+      // [SIGNUP-ENSURE-ACCOUNT-NOT-CREATED-01] 인증 링크를 /auth/callback 으로 보내야
+      //   복귀 시 ensure 가 돌아 accounts row 가 생성된다. 없으면 Site URL 로 떨어져 미생성.
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    });
     setLoading(false);
     if (error) { setErr(authErrMsg(error.message)); return; }
     if (data?.session) {
