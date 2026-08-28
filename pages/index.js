@@ -4161,11 +4161,11 @@ function LoginCard({ onAuthed, onExplore }) {
   const [loading, setLoading] = useState(false);
   const [kakaoLoading, setKakaoLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [notice, setNotice] = useState("");
+  const [sentTo, setSentTo] = useState("");   // [SIGNUP-EMAIL-VERIFY-UX-01]
 
   // [회원가입] 이메일+비밀번호 최소 가입 → 세션 생성 시 즉시 메인 진입
   async function handleSignup() {
-    setErr(""); setNotice("");
+    setErr("");
     if (!email || !password) { setErr("이메일과 비밀번호를 입력하세요."); return; }
     if (password.length < 6) { setErr("비밀번호는 6자 이상 입력하세요."); return; }
     setLoading(true);
@@ -4179,7 +4179,7 @@ function LoginCard({ onAuthed, onExplore }) {
       onAuthed?.();
       return;
     }
-    setNotice("가입 확인 메일을 보냈습니다. 메일의 링크를 눌러 인증을 완료하세요.");
+    setSentTo(email);   // [SIGNUP-EMAIL-VERIFY-UX-01] 폼 숨김 + 인증 안내 화면 전환
   }
 
   // [v128] Supabase 인증 에러 한글화 — 원문 노출 금지. 미매핑은 일반 문구로 폴백.
@@ -4291,6 +4291,46 @@ function LoginCard({ onAuthed, onExplore }) {
       )}
 
       <div style={L.card}>
+        {/* [SIGNUP-EMAIL-VERIFY-UX-01] 가입 성공 = 폼 숨김 + 인증 안내 상태화면 */}
+        {sentTo ? (
+          <div style={{ textAlign: "center", padding: "6px 0 2px" }}>
+            <div style={{ fontSize: 34, marginBottom: 10 }}>✉️</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: "#AD1457", marginBottom: 10 }}>
+              인증메일을 확인해주세요
+            </div>
+            <div style={{ fontSize: 13, color: "#5a4a6a", lineHeight: 1.6, marginBottom: 12 }}>
+              회원가입 신청이 완료되었습니다.<br />
+              입력하신 이메일로 인증메일을 보냈습니다.
+            </div>
+            <div style={{ fontSize: 13.5, fontWeight: 900, color: "#fff",
+              background: "linear-gradient(135deg,#AD1457,#EC407A)",
+              borderRadius: 9, padding: "11px 12px", lineHeight: 1.5, marginBottom: 12 }}>
+              메일의 인증 버튼을 눌러야<br />가입이 완료됩니다.
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#4A148C",
+              background: "#faf5ff", border: "1px solid #e6d8f7", borderRadius: 8,
+              padding: "9px 10px", wordBreak: "break-all", marginBottom: 12 }}>
+              {sentTo}
+            </div>
+            {/@naver\.com$/i.test(sentTo) && (
+              <a href="https://mail.naver.com" target="_blank" rel="noopener noreferrer"
+                style={{ display: "block", textDecoration: "none", padding: "12px 0",
+                  borderRadius: 9, background: "#03C75A", color: "#fff",
+                  fontSize: 14, fontWeight: 700, marginBottom: 12 }}>
+                네이버 메일 열기
+              </a>
+            )}
+            <div style={{ fontSize: 11.5, color: "#8a7a9a", lineHeight: 1.5 }}>
+              메일이 보이지 않으면 스팸메일함도 확인해주세요.
+            </div>
+            <div style={{ marginTop: 14, fontSize: 12.5, color: "#8a7a9a" }}>
+              인증을 마치셨나요?{" "}
+              <a onClick={() => { setSentTo(""); setMode("login"); setEmail(""); setPassword(""); setErr(""); }}
+                style={{ ...L.link, cursor: "pointer" }}>로그인</a>
+            </div>
+          </div>
+        ) : (
+        <>
         <div style={{ ...L.h, color: isSignup ? "#AD1457" : "#1a1a2e" }}>
           {isSignup ? "✍️ 회원가입" : "로그인"}
         </div>
@@ -4330,16 +4370,16 @@ function LoginCard({ onAuthed, onExplore }) {
         <div style={L.footer}>
           {mode === "signup" ? (
             <>이미 계정이 있으신가요?{" "}
-              <a onClick={() => { setMode("login"); setErr(""); setNotice(""); }}
+              <a onClick={() => { setMode("login"); setErr(""); }}
                 style={{ ...L.link, cursor: "pointer" }}>로그인</a></>
           ) : (
             <>계정이 없으신가요?{" "}
-              <a onClick={() => { setMode("signup"); setErr(""); setNotice(""); }}
+              <a onClick={() => { setMode("signup"); setErr(""); }}
                 style={{ ...L.link, cursor: "pointer" }}>회원가입</a></>
           )}
         </div>
-        {notice && <div style={{ marginTop: 12, padding: 10, background: "#f0fdf4",
-          border: "1px solid #bbf7d0", color: "#166534", borderRadius: 8, fontSize: 12.5 }}>{notice}</div>}
+        </>
+        )}
         {err && <div style={L.err}>{err}</div>}
       </div>
 
