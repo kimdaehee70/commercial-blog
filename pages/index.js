@@ -9674,6 +9674,19 @@ export default function Home() {
         setStoreReady(ready);
         return ready; // [v41] 호출부(로그인 직후)에서 온보딩 라우팅 분기에 사용
       }
+      // [DEACTIVATED-LOGIN-NOT-BLOCKED-01] 탈퇴 계정 차단 — 세션 제거 + 안내
+      if (res.status === 403) {
+        let j = null;
+        try { j = await res.json(); } catch (_) {}
+        if (j?.error === "ACCOUNT_DEACTIVATED") {
+          await supabase.auth.signOut();
+          if (typeof window !== "undefined") {
+            window.alert("탈퇴 처리된 계정입니다. 재가입 또는 고객지원으로 문의해 주세요.");
+            window.location.href = "/";
+          }
+          return null;
+        }
+      }
     } catch (_) { /* fallback 사용 */ }
     return null;
   }, []);
