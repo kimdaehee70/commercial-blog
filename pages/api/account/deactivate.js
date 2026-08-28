@@ -48,7 +48,7 @@ export default async function handler(req, res) {
   // 4) accounts row 조회
   const { data: acc, error: accErr } = await sb
     .from('accounts')
-    .select('id, email, status, role')
+    .select('id, email, status, role, meta')
     .eq('auth_user_id', auth_user_id)
     .maybeSingle();
 
@@ -85,17 +85,23 @@ export default async function handler(req, res) {
   }
 
   const previous_status = acc.status;
+  const nowIso = new Date().toISOString();
 
   // 7) UPDATE — status='deactivated'
+  //    [SIGNUP-AFTER-DEACTIVATE-SILENT-FAIL-01] 재가입 30일 제한의 판정 기준시각을
+  //    meta.deactivated_at 에 기록한다. 컬럼 신설 없음(A안).
+  //    updated_at 은 다른 사유로도 갱신되므로 탈퇴시각 대용으로 쓰지 않는다.
+  //    기존 meta 키는 spread 로 보존한다.
   const { data: upd, error: updErr } = await sb
     .from('accounts')
     .update({
       status: 'deactivated',
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso,
+      meta: { ...(acc.meta || {}), deactivated_at: nowIso },
     })
     .eq('id', acc.id)
     .eq('auth_user_id', auth_user_id) // 다중 가드 — 본인 확인
-    .select('id, status, updated_at')
+    .select('id, status, updated_at, meta')
     .maybeSingle();
 
   if (updErr || !upd) {
@@ -142,6 +148,7 @@ export default async function handler(req, res) {
     previous_status,
     new_status: upd.status,
     updated_at: upd.updated_at,
+    deactivated_at: upd.meta?.deactivated_at || null,
     signout_global,
   });
 }
