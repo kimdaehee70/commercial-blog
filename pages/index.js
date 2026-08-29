@@ -4169,6 +4169,25 @@ function LoginCard({ onAuthed, onExplore }) {
     if (!email || !password) { setErr("이메일과 비밀번호를 입력하세요."); return; }
     if (password.length < 6) { setErr("비밀번호는 6자 이상 입력하세요."); return; }
     setLoading(true);
+
+    // [SIGNUP-AFTER-DEACTIVATE-SILENT-FAIL-01] ① 정책 Gate — 탈퇴 30일 제한 / 기존회원 안내
+    try {
+      const pcRes = await fetch("/api/auth/signup-precheck", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const pc = await pcRes.json();
+      if (pc?.allowed === false) {
+        setLoading(false);
+        setErr(pc.message || "이 이메일로는 가입할 수 없습니다.");
+        return;
+      }
+    } catch (e) {
+      // precheck 장애가 신규가입 전면 차단이 되면 안 된다. 아래 identities 방어가 남아 있다.
+      console.warn("[signup] precheck failed, continue:", e);
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email, password,
       // [SIGNUP-ENSURE-ACCOUNT-NOT-CREATED-01] 인증 링크를 /auth/callback 으로 보내야
@@ -4184,6 +4203,15 @@ function LoginCard({ onAuthed, onExplore }) {
       onAuthed?.();
       return;
     }
+
+    // [SIGNUP-AFTER-DEACTIVATE-SILENT-FAIL-01] ② 최종 방어 — Supabase 가짜 성공 차단.
+    //   기존 이메일이면 error 없이 user 가 오지만 identities 는 빈 배열이다.
+    //   precheck 가 있어도 이 검사는 제거하지 않는다(역할이 다름).
+    if (data?.user && (data.user.identities?.length ?? 0) === 0) {
+      setErr("이미 가입된 이메일입니다. 로그인해 주세요.");
+      return;
+    }
+
     setSentTo(email);   // [SIGNUP-EMAIL-VERIFY-UX-01] 독립 인증메일 안내 박스 표시
   }
 
