@@ -41,6 +41,11 @@ export default async function handler(req, res) {
         "id", "title", "content", "text_markdown",
         "keyword", "active_keyword", "full_keyword",
         "region", "treatment_id", "treatment_name", "industry",
+        // [CORE-BRIDGE-LOSS-01] core_keyword / cluster — 발행 승격 브리지.
+        //   미노출 시 index.js L8669 가 p.core_keyword=undefined 를 받아 3인자 폴백(④)으로
+        //   Core 를 재계산 → published 행에 「지역+업종」이 박힌다. 실측 #2112→#2113.
+        //   posts.js 는 이미 노출 중 — 이 파일만 남은 반쪽 배선이었다.
+        "core_keyword", "cluster",
         "char_count", "model", "store_id",
         "naver_post_url", "publish_status", "published_at", "created_at",
       ].join(", "))
