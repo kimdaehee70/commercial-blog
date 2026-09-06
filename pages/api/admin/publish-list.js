@@ -191,6 +191,11 @@ export default async function handler(req, res) {
     const absorbed = new Set();
     for (const r of data) if (r.source_post_id) absorbed.add(r.source_post_id);
 
+    // [OBSERVATION-BASELINE-HARDENING-01] Identity Gate — baseline 원본 조회용 인덱스.
+    //   추가 쿼리 0. data(전량 조회분)를 그대로 재사용한다.
+    const byId = new Map();
+    for (const r of data) byId.set(r.id, r);
+
     // 5. 결합 (관측은 흡수된 baseline 쪽에 붙어 있을 수 있어 양쪽을 합산)
     const merged = data
       .filter((r) => !absorbed.has(r.id))
@@ -208,8 +213,21 @@ export default async function handler(req, res) {
         //   짝 없는 baseline 은 자기 account_id 를 그대로 쓴다. 둘 다 같은 소유자다.
         const acc = r.account_id != null ? accMap.get(r.account_id) || null : null;
 
+        // [OBSERVATION-BASELINE-HARDENING-01] Identity 5조건. 하나라도 실패 = 관측 차단.
+        //   ① baseline 존재 ② published 존재 ③ baseline.core_keyword ④ published.core_keyword
+        //   ⑤ 양쪽 완전 일치. 재계산 금지 · 폴백 금지.
+        //   ★ api/admin/observations.js buildList 와 동일 규칙. 두 화면이 같은 판정을 본다.
+        const _base = src != null ? byId.get(src) : null;
+        let observable = 'ok';
+        if (src == null)                                observable = 'unpaired';
+        else if (!_base)                                observable = 'no_baseline';
+        else if (!_base.core_keyword)                   observable = 'baseline_null';
+        else if (!r.core_keyword)                       observable = 'published_null';
+        else if (_base.core_keyword !== r.core_keyword) observable = 'mismatch';
+
         return {
           ...r,
+          observable,
           author_email: acc?.email || null,
           author_name: acc?.display_name || null,
           observation_count: cnt,

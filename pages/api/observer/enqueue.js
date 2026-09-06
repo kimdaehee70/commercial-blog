@@ -40,7 +40,7 @@ export default async function handler(req, res) {
     // 1) published 글 메타 읽기 (publish_history 읽기 전용)
     const { data: post, error: postErr } = await supabase
       .from('publish_history')
-      .select('id, core_keyword, full_keyword, active_keyword, keyword, industry, region, naver_post_url, publish_status, title')
+      .select('id, source_post_id, core_keyword, full_keyword, active_keyword, keyword, industry, region, naver_post_url, publish_status, title')
       .eq('id', publish_id)
       .single();
 
@@ -48,12 +48,28 @@ export default async function handler(req, res) {
     if (post.publish_status !== 'published') return res.status(204).end();
     if (!post.naver_post_url) return res.status(204).end();
 
-    // 검색 키워드(Core축): core_keyword → full_keyword → active_keyword → keyword 폴백
-    //   [S117] core_keyword = region + serviceAxis(catalog.name). 상업 경쟁키워드.
-    //   full_keyword는 소재축(_kwBase 파생)이라 Core가 아니다 — 신규 발행부터 core 우선.
-    //   기존 행은 core_keyword NULL → full_keyword 폴백으로 무손상.
-    const keyword = (post.core_keyword || post.full_keyword || post.active_keyword || post.keyword || '').trim();
-    if (!keyword) return res.status(204).end();
+    // [OBSERVATION-BASELINE-HARDENING-01] Identity Gate — scrapeNaverTop10 호출 전 차단.
+    //   기존 core→full→active→keyword 폴백 제거. 관측기는 Core 를 만들지 않는다.
+    //   5조건: ①baseline 존재 ②published 존재 ③baseline.core ④published.core ⑤완전 일치.
+    //   하나라도 실패 = 관측 안 함. 어느 Core 가 옳은지 판단하지 않는다.
+    //   실패 시 기존 204 종료 경로 사용 — 발행 영향 0.
+    //   ★ 여기서 끊으면 Core scrape · Intent scrape · title index check 3건이 모두 차단된다.
+    //   legacy(core NULL) 복구는 별도 축(CORE-RECOVER-FROM-BASELINE-01). 여기서 보정하지 않는다.
+    if (!post.source_post_id) { console.warn('[observer/gate] BLOCK', post.id, 'unpaired'); return res.status(204).end(); }
+    if (!post.core_keyword)   { console.warn('[observer/gate] BLOCK', post.id, 'published_null'); return res.status(204).end(); }
+
+    const { data: base } = await supabase
+      .from('publish_history')
+      .select('id, core_keyword')
+      .eq('id', post.source_post_id)
+      .single();
+
+    if (!base)               { console.warn('[observer/gate] BLOCK', post.id, 'no_baseline'); return res.status(204).end(); }
+    if (!base.core_keyword)  { console.warn('[observer/gate] BLOCK', post.id, 'baseline_null'); return res.status(204).end(); }
+    if (base.core_keyword !== post.core_keyword) { console.warn('[observer/gate] BLOCK', post.id, 'mismatch'); return res.status(204).end(); }
+
+    const keyword = String(post.core_keyword).trim();
+    if (!keyword) { console.warn('[observer/gate] BLOCK', post.id, 'empty'); return res.status(204).end(); }
 
     const industry = post.industry || null;
     const region = post.region || null;

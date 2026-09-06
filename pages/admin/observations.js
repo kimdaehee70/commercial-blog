@@ -137,6 +137,11 @@ const extractSearchKeyword = (row) => {
 const naverUrl = (q, recent) =>
   `https://search.naver.com/search.naver?query=${encodeURIComponent(q)}${recent ? '&sort=ent_date' : ''}`;
 const buildNaverLinks = (row) => {
+  // [OBSERVATION-BASELINE-HARDENING-01] Identity 미확정 행은 링크 자체를 만들지 않는다.
+  //   extractSearchKeyword 의 폴백(full_keyword · buildObservationCore · 제목 앞머리)에
+  //   닿기 전에 끊는다. 관측기는 Core 를 재생성하지 않는다.
+  //   observable 판정 = /api/admin/observations buildList (서버). 화면은 판정하지 않고 존중만 한다.
+  if (!row || row.observable !== 'ok') return null;
   const core = extractSearchKeyword(row);
   if (!core) return null;
   const review = `${core} 후기`;
@@ -301,6 +306,9 @@ export default function ObservationsPage() {
       const token = await getToken();
       if (!token) { router.replace('/login'); return; }
       const links = buildNaverLinks(row);
+      // [OBSERVATION-BASELINE-HARDENING-01] 링크가 없으면 관측 실행도 하지 않는다.
+      //   오염 검색어가 publish_metrics(관측 정본)로 들어가는 경로를 화면에서 끊는다.
+      if (!links) { showFlash('err', 'Identity 미확정 — 관측 차단됨'); return; }
       const r = await fetch('/api/admin/observations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

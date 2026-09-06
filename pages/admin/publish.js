@@ -177,6 +177,10 @@ const naverUrl = (q, recent) =>
   `https://search.naver.com/search.naver?query=${encodeURIComponent(q)}${recent ? '&sort=ent_date' : ''}`;
 
 const buildNaverLinks = (row) => {
+  // [OBSERVATION-BASELINE-HARDENING-01] Identity 미확정 행은 링크 자체를 만들지 않는다.
+  //   extractSearchKeyword 의 폴백(region+treatment_name · 제목 앞부분)에 닿기 전에 끊는다.
+  //   observable 판정 = /api/admin/publish-list (서버). 화면은 판정하지 않고 존중만 한다.
+  if (!row || row.observable !== 'ok') return null;
   const core = extractSearchKeyword(row);   // region+treatment_name (없으면 title 앞부분)
   if (!core) return null;
   const review = core + ' 후기';
@@ -656,6 +660,9 @@ export default function AdminPublish() {
   const saveObservation = async () => {
     if (!selectedId || saving) return;
     if (!form.main && !form.related && !form.not_exposed) { alert('관측 결과를 선택해 주세요 (메인창 / 관련도 / 미노출).'); return; }
+    // [OBSERVATION-BASELINE-HARDENING-01] 링크가 없으면 관측 실행도 하지 않는다.
+    //   오염 검색어가 publish_metrics(관측 정본)로 들어가는 경로를 화면에서 끊는다.
+    if (!links) { alert('Identity 미확정 — 관측 차단됨'); return; }
     setSaving(true);
     try {
       const token = await getToken();

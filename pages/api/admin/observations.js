@@ -225,6 +225,11 @@ async function buildList(q = {}) {
   const absorbed = new Set();
   for (const p of posts) if (p.source_post_id) absorbed.add(p.source_post_id);
 
+  // [OBSERVATION-BASELINE-HARDENING-01] Identity Gate — baseline 원본 조회용 인덱스.
+  //   추가 쿼리 0. posts(전량 조회분)를 그대로 재사용한다.
+  const byId = new Map();
+  for (const p of posts) byId.set(p.id, p);
+
   const merged = posts
     .filter((p) => !absorbed.has(p.id))
     .map((p) => {
@@ -240,6 +245,19 @@ async function buildList(q = {}) {
       // 대표순위 3단계 (목록 한정 · 세션82 정책 동일)
       //   관리자 관측이 있으면 그 값이 대표. 없을 때만 사용자값으로 대신한다.
       //   두 축을 평균내거나 섞지 않는다(DEC-006). 관측했으나 순위 없음 = rep_out(=「밖」).
+      // [OBSERVATION-BASELINE-HARDENING-01] Identity 5조건. 하나라도 실패 = 관측 차단.
+      //   ① baseline 존재 ② published 존재 ③ baseline.core_keyword ④ published.core_keyword
+      //   ⑤ 양쪽 완전 일치.
+      //   재계산 금지 · 폴백 금지. 어느 Core 가 옳은지 관측기가 판단하지 않는다.
+      //   불일치 자체가 차단 조건이다. legacy 복구는 별도 축(CORE-RECOVER-FROM-BASELINE-01).
+      const _base = src != null ? byId.get(src) : null;
+      let observable = 'ok';
+      if (src == null)                                observable = 'unpaired';
+      else if (!_base)                                observable = 'no_baseline';
+      else if (!_base.core_keyword)                   observable = 'baseline_null';
+      else if (!p.core_keyword)                       observable = 'published_null';
+      else if (_base.core_keyword !== p.core_keyword) observable = 'mismatch';
+
       let repRank = null, repSource = null, repOut = false;
       if (aCnt > 0) {
         repSource = 'admin';
@@ -274,6 +292,8 @@ async function buildList(q = {}) {
         //   순으로 판단하는데, 이 LIST 응답에 세 값이 전부 빠져 있었다.
         //   그 결과 관측 화면은 항상 최후 폴백(제목 앞머리)으로 떨어지고 있었다.
         //   ★ select 에 컬럼을 넣는 것만으로는 부족하다 — 이 응답은 스프레드가 아니라 명시 매핑이다.
+        // [OBSERVATION-BASELINE-HARDENING-01] 관측 허용 판정. 화면은 'ok' 가 아니면 링크를 만들지 않는다.
+        observable,
         core_keyword: p.core_keyword || null,
         full_keyword: p.full_keyword || null,
         cluster: p.cluster || null,
