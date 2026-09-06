@@ -1759,6 +1759,25 @@ export default function AdminPublish() {
             </div>
 
             {/* [세션84] 검색 → 순위 입력 → 저장. 이 순서가 실제 관측 동선이다. */}
+            {selectedRow && (
+              <div style={S.panel}>
+                <div style={{ color: T.textMuted, fontSize: 11, marginBottom: 4 }}>
+                  자동관측 (블로그탭 TOP30)
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>
+                  {selectedRow.auto_observed_at == null
+                    ? '-'
+                    : (selectedRow.auto_alive === true && selectedRow.auto_rank != null
+                        ? selectedRow.auto_rank + '위'
+                        : 'TOP30 미노출')}
+                </div>
+                {selectedRow.auto_observed_at && (
+                  <div style={{ color: T.textMuted, fontSize: 11, marginTop: 2 }}>
+                    {fmtDate(selectedRow.auto_observed_at)}
+                  </div>
+                )}
+              </div>
+            )}
             {links && (
               <div style={S.panel}>
                 <div style={S.obsKw}>

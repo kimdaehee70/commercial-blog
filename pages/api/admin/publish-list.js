@@ -158,6 +158,19 @@ export default async function handler(req, res) {
         .order('created_at', { ascending: false })
     );
 
+    // [OBSERVATION-AUTO-TO-UI-01] survival_log — 자동관측(블로그탭 TOP30). 3번째 SoT.
+    //   수동(publish_metrics/post_ranks)과 합치지 않는다. auto_ 접두 필드로 따로 내린다.
+    const sobs = await fetchAll(() =>
+      supabaseAdmin
+        .from('survival_log')
+        .select('publish_id, rel_rank, is_alive, observed_at, note, rank_basis')
+        .order('observed_at', { ascending: false })
+    );
+    const autoLatestMap = {};
+    for (const s of sobs) {
+      if (!autoLatestMap[s.publish_id]) autoLatestMap[s.publish_id] = s;
+    }
+
     const userCountMap = {};
     const userLatestMap = {};
     for (const u of uobs) {
@@ -236,6 +249,9 @@ export default async function handler(req, res) {
           user_latest_rank: um?.rank ?? null,
           user_latest_keyword: um?.keyword || null,
           user_latest_at: um?.checked_at || null,
+          auto_rank: autoLatestMap[r.id]?.rel_rank ?? null,
+          auto_alive: autoLatestMap[r.id]?.is_alive ?? null,
+          auto_observed_at: autoLatestMap[r.id]?.observed_at || null,
           status: m?.alive_status || null,
           latest_observed_at: m?.observed_date || null,
           observed_rank: m?.observed_rank ?? null,
