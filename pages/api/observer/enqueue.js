@@ -95,14 +95,15 @@ export default async function handler(req, res) {
     if (!cacheHit) {
       top10 = await scrapeNaverTop10(keyword);   // HTML 스크래핑 v1
       if (top10 && top10.length) {
-        await supabase.from('competitor_env').insert({
+        const { error: envErr } = await supabase.from('competitor_env').upsert({
           keyword,
           industry,
           region,
           rank_basis: RANK_BASIS,
           top10,                       // jsonb
-          // collected_at = DEFAULT now()
-        });
+          collected_at: new Date().toISOString(),
+        }, { onConflict: 'keyword,industry,region,rank_basis' });
+        if (envErr) console.warn('[observer/env] INSERT FAIL', envErr.message, envErr.code, JSON.stringify(envErr.details));
       }
     } else {
       // 캐시 HIT: 재검색 금지. 가장 최근 스냅샷 top10 재사용(내 순위 판정용)
@@ -273,7 +274,7 @@ async function scrapeNaverTop10(keyword) {
         'Accept-Language': 'ko-KR,ko;q=0.9',
       },
     });
-    if (!res.ok) return [];
+    if (!res.ok) { console.warn('[observer/scrape] http', res.status); return []; }
     const html = await res.text();
     return parseNaverTop10(html);
   }
@@ -303,7 +304,7 @@ function parseNaverTop10(html) {
   const seen = new Set();
 
   $items.each((_, el) => {
-    if (results.length >= 10) return;
+    if (results.length >= 30) return;
     const $item = $(el);
 
     // 광고 제외: 항목 앞부분에 '광고' 배지가 붙은 글은 스킵.
