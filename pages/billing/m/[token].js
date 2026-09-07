@@ -6,6 +6,8 @@
 //
 // 원칙:
 //   · ★ 자동 실행 금지. 페이지 진입만으로 결제창을 열지 않는다.
+//     단 [PORTONE-MOBILE-REDIRECT-RETURN-01] 카드사 앱 인증 후 복귀는 예외다.
+//     이미 사용자가 결제를 마치고 돌아온 것이므로 추가 클릭을 요구하지 않는다.
 //   · ★ 금액·플랜은 표시만 한다. qr-complete 로 보내지 않는다(서버가 토큰에서 읽는다).
 //   · ★ 업체명 미표시 확정 — QR-MOBILE-DISCLOSURE-SCOPE-01.
 //   · 로그인 불필요. 신원은 token 이 증명한다.
@@ -20,6 +22,17 @@ const PHASE = {
   DONE:    'done',
   ERROR:   'error',
 };
+
+// [PORTONE-MOBILE-REDIRECT-RETURN-01] 리디렉션 복귀 파라미터.
+//   ★ 실측 출처: @portone/browser-sdk 의 IssueBillingKeyResponse 타입.
+//     - 해당 타입 주석: 「리디렉션 없이 빌링키 발급 UI가 표시된 경우 반환값」
+//       → 리디렉션 방식에서는 Promise 가 해소되지 않는다.
+//     - forceRedirect 주석: 「원래 프로미스로 resolve 되었을 상황에서도
+//       redirectUrl 로 쿼리 파라미터와 함께 리디렉션합니다」
+//       → 쿼리 파라미터 집합 = resolve 페이로드 = IssueBillingKeyResponse 필드.
+//   ★ 확정 필드만 쓴다: billingKey · code · message · pgMessage.
+//     추측한 이름을 추가하지 않는다.
+const RET_KEYS = ['billingKey', 'code'];
 
 function won(n) {
   return typeof n === 'number' ? n.toLocaleString('ko-KR') : '-';
@@ -37,6 +50,11 @@ export default function MobileBillingPage() {
   // ─── 세션 조회 (무인증 public) ───
   useEffect(() => {
     if (!token) return;
+    // ★ 복귀 진입이면 세션 조회로 화면을 READY 로 되돌리지 않는다.
+    //   되돌리면 결제가 끝난 사용자에게 결제 버튼이 다시 보인다.
+    if (!router.isReady) return;
+    const q = router.query || {};
+    if (RET_KEYS.some((k) => q[k] != null && q[k] !== '')) return;
     let alive = true;
 
     (async () => {
@@ -64,6 +82,77 @@ export default function MobileBillingPage() {
     })();
 
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, router.isReady]);
+
+  // ─────────────────────────────────────────────────────────
+  // [PORTONE-MOBILE-REDIRECT-RETURN-01] 카드사 앱 인증 후 복귀 처리.
+  //   ★ 사용자가 결제 버튼을 다시 누르게 만들지 않는다. billingKey 가 있으면 즉시 청구한다.
+  //   ★ code 가 있으면 자동청구하지 않는다. 실패로 표시하고 끝낸다.
+  //   ★ 복귀 여부 판정은 쿼리 파라미터 존재로만 한다. 세션 status 로 추측하지 않는다.
+  // ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!router.isReady) return;
+    const q = router.query || {};
+    const isReturn = RET_KEYS.some((k) => q[k] != null && q[k] !== '');
+    if (!isReturn) return;
+
+    // 실패 복귀 — 돈이 나가지 않았다. 청구를 시도하지 않는다.
+    if (q.code) {
+      setPhase(PHASE.ERROR);
+      setMsg(
+        String(q.message || q.pgMessage || '카드 등록에 실패했습니다.')
+        + '\nPC 화면에서 QR 을 다시 발급해 주세요.'
+      );
+      return;
+    }
+
+    // 성공 복귀 — 추가 클릭 없이 이어서 청구한다.
+    submitBillingKey(String(q.billingKey));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query?.billingKey, router.query?.code]);
+
+  // ─── billingKey → qr-complete. 리디렉션 복귀와 Promise 복귀가 공유한다. ───
+  const submitBillingKey = useCallback(async (billingKey) => {
+    if (!billingKey) {
+      setPhase(PHASE.ERROR);
+      setMsg('카드 등록 결과를 확인하지 못했습니다. PC 화면에서 QR 을 다시 발급해 주세요.');
+      return;
+    }
+    setPhase(PHASE.PAYING);
+    setMsg('');
+    try {
+      const r = await fetch('/api/billing/qr-complete', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // ★ plan_id · amount 를 보내지 않는다. 서버가 토큰에서 읽는다.
+        body: JSON.stringify({
+          token,
+          billing_key: billingKey,
+          // ★ 실측: issue 응답에 card.* / pgProvider 필드는 없다.
+          //   PC 경로(PlanCards.jsx)도 pg_provider 를 'portone' 고정으로 보낸다.
+          pg_provider: 'portone',
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+
+      if (j?.charged) {
+        setCharged(true);
+        setPhase(PHASE.DONE);
+        setMsg(j.message || '결제는 정상 완료되었습니다. 다시 결제하지 마시고 고객센터로 문의해 주세요.');
+        return;
+      }
+      if (r.ok && j?.ok) {
+        setPhase(PHASE.DONE);
+        return;
+      }
+      setPhase(PHASE.ERROR);
+      setMsg(j?.message || '결제에 실패했습니다. PC 화면에서 QR 을 다시 발급해 주세요.');
+    } catch (e) {
+      console.error('[billing/m] qr-complete failed', e);
+      setPhase(PHASE.ERROR);
+      setMsg('결제 진행 중 오류가 발생했습니다. PC 화면에서 QR 을 다시 발급해 주세요.');
+    }
   }, [token]);
 
   const pay = useCallback(async () => {
@@ -110,10 +199,22 @@ export default function MobileBillingPage() {
           fullName:    ip.cust_name,
           phoneNumber: ip.cust_phone,
         },
-        redirectUrl: typeof window !== 'undefined' ? window.location.href : undefined,
+        // ★ window.location.href 를 쓰지 않는다. 복귀 파라미터가 붙은 URL 로 재시도하면
+        //   이전 결과가 새 결과와 섞인다. 항상 깨끗한 기준 URL 로 돌아온다.
+        redirectUrl: typeof window !== 'undefined'
+          ? `${window.location.origin}/billing/m/${token}`
+          : undefined,
+        // ★ [PORTONE-MOBILE-REDIRECT-RETURN-01] 복귀 경로를 하나로 고정한다.
+        //   모바일은 어차피 리디렉션이고, 이 페이지는 모바일 전용이다. 경로가 둘이면
+        //   한쪽만 고쳐졌을 때 조용히 갈라진다.
+        forceRedirect: true,
       });
 
-      // 실측 계약: 실패는 throw 가 아니라 code 로 온다. undefined 반환도 가능.
+      // ── 여기 아래는 forceRedirect 가 동작하지 않은 경우에만 도달한다 ──
+      //   ★ 정상 모바일 동선에서는 위 호출에서 페이지가 리디렉션되어 이 줄에 오지 않는다.
+      //     복귀 처리는 상단 useEffect 가 담당한다.
+      //   ★ 그래도 남겨 둔다. 도달했다는 것은 창 방식으로 열렸다는 뜻이고,
+      //     그때 결과를 버리면 카드만 등록되고 청구가 누락된다.
       if (!issued) {
         setPhase(PHASE.ERROR);
         setMsg('카드 등록이 완료되지 않았습니다.');
@@ -124,43 +225,8 @@ export default function MobileBillingPage() {
         setMsg(issued.message || issued.pgMessage || '카드 등록에 실패했습니다.');
         return;
       }
-
-      const billingKey = issued.billingKey;
-      if (!billingKey) {
-        setPhase(PHASE.ERROR);
-        setMsg('카드 등록 결과를 확인하지 못했습니다. PC 화면에서 QR 을 다시 발급해 주세요.');
-        return;
-      }
-
-      const r = await fetch('/api/billing/qr-complete', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // ★ plan_id · amount 를 보내지 않는다. 서버가 토큰에서 읽는다.
-        body: JSON.stringify({
-          token,
-          billing_key:  billingKey,
-          // ★ 실측: issue 응답에 card.* / pgProvider 필드는 없다.
-          //   PC 경로(PlanCards.jsx)도 pg_provider 를 'portone' 고정으로 보낸다. 동일하게 맞춘다.
-          //   customer_uid 는 폰이 auth user id 를 모르므로 보내지 않는다(서버에서 null 유지).
-          pg_provider:  'portone',
-        }),
-      });
-      const j = await r.json();
-
-      if (j?.charged) {
-        setCharged(true);
-        setPhase(PHASE.DONE);
-        setMsg(j.message || '결제는 정상 완료되었습니다. 다시 결제하지 마시고 고객센터로 문의해 주세요.');
-        return;
-      }
-
-      if (r.ok && j?.ok) {
-        setPhase(PHASE.DONE);
-        return;
-      }
-
-      setPhase(PHASE.ERROR);
-      setMsg(j?.message || '결제에 실패했습니다. PC 화면에서 QR 을 다시 발급해 주세요.');
+      await submitBillingKey(issued.billingKey);
+      return;
     } catch (e) {
       console.error('[billing/m] pay failed', e);
       setPhase(PHASE.ERROR);
@@ -195,7 +261,7 @@ export default function MobileBillingPage() {
               {phase === PHASE.PAYING ? '진행 중…' : '카드 등록하고 결제하기'}
             </button>
 
-            <p style={S.fine}>QR 은 발급 후 5분간 유효합니다.</p>
+            <p style={S.fine}>QR 은 발급 후 10분간 유효합니다.</p>
           </>
         )}
 

@@ -24,7 +24,14 @@ import crypto from 'crypto';
 const supabaseUrl    = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const TTL_MS = 5 * 60 * 1000;   // 5분. 늘리지 않는다.
+// [PAYMENT-PC-MOBILE-QR-BRIDGE-01 / STEP5] TTL 5분 → 10분. 운영 정책 변경이다.
+//   ★ STEP2 의 「5분. 늘리지 않는다」를 정식으로 대체한다. 테스트용 임시값이 아니다.
+//   사유: 최초 설계는 「QR 스캔 대기시간」만 계산했다. 모바일 PG 는 리디렉션 방식이라
+//     카드사 앱(ISP/앱카드) 인증 구간이 2~4분 추가로 발생하며, 이 구간이 설계에
+//     반영돼 있지 않았다. 5분을 유지하면 정상 사용자가 복귀 시점에 만료로 잘린다.
+//   ★ 5분 정책의 목적은 「세션 방치 방지」이지 정상 인증 사용자의 차단이 아니다.
+//   ★ 다른 세션 정책은 무변경 — 계정당 1세션 · lazy expire · 상태 머신 전부 그대로.
+const TTL_MS = 10 * 60 * 1000;
 
 function db() {
   return createClient(supabaseUrl, serviceRoleKey, {
