@@ -259,21 +259,10 @@ export default function MobileBillingPage() {
     } catch (e) {
       console.error('[billing/m] pay failed', e);
       setPhase(PHASE.ERROR);
-      // ── [PORTONE-MOBILE-PAY-EXCEPTION-01] TRACE 전용. 임시다. ──
-      //   ★ 폰에는 콘솔이 없다. SDK 예외를 화면에 그대로 띄우지 않으면 원인을 볼 수 없다.
-      //   ★ 원인 확정 후 이 블록은 제거하고 일반 사용자 문구로 되돌린다.
-      //     남겨 두면 내부 예외 문자열이 사용자에게 그대로 노출된다.
-      const diag = [
-        e?.name,
-        e?.message || String(e),
-        e?.code ? `code=${e.code}` : null,
-        e?.pgCode ? `pgCode=${e.pgCode}` : null,
-        e?.pgMessage ? `pgMessage=${e.pgMessage}` : null,
-      ].filter(Boolean).join(' | ');
-      setMsg(
-        '결제 진행 중 오류가 발생했습니다. PC 화면에서 QR 을 다시 발급해 주세요.\n'
-        + `[TRACE] ${diag}`
-      );
+      // ── [PORTONE-MOBILE-PAY-EXCEPTION-01] CLOSED ──
+      //   ★ 원인 확정 완료(PORTONE-OFFER-PERIOD-REQUIRED-01). TRACE 전용 화면 출력을 제거했다.
+      //     예외 상세는 console.error 로만 남긴다. 사용자 화면에 내부 문자열을 노출하지 않는다.
+      setMsg('결제 진행 중 오류가 발생했습니다. PC 화면에서 QR 을 다시 발급해 주세요.');
     }
   }, [phase, token]);
 

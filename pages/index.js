@@ -7776,6 +7776,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               ★ 현재 플랜은 quotaInfo.plan_id 를 그대로 넘긴다 — 신규 조회원을 만들지 않는다.
                 accounts.plan SoT 를 서버 check-quota 가 이미 내려주고 있다. */}
           <PlanCards
+            key={`plan-${q.plan_id || "none"}-${q.monthly_quota ?? ""}-${q.monthly_publish ?? ""}`}
             currentPlanId={q.plan_id || null}
             onComplete={() => { if (typeof onQuotaRefresh === "function") onQuotaRefresh(); }}
             showNotice={true}
