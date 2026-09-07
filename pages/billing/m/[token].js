@@ -48,42 +48,61 @@ export default function MobileBillingPage() {
   const [charged, setCharged] = useState(false);
 
   // ─── 세션 조회 (무인증 public) ───
+  //   [QR-MOBILE-SESSION-LOAD-01]
+  //   ★ router.isReady 를 기다린 뒤 그 시점의 query 에서 token 을 직접 읽는다.
+  //     구조분해한 token 을 의존성으로 쓰면 isReady 전환과 token 채워짐이
+  //     서로 다른 렌더에서 일어나며 effect 가 두 번 돌고, 첫 회 cleanup 이
+  //     두 번째 회의 응답을 무효화할 수 있다. 진입점을 하나로 만든다.
+  //   ★ 실패 사유를 화면에 그대로 노출한다. public.js 의 비200 경로는
+  //     400 token required · 404 session not found · 410 SESSION_NOT_AVAILABLE ·
+  //     503 lookup failed 4개다. 어느 쪽인지 감추면 진단이 한 번 더 필요해진다.
   useEffect(() => {
-    if (!token) return;
-    // ★ 복귀 진입이면 세션 조회로 화면을 READY 로 되돌리지 않는다.
-    //   되돌리면 결제가 끝난 사용자에게 결제 버튼이 다시 보인다.
     if (!router.isReady) return;
-    const q = router.query || {};
+
+    const q  = router.query || {};
+    // 복귀 진입이면 세션 조회로 화면을 READY 로 되돌리지 않는다.
+    //   되돌리면 결제가 끝난 사용자에게 결제 버튼이 다시 보인다.
     if (RET_KEYS.some((k) => q[k] != null && q[k] !== '')) return;
+
+    const tk = Array.isArray(q.token) ? q.token[0] : q.token;
+    if (!tk) {
+      setPhase(PHASE.ERROR);
+      setMsg('결제 주소가 올바르지 않습니다. PC 화면에서 QR 을 다시 발급해 주세요.');
+      return;
+    }
+
     let alive = true;
 
     (async () => {
       try {
-        const r = await fetch(`/api/billing/qr-session/public?token=${encodeURIComponent(token)}`);
-        const j = await r.json();
+        const r = await fetch(`/api/billing/qr-session/public?token=${encodeURIComponent(tk)}`);
+        const j = await r.json().catch(() => null);
         if (!alive) return;
 
         if (!r.ok) {
           setPhase(PHASE.ERROR);
-          setMsg(
-            j?.error === 'SESSION_NOT_AVAILABLE'
-              ? 'QR 유효시간이 지났거나 이미 처리된 결제입니다.\nPC 화면에서 QR 을 다시 발급해 주세요.'
-              : '결제 정보를 불러오지 못했습니다. PC 화면에서 QR 을 다시 발급해 주세요.'
-          );
+          if (j?.error === 'SESSION_NOT_AVAILABLE') {
+            setMsg('QR 유효시간이 지났거나 이미 처리된 결제입니다.\nPC 화면에서 QR 을 다시 발급해 주세요.');
+          } else {
+            setMsg(
+              '결제 정보를 불러오지 못했습니다. PC 화면에서 QR 을 다시 발급해 주세요.\n'
+              + `(${r.status} ${j?.error || 'unknown'})`
+            );
+          }
           return;
         }
         setSession(j);
         setPhase(PHASE.READY);
-      } catch {
+      } catch (e) {
         if (!alive) return;
         setPhase(PHASE.ERROR);
-        setMsg('네트워크 오류입니다. 잠시 후 다시 시도해 주세요.');
+        setMsg(`네트워크 오류입니다. 잠시 후 다시 시도해 주세요.\n(${String(e?.message || e)})`);
       }
     })();
 
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, router.isReady]);
+  }, [router.isReady, router.asPath]);
 
   // ─────────────────────────────────────────────────────────
   // [PORTONE-MOBILE-REDIRECT-RETURN-01] 카드사 앱 인증 후 복귀 처리.
