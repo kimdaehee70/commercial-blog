@@ -1,7 +1,8 @@
 // pages/api/billing/qr-complete.js
 // [PAYMENT-PC-MOBILE-QR-BRIDGE-01 / STEP3] 모바일 결제 완료 수신 → 토큰 원자적 claim → 결제 실행.
 //
-// POST { token, billing_key, customer_uid?, card_name?, card_number_masked?, card_type?, pg_provider? }
+// POST { token, billing_key, card_name?, card_number_masked?, card_type?, pg_provider? }
+//   ★ customer_uid 는 받지 않는다. 서버가 accounts.auth_user_id 에서 읽는다(QR-CUSTOMER-UID-MISSING-01).
 //
 // 원칙:
 //   · 무인증이다. 신원은 token 이 증명한다. Bearer 를 요구하지 않는다(폰은 로그인 상태가 아니다).
@@ -45,7 +46,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'method not allowed' });
   }
 
-  const { token, billing_key, customer_uid, card_name, card_number_masked, card_type, pg_provider } =
+  const { token, billing_key, card_name, card_number_masked, card_type, pg_provider } =
     req.body || {};
 
   if (!token)       return res.status(400).json({ error: 'token required' });
@@ -104,7 +105,7 @@ export default async function handler(req, res) {
   // ─────────────────────────────────────────────────────────
   const { data: account, error: accErr } = await supabase
     .from('accounts')
-    .select('id, email, plan, status')
+    .select('id, email, plan, status, auth_user_id')
     .eq('id', claimed.account_id)
     .single();
 
@@ -112,6 +113,21 @@ export default async function handler(req, res) {
     console.error('[qr-complete] account lookup failed', claimed.account_id, accErr);
     await settle(supabase, claimed.id, 'failed', 'ACCOUNT_LOOKUP_FAILED');
     return res.status(503).json({ error: 'account lookup failed' });
+  }
+
+  // ★ [QR-CUSTOMER-UID-MISSING-01] customer_uid 는 여기서 확정한다.
+  //   billing_keys.customer_uid 는 NOT NULL + 기본값 없음(실측). NULL 이 들어가면
+  //   executeBillingIssue 의 insert 가 통째로 실패하고 result_code 는
+  //   'billing_keys insert failed' 로만 남는다 — 청구 이전이라 과금은 없지만 원인이 안 보인다.
+  //   PC 경로(PlanCards.jsx)는 로그인 세션의 session.user.id 를 body 로 보내지만,
+  //   폰은 로그인이 없어 보낼 수 없다. 토큰이 지목한 계정에서 서버가 직접 읽는 것이
+  //   유일한 정답이며, plan_id · account_id 를 서버가 판독하는 기존 원칙과 같은 방향이다.
+  //   ★ 조용한 폴백을 두지 않는다. 없으면 결제 이전에 명시적으로 끊는다.
+  const customerUid = account.auth_user_id || null;
+  if (!customerUid) {
+    console.error('[qr-complete] auth_user_id missing', claimed.account_id);
+    await settle(supabase, claimed.id, 'failed', 'ACCOUNT_UID_MISSING');
+    return res.status(503).json({ error: 'account uid missing' });
   }
 
   // ─────────────────────────────────────────────────────────
@@ -125,7 +141,7 @@ export default async function handler(req, res) {
       account,
       planId: claimed.plan_id,          // ★ 토큰 레코드 값
       billing_key,
-      customer_uid,
+      customer_uid: customerUid,        // ★ 서버 판독값. body 값은 쓰지 않는다.
       card_name,
       card_number_masked,
       card_type,
