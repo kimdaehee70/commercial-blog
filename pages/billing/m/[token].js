@@ -223,6 +223,16 @@ export default function MobileBillingPage() {
         redirectUrl: typeof window !== 'undefined'
           ? `${window.location.origin}/billing/m/${token}`
           : undefined,
+        // ★ [PORTONE-OFFER-PERIOD-REQUIRED-01] forceRedirect 경로 전용 필수 필드.
+        //   forceRedirect 방식에서만 SDK 가 offerPeriod 를 (null, null) 로 직렬화해 전송한다.
+        //   서버는 range | interval 중 하나를 요구하므로 그대로 거절된다.
+        //     실측 에러: offerPeriod violates the rule AT_LEAST_ONE_REQUIRED
+        //               (value="(null, null)") | code=INVALID_REQUEST
+        //   PC 창 방식(PlanCards.jsx)은 필드 자체가 생략되어 무영향 — PC 에 넣지 않는다.
+        //   ★ 실측 출처: @portone/browser-sdk dist/v2/request/OfferPeriod.d.ts
+        //     interval 형식 = `${number}d | ${number}m | ${number}y` (공식 예: '30d' '6m' '1y')
+        //     월 정기결제이므로 '1m'. 다른 표기(P1M 등)는 규격 위반이다.
+        offerPeriod: { interval: '1m' },
         // ★ [PORTONE-MOBILE-REDIRECT-RETURN-01] 복귀 경로를 하나로 고정한다.
         //   모바일은 어차피 리디렉션이고, 이 페이지는 모바일 전용이다. 경로가 둘이면
         //   한쪽만 고쳐졌을 때 조용히 갈라진다.
