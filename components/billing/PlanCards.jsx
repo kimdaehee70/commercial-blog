@@ -48,6 +48,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabase';
+// [PAYMENT-PC-MOBILE-QR-BRIDGE-01 / STEP4] QR 은 로컬에서 그린다.
+//   ★ 외부 QR 생성 API(api.qrserver.com 등) 기각. token 은 결제 개시 권한을 가진
+//     자격증명이므로 제3자 서버로 보내지 않는다.
+import { QRCodeSVG } from 'qrcode.react';
 
 // plan id → 액센트 컬러. 표현 전용 상수(상품 데이터 아님).
 const ACCENT = {
@@ -94,6 +98,14 @@ export default function PlanCards({
   //   state 가 아니라 ref 인 이유: 리렌더를 유발하면 완료 카드가 다시 그려지며 effect 가 재실행된다.
   const navRef = useRef(false);
   const [leftSec, setLeftSec] = useState(RETURN_SEC);
+
+  // [PAYMENT-PC-MOBILE-QR-BRIDGE-01 / STEP4] 휴대폰 결제 진입점.
+  //   ★ 기존 PC 직접 결제(handleSubscribe)는 한 줄도 바꾸지 않는다. 나란히 둔다.
+  //   qrSess = { token, url, planId, planLabel, priceKrw, expiresAt, accessToken }
+  const [qrSess, setQrSess]   = useState(null);
+  const [qrMsg,  setQrMsg]    = useState('');
+  const [qrLeft, setQrLeft]   = useState(0);   // 남은 유효시간(초)
+  const [qrOpening, setQrOpening] = useState(false);
 
   const curPlan = currentPlanId ? String(currentPlanId).toLowerCase() : null;
 
@@ -259,6 +271,120 @@ export default function PlanCards({
     }
   }
 
+  // ─────────────────────────────────────────────────────────
+  // [PAYMENT-PC-MOBILE-QR-BRIDGE-01 / STEP4] QR 세션 발급
+  //   ★ 여기서 돈이 움직이지 않는다. 실제 청구는 폰에서 qr-complete 가 한다.
+  // ─────────────────────────────────────────────────────────
+  async function handleQrPay(planId) {
+    if (submitting || qrOpening || paymentRecovery) return;
+    setQrOpening(true);
+    setQrMsg('');
+    setMsg('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.replace('/login'); return; }
+
+      const r = await fetch('/api/billing/qr-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ plan_id: planId }),
+      });
+      const j = await r.json().catch(() => ({}));
+
+      if (r.status === 401) { router.replace('/login'); return; }
+      if (!r.ok || !j?.token) {
+        // STORE_CONTACT_REQUIRED 등 서버 사유를 그대로 쓴다.
+        setMsg(j?.message || j?.error || 'QR 발급에 실패했습니다. 다시 시도해 주세요.');
+        return;
+      }
+
+      const plan = plans.find(x => x.id === planId);
+      setQrSess({
+        token:       j.token,
+        url:         j.url,
+        planId,
+        planLabel:   plan?.label || planId,
+        priceKrw:    plan?.price_krw ?? j.amount_krw ?? null,
+        expiresAt:   j.expires_at,
+        accessToken: session.access_token,
+      });
+    } catch (e) {
+      setMsg('QR 발급 중 오류가 발생했습니다. 다시 시도해 주세요.');
+    } finally {
+      setQrOpening(false);
+    }
+  }
+
+  // ─── QR 상태 폴링 (2초) ───
+  //   ★ 완료 판정 SoT 는 서버 세션 status 다. 화면이 스스로 완료를 만들지 않는다.
+  //   ★ status='completed' + result_code 존재 = 청구는 됐고 등급 반영이 실패한 상태.
+  //     이 경우 완료카드를 띄우지 않는다. 띄우면 사용자가 정상으로 오인한다.
+  useEffect(() => {
+    if (!qrSess?.token) return;
+    let alive = true;
+
+    const timer = setInterval(async () => {
+      try {
+        const r = await fetch(
+          `/api/billing/qr-session?token=${encodeURIComponent(qrSess.token)}`,
+          { headers: { Authorization: `Bearer ${qrSess.accessToken}` } }
+        );
+        const j = await r.json().catch(() => ({}));
+        if (!alive || !r.ok) return;
+
+        if (j.status === 'completed') {
+          clearInterval(timer);
+          setQrSess(null);
+          if (j.result_code) {
+            // [ACCOUNT-PLAN-UPDATE-SILENT-FAIL-01] 계열. 재결제 유도 금지.
+            setPaymentRecovery(true);
+            setMsg(
+              '결제는 정상적으로 완료되었습니다. 다만 이용권 등급 반영에 문제가 발생했습니다. '
+              + '다시 결제하지 마시고 고객센터로 문의해 주세요.'
+            );
+            return;
+          }
+          setDone({
+            planId:        qrSess.planId,
+            planLabel:     qrSess.planLabel,
+            priceKrw:      qrSess.priceKrw,
+            // 폴링 응답에는 없는 값이다. 완료카드는 두 항목을 조건부로 그린다.
+            nextBillingAt: null,
+            paymentId:     null,
+          });
+          return;
+        }
+
+        if (j.status === 'failed' || j.status === 'expired') {
+          clearInterval(timer);
+          setQrSess(null);
+          setQrMsg('');
+          setMsg(
+            j.status === 'expired'
+              ? 'QR 유효시간이 지났습니다. 다시 시도해 주세요.'
+              : '휴대폰에서 결제가 완료되지 않았습니다. 다시 시도해 주세요.'
+          );
+        }
+      } catch { /* 일시적 네트워크 오류는 다음 tick 에서 재시도한다 */ }
+    }, 2000);
+
+    return () => { alive = false; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrSess?.token]);
+
+  // ─── QR 남은 시간 표시 ───
+  useEffect(() => {
+    if (!qrSess?.expiresAt) return;
+    const calc = () =>
+      Math.max(0, Math.floor((new Date(qrSess.expiresAt).getTime() - Date.now()) / 1000));
+    setQrLeft(calc());
+    const t = setInterval(() => setQrLeft(calc()), 1000);
+    return () => clearInterval(t);
+  }, [qrSess?.expiresAt]);
+
   // 완료 카드 → RETURN_SEC 초 후 onComplete 1회.
   //   ★ 조건부 return(loading/done) 보다 위에 있어야 한다. 훅은 매 렌더 같은 순서로 호출돼야 한다.
   useEffect(() => {
@@ -415,11 +541,63 @@ export default function PlanCards({
                 >
                   {isFree ? '기본 플랜' : (isCur ? '현재 이용 중' : '결제하기')}
                 </button>
+
+                {/* [PAYMENT-PC-MOBILE-QR-BRIDGE-01 / STEP4] 휴대폰 결제 진입점.
+                    ★ 위 「결제하기」(PC 직접 결제) 동작은 무접촉이다. 대체가 아니라 병렬이다. */}
+                {!isFree && !isCur && (
+                  <button
+                    type="button"
+                    style={{ ...S.btnQr, color: ac, borderColor: `${ac}55` }}
+                    disabled={submitting || paymentRecovery || qrOpening || !!qrSess}
+                    onClick={() => handleQrPay(p.id)}
+                  >
+                    {qrOpening ? 'QR 생성 중…' : '휴대폰으로 결제'}
+                  </button>
+                )}
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* [PAYMENT-PC-MOBILE-QR-BRIDGE-01 / STEP4] QR 표시.
+          ★ 이 화면은 결과를 만들지 않는다. 서버 세션 status 만 따른다. */}
+      {qrSess && (
+        <div style={S.qrBack}>
+          <div style={S.qrCard}>
+            <div style={S.qrTitle}>휴대폰으로 결제</div>
+            <div style={S.qrSub}>
+              {qrSess.planLabel}
+              {qrSess.priceKrw != null ? ` · ${qrSess.priceKrw.toLocaleString()}원` : ''}
+            </div>
+
+            <div style={S.qrBox}>
+              <QRCodeSVG value={qrSess.url} size={208} level="M" includeMargin={false} />
+            </div>
+
+            <div style={S.qrSteps}>
+              휴대폰 카메라로 QR 을 찍고<br />화면 안내에 따라 카드를 등록해 주세요.
+            </div>
+
+            <div style={S.qrWait}>
+              <span style={S.qrDot} />
+              결제 대기 중… {qrLeft > 0
+                ? `${String(Math.floor(qrLeft / 60)).padStart(2, '0')}:${String(qrLeft % 60).padStart(2, '0')} 남음`
+                : '유효시간 만료'}
+            </div>
+
+            {qrMsg && <div style={S.qrErr}>{qrMsg}</div>}
+
+            {/* 닫기는 화면만 닫는다. 세션은 서버 TTL 과 신규 발급이 정리한다. */}
+            <button type="button" style={S.qrClose} onClick={() => setQrSess(null)}>
+              닫기
+            </button>
+            <div style={S.qrFine}>
+              결제는 휴대폰에서 진행됩니다. 완료되면 이 화면이 자동으로 바뀝니다.
+            </div>
+          </div>
+        </div>
+      )}
 
       {msg && <div style={S.msg}>{msg}</div>}
 
@@ -480,6 +658,35 @@ function Notice({ compact = false }) {
 }
 
 const S = {
+  // ── [PAYMENT-PC-MOBILE-QR-BRIDGE-01 / STEP4] ──
+  btnQr: {
+    width: '100%', marginTop: 8, padding: '10px 0',
+    fontSize: 13, fontWeight: 700, background: '#fff',
+    border: '1px solid', borderRadius: 10, cursor: 'pointer',
+  },
+  qrBack: {
+    position: 'fixed', inset: 0, background: 'rgba(17,17,17,.45)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 1000, padding: 20,
+  },
+  qrCard: {
+    width: '100%', maxWidth: 340, background: '#fff', borderRadius: 18,
+    padding: '26px 22px', textAlign: 'center',
+    boxShadow: '0 12px 40px rgba(0,0,0,.18)',
+  },
+  qrTitle: { fontSize: 17, fontWeight: 800, color: '#111' },
+  qrSub:   { fontSize: 14, fontWeight: 600, color: '#555', marginTop: 6 },
+  qrBox:   { display: 'inline-block', padding: 14, marginTop: 18,
+             background: '#fff', border: '1px solid #eee', borderRadius: 14 },
+  qrSteps: { fontSize: 13, color: '#666', lineHeight: 1.7, marginTop: 16 },
+  qrWait:  { fontSize: 13, fontWeight: 600, color: '#2f6bff', marginTop: 16 },
+  qrDot:   { display: 'inline-block', width: 7, height: 7, borderRadius: '50%',
+             background: '#2f6bff', marginRight: 7, verticalAlign: 'middle' },
+  qrErr:   { fontSize: 13, color: '#b3261e', marginTop: 12, lineHeight: 1.6 },
+  qrClose: { marginTop: 18, padding: '10px 26px', fontSize: 14, fontWeight: 700,
+             color: '#555', background: '#f2f3f5', border: 0, borderRadius: 10,
+             cursor: 'pointer' },
+  qrFine:  { fontSize: 12, color: '#999', marginTop: 12, lineHeight: 1.6 },
   loading: { padding: '60px 0', textAlign: 'center', color: '#8b83a0', fontSize: 14 },
 
   // [PLAN-CARDS-SHARED-COMPONENT-01] gridTemplateColumns 인라인 삭제.
