@@ -180,7 +180,6 @@ export default function StorePublicPage({ store, source }) {
         <title>{store.storeName}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         {/* Gate A 한정 — 색인 차단. Gate B 승인 시 이 줄만 제거. */}
-        <meta name="robots" content="noindex, nofollow" />
         <meta
           name="description"
           content={`${areaLine ? areaLine + " " : ""}${store.storeName} 연락처와 방문 안내`}

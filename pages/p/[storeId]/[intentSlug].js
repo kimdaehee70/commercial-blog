@@ -422,7 +422,6 @@ export default function IntentPage({
         <title>{`${intent} · ${store.storeName}`}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         {/* B-2b PASS 전까지 색인 차단 유지. 해제는 별도 승인 사항. */}
-        <meta name="robots" content="noindex, nofollow" />
         <meta name="description" content={`${intent} 관련 안내와 연락처 · ${store.storeName}`} />
       </Head>
 
