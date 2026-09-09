@@ -89,6 +89,13 @@ export async function getServerSideProps(ctx) {
     return { notFound: true };
   }
 
+  // [PSEO-STORE1-EXCLUDE-01] store 1 = OWNER 전업종 혼합 테스트 계정.
+  //   noindex 는 색인 차단이지 접근 차단이 아니다 → 명시 게이트로 404.
+  const EXCLUDED_STORE_IDS = [1];
+  if (EXCLUDED_STORE_IDS.includes(storeId)) {
+    return { notFound: true };
+  }
+
   let sb;
   try {
     sb = serverClient();

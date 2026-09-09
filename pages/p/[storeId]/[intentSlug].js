@@ -224,6 +224,13 @@ export async function getServerSideProps(ctx) {
   const storeId = Number(rawId);
   if (!Number.isSafeInteger(storeId) || storeId <= 0) return { notFound: true };
 
+  // [PSEO-STORE1-EXCLUDE-01] store 1 = OWNER 전업종 혼합 테스트 계정.
+  //   확정 계약의 「제외: store 1」은 noindex 로 대체되지 않는다.
+  //   noindex 는 색인 차단이지 접근 차단이 아니다 → 명시 게이트로 404.
+  //   cnt>=2 자격 미달로 우연히 404 나는 것은 게이트로 인정하지 않는다.
+  const EXCLUDED_STORE_IDS = [1];
+  if (EXCLUDED_STORE_IDS.includes(storeId)) return { notFound: true };
+
   // Next 가 이미 디코딩해서 넘긴다. 빈 값·과길이는 차단.
   const intent = String(ctx.params?.intentSlug || "").trim();
   if (!intent || intent.length > 60) return { notFound: true };
