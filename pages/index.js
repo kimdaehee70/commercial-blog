@@ -12618,6 +12618,22 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
           ::-webkit-scrollbar-thumb { background: #d0b8e8; border-radius: 4px; }
         `}</style>
       </Head>
+        {/* [PSEO-V0 Gate B-1] 관리자 전용 pSEO TEST 진입점 — 개발 확인용.
+            · 게이트: _isOwnerView + hubStore?.id
+            · 신규 state·조회·라우팅 0. window.open 만 사용.
+            · Gate B-2 완료 후 정식 버튼으로 교체하며 이 블록은 제거한다. */}
+        {_isOwnerView && hubStore?.id ? (
+          <button
+            type="button"
+            onClick={() => window.open(`/p/${hubStore.id}`, "_blank", "noopener")}
+            style={{ position: "fixed", left: 10, bottom: 10, zIndex: 9999,
+              fontSize: 11, fontWeight: 700, color: "#7a5a9a", background: "#fff",
+              border: "1px solid #e0d0f0", borderRadius: 10, padding: "4px 9px",
+              cursor: "pointer", fontFamily: "inherit", opacity: 0.75 }}
+          >
+            pSEO TEST
+          </button>
+        ) : null}
 
       {/* [PG] 최상위 세로 래퍼 — 좌우 분할(위) + 전체 폭 푸터(아래).
           기존 100vh 가로 flex는 아래 flex:1 자식으로 그대로 이동. 내부 레이아웃 무변경. */}
