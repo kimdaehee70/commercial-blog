@@ -1,6 +1,4 @@
 // pages/admin/observations.js
-// v0.7.1 [OBS-ADMIN-USABILITY-01] AdminLayout → ObservationAdminLayout wrapper 교체만.
-//   상단 '관측' + 좌측 '기존관측 / 자동관측'. 목록·필터·드로어·저장 경로 전부 무변경.
 // v0.7 (세션84) — 관측 상세패널 + 관리자 관측 입력 이관 (A안 1단계)
 //   Publish 는 '운영', Observation 은 '관측'. 두 화면이 각각 한 역할만 한다(DEC-017 연장).
 //   ⚠ 순서 원칙: 대체 경로를 먼저 완성한 뒤 기존 기능을 걷어낸다.
@@ -29,7 +27,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabase';
 import { useAdminGuard } from '../../lib/useAdminGuard';
-import { ObservationAdminLayout } from '../../lib/observationLayout';
+import { AdminLayout } from '../../lib/adminLayout';
 import { renderAliveBadge, fmtDate, fmtDateTime } from '../../lib/adminUI';
 import {
   T, PageHead, StatRow, Stat, Table, Th, Td, Btn, ErrBox, Dash, footNoteStyle,
@@ -392,10 +390,10 @@ export default function ObservationsPage() {
   }, [batchBusy, load, getToken, router]);
 
   const Gate = ({ children }) => (
-    <ObservationAdminLayout current="/admin/observations">
+    <AdminLayout current="/admin/observations" theme="dark">
       <PageHead title="관측 목록" version="v0.6" sub="발행 전체 대상 · 최근 N건으로 자르지 않는다 (DEC-016)" />
       {children}
-    </ObservationAdminLayout>
+    </AdminLayout>
   );
   if (authState === 'checking' || authLoading) return <Gate><div>인증 확인 중…</div></Gate>;
   if (authState === 'unauth' || authState === 'non-owner') return <Gate><div>로그인 페이지로 이동 중…</div></Gate>;
@@ -409,7 +407,7 @@ export default function ObservationsPage() {
   const cur = pg?.page || 1;
 
   return (
-    <ObservationAdminLayout current="/admin/observations">
+    <AdminLayout current="/admin/observations" theme="dark">
       <PageHead
         title="관측 목록"
         version="v0.6"
@@ -590,7 +588,7 @@ export default function ObservationsPage() {
           onClose={() => setSelId(null)}
         />
       )}
-    </ObservationAdminLayout>
+    </AdminLayout>
   );
 }
 

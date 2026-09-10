@@ -1,15 +1,4 @@
 // pages/admin/auto-observe.js
-// v0.2 [OBS-ADMIN-USABILITY-01] 관측 업무영역 편입 + 목록 | 우측 상세 2-column (UI 전용)
-//   · AdminLayout(fluid) → ObservationAdminLayout. 상단 '관측' 활성 · 좌측 '자동관측'.
-//     fluid 는 100vh 2단 패널(publish)용이라 문서 스크롤 페이지인 이 화면과 용도가 달랐다.
-//     페이지 최상위 padding 제거 — 본문 패딩은 레이아웃 소유 규약.
-//   · KPI · 필터 · 에러는 전체 폭 유지. 그 아래부터 [목록 65 | 상세 35].
-//   · 목록 아래 Timeline 제거 → 우측 패널. 행 클릭 시 우측 내용만 교체.
-//   · 우측 패널은 표 스크롤 래퍼(overflowX) 밖의 형제 — 안에 넣으면 sticky 가 깨진다.
-//   · 미선택 = 안내 placeholder. 첫 행 자동 선택 없음.
-//   · media query 없음 — 폭이 모자라면 flexWrap 으로 상세가 목록 아래로 내려간다.
-//   · API 호출·파라미터·state·필터·정렬·요약 계산 무변경. openTimeline 응답 역전 가드는 이번 축 제외.
-//
 // OBSERVATION-AUTO-DASHBOARD-01 v0.1 — 자동관측 전용 화면 (신규)
 //
 // - 기존 '관측'(/admin/observations) = 수동관측. 이 페이지와 무접촉.
@@ -20,7 +9,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAdminGuard } from '../../lib/useAdminGuard';
-import { ObservationAdminLayout } from '../../lib/observationLayout';
+import { AdminLayout } from '../../lib/adminLayout';
 import { fmtDate, fmtDateTime } from '../../lib/adminUI';
 
 const C = {
@@ -30,7 +19,7 @@ const C = {
 };
 
 const S = {
-  wrap: { minWidth: 0 },
+  wrap: { padding: '18px 20px 60px' },
   h1: { fontSize: 20, fontWeight: 700, color: C.fg, margin: '0 0 4px' },
   sub: { fontSize: 12, color: C.dim, margin: '0 0 16px' },
   cards: { display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 10, marginBottom: 16 },
@@ -44,26 +33,8 @@ const S = {
   th: { textAlign: 'left', color: C.dim, fontWeight: 600, padding: '8px 10px', borderBottom: `1px solid ${C.line}`, whiteSpace: 'nowrap', cursor: 'pointer' },
   td: { padding: '9px 10px', borderBottom: `1px solid ${C.line}`, color: C.fg, whiteSpace: 'nowrap' },
   rowSel: { background: '#1c2430' },
-  // 2-column 65:35 — basis 650/350(=65:35) + grow 65:35 → 폭이 늘어도 비율 유지.
-  //   basis 합 1000 + gap 16 = 1016px 미만이면 flexWrap 으로 상세가 목록 아래로 내려간다.
-  //   minWidth 0 — wrap 된 좁은 폭에서 목록이 600px 로 버티며 페이지 가로 overflow 를 만들지 않게.
-  //   표가 더 넓으면 tableScroll 안에서만 가로 스크롤.
-  split: { display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' },
-  listCol: { flex: '65 1 650px', minWidth: 0, boxSizing: 'border-box' },
-  tableScroll: { overflowX: 'auto' },
-  // 우측 상세 — tableScroll 밖 형제. 조상에 overflow 컨테이너가 없어야 sticky 가 동작한다.
-  //   AdminNav 바는 부모(navSlot) 높이가 바 높이와 같아 스크롤 시 고정되지 않으므로 top 은 12 로 충분.
-  side: {
-    flex: '35 1 350px', minWidth: 0, boxSizing: 'border-box',
-    position: 'sticky', top: 12, alignSelf: 'flex-start',
-    maxHeight: 'calc(100vh - 24px)', overflowY: 'auto',
-    background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: '14px 16px',
-  },
-  sideEmpty: { fontSize: 12, color: C.dim, lineHeight: 1.7, padding: '18px 0' },
-  // Timeline 행 — 좁은 패널용 2줄. 1줄 = 관측시각 | 순위 | 생존 | 변화, 2줄 = note / basis.
-  tlItem: { padding: '7px 0', borderBottom: `1px solid ${C.line}`, fontSize: 12, color: C.fg },
-  tlLine: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 40px 44px 76px', gap: 8, alignItems: 'baseline' },
-  tlNote: { marginTop: 3, color: C.dim, fontSize: 11.5, lineHeight: 1.5, wordBreak: 'break-all' },
+  panel: { marginTop: 18, background: C.card, border: `1px solid ${C.line}`, borderRadius: 10, padding: '14px 16px' },
+  tlRow: { display: 'grid', gridTemplateColumns: '150px 70px 70px 110px 1fr', gap: 8, padding: '7px 0', borderBottom: `1px solid ${C.line}`, fontSize: 12, color: C.fg },
   dimS: { color: C.dim },
 };
 
@@ -153,19 +124,19 @@ export default function AutoObservePage() {
 
   if (authLoading) {
     return (
-      <ObservationAdminLayout current="/admin/auto-observe">
+      <AdminLayout current="/admin/auto-observe" theme="dark" fluid>
         <div style={S.wrap}><p style={S.sub}>권한 확인 중…</p></div>
-      </ObservationAdminLayout>
+      </AdminLayout>
     );
   }
   if (!authed) {
     return (
-      <ObservationAdminLayout current="/admin/auto-observe">
+      <AdminLayout current="/admin/auto-observe" theme="dark" fluid>
         <div style={S.wrap}>
           <h1 style={S.h1}>자동관측</h1>
           <p style={{ ...S.sub, color: C.down }}>{authErr || '관리자 권한이 필요합니다.'}</p>
         </div>
-      </ObservationAdminLayout>
+      </AdminLayout>
     );
   }
 
@@ -178,7 +149,7 @@ export default function AutoObservePage() {
   ];
 
   return (
-    <ObservationAdminLayout current="/admin/auto-observe">
+    <AdminLayout current="/admin/auto-observe" theme="dark" fluid>
       <div style={S.wrap}>
         <h1 style={S.h1}>자동관측</h1>
         <p style={S.sub}>
@@ -221,103 +192,83 @@ export default function AutoObservePage() {
 
         {err ? <div style={{ ...S.card, borderColor: C.down, color: C.down, marginBottom: 12 }}>{err}</div> : null}
 
-        <div style={S.split}>
-          <div style={S.listCol}>
-            <div style={S.tableScroll}>
-              <table style={S.table}>
-                <thead>
-                  <tr>
-                    <th style={S.th}>검색어</th>
-                    <th style={S.th}>업종</th>
-                    {th('first_observed_at', '최초')}
-                    {th('current_rank', '현재')}
-                    {th('best_rank', '최고')}
-                    <th style={S.th}>변화</th>
-                    <th style={S.th}>생존</th>
-                    {th('last_observed_at', '마지막 관측')}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr
-                      key={r.publish_id}
-                      style={sel === r.publish_id ? S.rowSel : undefined}
-                      onClick={() => openTimeline(r.publish_id)}
-                    >
-                      <td style={{ ...S.td, cursor: 'pointer' }}>
-                        {r.core_keyword || <span style={S.dimS}>검색어 없음</span>}
-                      </td>
-                      <td style={S.td}>{r.industry || <span style={S.dimS}>—</span>}</td>
-                      <td style={S.td}>{rk(r.first_rank)}</td>
-                      <td style={S.td}>{rk(r.current_rank)}</td>
-                      <td style={S.td}>{rk(r.best_rank)}</td>
-                      <td style={S.td}><Delta d={r.delta} /></td>
-                      <td style={S.td}>{r.survival_days == null ? <span style={S.dimS}>—</span> : `${r.survival_days}일`}</td>
-                      <td style={S.td}>{fmtDate ? fmtDate(r.last_observed_at) : String(r.last_observed_at || '')}</td>
-                    </tr>
-                  ))}
-                  {!loading && rows.length === 0 ? (
-                    <tr><td style={{ ...S.td, color: C.dim }} colSpan={8}>표시할 자동관측 결과가 없습니다.</td></tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+        <table style={S.table}>
+          <thead>
+            <tr>
+              <th style={S.th}>검색어</th>
+              <th style={S.th}>업종</th>
+              {th('first_observed_at', '최초')}
+              {th('current_rank', '현재')}
+              {th('best_rank', '최고')}
+              <th style={S.th}>변화</th>
+              <th style={S.th}>생존</th>
+              {th('last_observed_at', '마지막 관측')}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr
+                key={r.publish_id}
+                style={sel === r.publish_id ? S.rowSel : undefined}
+                onClick={() => openTimeline(r.publish_id)}
+              >
+                <td style={{ ...S.td, cursor: 'pointer' }}>
+                  {r.core_keyword || <span style={S.dimS}>검색어 없음</span>}
+                </td>
+                <td style={S.td}>{r.industry || <span style={S.dimS}>—</span>}</td>
+                <td style={S.td}>{rk(r.first_rank)}</td>
+                <td style={S.td}>{rk(r.current_rank)}</td>
+                <td style={S.td}>{rk(r.best_rank)}</td>
+                <td style={S.td}><Delta d={r.delta} /></td>
+                <td style={S.td}>{r.survival_days == null ? <span style={S.dimS}>—</span> : `${r.survival_days}일`}</td>
+                <td style={S.td}>{fmtDate ? fmtDate(r.last_observed_at) : String(r.last_observed_at || '')}</td>
+              </tr>
+            ))}
+            {!loading && rows.length === 0 ? (
+              <tr><td style={{ ...S.td, color: C.dim }} colSpan={8}>표시할 자동관측 결과가 없습니다.</td></tr>
+            ) : null}
+          </tbody>
+        </table>
 
-            {total > size ? (
-              <div style={{ ...S.filters, marginTop: 12 }}>
-                <button style={S.btn} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>이전</button>
-                <span style={S.dimS}>{page} / {Math.max(1, Math.ceil(total / size))}</span>
-                <button style={S.btn} disabled={page >= Math.ceil(total / size)} onClick={() => setPage((p) => p + 1)}>다음</button>
+        {total > size ? (
+          <div style={{ ...S.filters, marginTop: 12 }}>
+            <button style={S.btn} disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>이전</button>
+            <span style={S.dimS}>{page} / {Math.max(1, Math.ceil(total / size))}</span>
+            <button style={S.btn} disabled={page >= Math.ceil(total / size)} onClick={() => setPage((p) => p + 1)}>다음</button>
+          </div>
+        ) : null}
+
+        {sel ? (
+          <div style={S.panel}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: C.fg }}>
+              자동관측 Timeline · #{sel}
+            </div>
+            <div style={{ ...S.sub, marginBottom: 12 }}>
+              {tl?.post?.core_keyword || '검색어 없음'} · {tl?.post?.industry || '—'} ·
+              {' '}발행 {tl?.post?.published_at ? (fmtDateTime ? fmtDateTime(tl.post.published_at) : tl.post.published_at) : '—'}
+              {tl?.meta ? ` · 관측 ${tl.meta.count}행 (원본 그대로)` : ''}
+            </div>
+            {tlLoading ? <div style={S.dimS}>불러오는 중…</div> : null}
+            {tl ? (
+              <div>
+                <div style={{ ...S.tlRow, color: C.dim, fontWeight: 600 }}>
+                  <div>관측시각</div><div>순위</div><div>생존</div><div>변화</div><div>note / basis</div>
+                </div>
+                {tl.items.map((it) => (
+                  <div key={it.id} style={S.tlRow}>
+                    <div>{fmtDateTime ? fmtDateTime(it.observed_at) : it.observed_at}</div>
+                    <div>{rk(it.rel_rank)}</div>
+                    <div style={{ color: it.is_alive ? C.up : C.dim }}>{it.is_alive ? 'alive' : '—'}</div>
+                    <div><Delta d={it.delta} /></div>
+                    <div style={S.dimS}>{[it.note, it.rank_basis].filter(Boolean).join(' · ')}</div>
+                  </div>
+                ))}
+                {tl.items.length === 0 ? <div style={S.dimS}>관측 이력이 없습니다.</div> : null}
               </div>
             ) : null}
           </div>
-
-          <aside style={S.side}>
-            {!sel ? (
-              <div style={S.sideEmpty}>
-                목록에서 검색어를 클릭하면 이 자리에 자동관측 Timeline이 표시됩니다.
-              </div>
-            ) : (
-              <>
-                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: C.fg }}>
-                  자동관측 Timeline · #{sel}
-                </div>
-                <div style={{ ...S.sub, marginBottom: 12 }}>
-                  {tl?.post?.core_keyword || '검색어 없음'} · {tl?.post?.industry || '—'} ·
-                  {' '}발행 {tl?.post?.published_at ? (fmtDateTime ? fmtDateTime(tl.post.published_at) : tl.post.published_at) : '—'}
-                  {tl?.meta ? ` · 관측 ${tl.meta.count}행 (원본 그대로)` : ''}
-                </div>
-                {tlLoading ? <div style={S.dimS}>불러오는 중…</div> : null}
-                {tl ? (
-                  <div>
-                    <div style={{ ...S.tlItem, color: C.dim, fontWeight: 600 }}>
-                      <div style={S.tlLine}>
-                        <div>관측시각</div><div>순위</div><div>생존</div><div>변화</div>
-                      </div>
-                      <div style={{ ...S.tlNote, fontWeight: 400 }}>note / basis</div>
-                    </div>
-                    {tl.items.map((it) => {
-                      const note = [it.note, it.rank_basis].filter(Boolean).join(' · ');
-                      return (
-                        <div key={it.id} style={S.tlItem}>
-                          <div style={S.tlLine}>
-                            <div>{fmtDateTime ? fmtDateTime(it.observed_at) : it.observed_at}</div>
-                            <div>{rk(it.rel_rank)}</div>
-                            <div style={{ color: it.is_alive ? C.up : C.dim }}>{it.is_alive ? 'alive' : '—'}</div>
-                            <div><Delta d={it.delta} /></div>
-                          </div>
-                          {note ? <div style={S.tlNote}>{note}</div> : null}
-                        </div>
-                      );
-                    })}
-                    {tl.items.length === 0 ? <div style={S.dimS}>관측 이력이 없습니다.</div> : null}
-                  </div>
-                ) : null}
-              </>
-            )}
-          </aside>
-        </div>
+        ) : null}
       </div>
-    </ObservationAdminLayout>
+    </AdminLayout>
   );
 }
