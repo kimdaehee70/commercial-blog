@@ -44,6 +44,7 @@ import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { isPseoEligible } from "../../../lib/pseo/eligibility";
 
 // 허브(index.js)와 동일 화이트리스트. 유지보수 시 양쪽을 함께 본다.
 const PUBLIC_FIELDS = [
@@ -250,6 +251,19 @@ export async function getServerSideProps(ctx) {
     throw new Error(`PSEO_STORE_SELECT_FAILED code=${sErr.code} msg=${sErr.message}`);
   }
   if (!store) return { notFound: true };
+
+  // ── [PSEO-V1-PAID-USER-EXPANSION-01] 유료 자격 Gate ─────
+  //   허브(index.js)와 동일 판정. resolveBillingPeriod() 재사용이며
+  //   grace·우회 스위치 없음. 만료되면 다음 요청부터 자동 404,
+  //   재결제하면 다음 요청부터 자동 복구된다(저장물이 없으므로).
+  //   store 조회 성공 이후에 검사한다 — 순서를 바꾸면 존재하지 않는 store 와
+  //   무자격 store 의 응답이 갈려 존재 여부가 새어나간다.
+  //   차단 사유는 서버 로그 전용. 응답에 싣지 않는다.
+  const elig = await isPseoEligible(store.account_id);
+  if (!elig.ok) {
+    console.warn(`[pseo] intent blocked store=${storeId} reason=${elig.reason}`);
+    return { notFound: true };
+  }
 
   // ── 2) 해당 Intent 의 발행글 ────────────────────────────
   //   account_id 경유. store_id 는 신뢰하지 않는다(1/1809).

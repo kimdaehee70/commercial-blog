@@ -1,6 +1,7 @@
-// pages/p/[storeId].js
+// pages/p/[storeId]/index.js
 // ─────────────────────────────────────────────────────────────
 // [PSEO-V0-CONTACT-FIRST-DESIGN-01] Gate A — 업체 공개 페이지 1장.
+// [PSEO-V1-PAID-USER-EXPANSION-01]   V1 — 유료 Gate + Intent 목록 자동 표시.
 //
 // 목적: 검색 사용자가 이 페이지에서 "업체에 직접" 연락한다.
 //   AI-POST 가입 CTA 없음. 상담 동선 탈취 0. (지시서 §9)
@@ -13,30 +14,36 @@
 //     → 계정 삭제된 고아 store 존재 가능 → 렌더 금지.
 //   · status text NOT NULL default 'active' → 'active' 만 공개.
 //
+// V1 추가 (승인분):
+//   ★ 유료 자격 Gate. isPseoEligible() 이 false 면 notFound.
+//     판정 규칙은 기존 resolveBillingPeriod() 재사용 — 신규 규칙·grace·
+//     우회 스위치 없음.
+//   ★ 자격 있는 Intent(core_keyword cnt>=2) 목록을 자동 표시.
+//     저장물이 아니라 요청 시점 집계이므로 발행만 하면 누적되고,
+//     만료·삭제 시 별도 정리 없이 자동으로 사라진다.
+//
 // 절대 원칙 (승인분):
 //   ★ service role 은 getServerSideProps 안에서만. 브라우저 번들 유입 금지.
 //   ★ props 에 store 전체 객체 전달 금지. 아래 PUBLIC_FIELDS 화이트리스트만.
 //     (service role 은 전 컬럼 접근권 → 통째 전달 시 notes/meta 가 HTML 에 박힌다)
-//   ★ 엔진·결제·관측 SoT 무접촉. 이 파일은 신규이며 기존 파일을 import 하지 않는다.
-//
-// Gate A 한정:
-//   ★ noindex 고정. 색인·검색노출은 Gate A 범위 밖(지시서 §7 DOGFOOD 이전).
-//     Gate B 승인 시 이 메타 1줄만 제거한다.
+//   ★ account_id 는 서버 판정 전용. props 로 내보내지 않는다.
+//   ★ 엔진·결제·관측 SoT 무접촉. DDL 0.
 // ─────────────────────────────────────────────────────────────
 
 import Head from "next/head";
+import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { isPseoEligible, listQualifiedIntents } from "../../../lib/pseo/eligibility";
 
 // ── 브라우저로 내보낼 컬럼 화이트리스트 ────────────────────────
 //   여기 없는 컬럼은 HTML 에 절대 나가지 않는다.
+//   account_id 는 조회는 하되 props 로는 나가지 않는다(서버 판정 전용).
 //   제외 확정: notes / meta / blog_account / treatments / real_menu /
 //             photo_pool / faq / homepage_url / blog_url
-//   · notes·meta        = 내부 운영 메모
-//   · homepage_url·blog_url = 레거시 중복컬럼. Store.js 가 쓰지 않으므로
-//     사용자가 수정할 수 없는 유령값이다. 읽지 않는다.
 const PUBLIC_FIELDS = [
   "id",
+  "account_id", // [V1] 유료 판정·Intent 집계용. props 미포함.
   "store_name",
   "industry",
   "region",
@@ -54,6 +61,9 @@ const VISIT_KEYS = [
   ["parkingOps", "주차"],
   ["reservation", "예약"],
 ];
+
+// 허브에 노출할 Intent 최대 개수.
+const MAX_INTENTS = 20;
 
 // ── service role 클라이언트 (서버 전용) ────────────────────────
 function serverClient() {
@@ -121,6 +131,23 @@ export async function getServerSideProps(ctx) {
     return { notFound: true };
   }
 
+  // ── [V1] 유료 자격 Gate ──────────────────────────────────────
+  //   store 조회 성공 이후에 검사한다. 순서를 바꾸면 존재하지 않는 store 와
+  //   무자격 store 의 응답 시간이 갈려 존재 여부가 새어나간다.
+  //   사유는 서버 로그에만 남기고 응답에는 싣지 않는다.
+  const elig = await isPseoEligible(data.account_id);
+  if (!elig.ok) {
+    console.warn(`[pseo] hub blocked store=${storeId} reason=${elig.reason}`);
+    return { notFound: true };
+  }
+
+  // ── [V1] 자격 있는 Intent 목록 ───────────────────────────────
+  //   cnt>=2 판정은 eligibility.MIN_POSTS 단일 상수.
+  const qualified = await listQualifiedIntents(sb, data.account_id, {
+    limit: MAX_INTENTS,
+  });
+  const intents = qualified.map((q) => q.intent);
+
   // visit_info 도 통째로 넘기지 않는다. 키 화이트리스트 적용.
   const vi = data.visit_info && typeof data.visit_info === "object" ? data.visit_info : {};
   const visit = VISIT_KEYS
@@ -147,10 +174,10 @@ export async function getServerSideProps(ctx) {
   else if (/youtube\.|youtu\.be/i.test(ref)) source = "shorts";
   else if (ref) source = "referral";
 
-  return { props: { store, source } };
+  return { props: { store, intents, source } };
 }
 
-export default function StorePublicPage({ store, source }) {
+export default function StorePublicPage({ store, intents = [], source }) {
   const sentRef = useRef(false);
 
   // page_view 1회. StrictMode 이중 실행 방어.
@@ -179,7 +206,6 @@ export default function StorePublicPage({ store, source }) {
       <Head>
         <title>{store.storeName}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        {/* Gate A 한정 — 색인 차단. Gate B 승인 시 이 줄만 제거. */}
         <meta
           name="description"
           content={`${areaLine ? areaLine + " " : ""}${store.storeName} 연락처와 방문 안내`}
@@ -246,6 +272,27 @@ export default function StorePublicPage({ store, source }) {
                 <dd>{value}</dd>
               </div>
             ))}
+          </section>
+        ) : null}
+
+        {/* [V1] 자격 있는 Intent 목록. 비어 있으면 섹션 자체가 없다.
+            클릭 추적 없음 — pseo_events_cta_type_check 에 해당 타입이 없고
+            추가하려면 DDL 이 필요하다(이번 축 제외). */}
+        {intents.length > 0 ? (
+          <section className="intents">
+            <h2 className="h2">이런 내용을 다룹니다</h2>
+            <ul className="intentList">
+              {intents.map((intent) => (
+                <li key={intent}>
+                  <Link
+                    className="intentRow"
+                    href={`/p/${store.id}/${encodeURIComponent(intent)}`}
+                  >
+                    {intent}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </section>
         ) : null}
 
@@ -348,6 +395,36 @@ export default function StorePublicPage({ store, source }) {
         .infoRow dd {
           margin: 0;
           flex: 1;
+        }
+        .intents {
+          margin: 2.25rem 0 0;
+        }
+        .h2 {
+          margin: 0 0 0.75rem;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #857c72;
+          letter-spacing: 0;
+        }
+        .intentList {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          border-top: 1px solid #e8e2da;
+        }
+        .intentList li {
+          border-bottom: 1px solid #f0ebe4;
+        }
+        .intentRow {
+          display: block;
+          padding: 0.9rem 0;
+          font-size: 1rem;
+          line-height: 1.45;
+          color: #23201d;
+          text-decoration: none;
+        }
+        .intentRow:active {
+          color: #1c6b3f;
         }
         .foot {
           margin-top: 2.5rem;
