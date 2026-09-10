@@ -35,6 +35,7 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { isPseoEligible, listQualifiedIntents, MIN_HUB_POSTS, countPublishedPosts } from "../../../lib/pseo/eligibility";
+import { resolvePhone } from "../../../lib/pseo/phone";
 
 // ── 브라우저로 내보낼 컬럼 화이트리스트 ────────────────────────
 //   여기 없는 컬럼은 HTML 에 절대 나가지 않는다.
@@ -82,10 +83,12 @@ function serverClient() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-// 전화번호 → tel:/sms: 용. 숫자와 + 만 남긴다.
-function dialable(phone) {
-  return String(phone || "").replace(/[^0-9+]/g, "");
-}
+// ── [PSEO-HUB-PHONE-FALLBACK-02] ─────────────────────────────
+//   기존 dialable() 제거. 허브만 다른 규칙을 쓰던 것이 결함의 원인이었다.
+//     · dialable 은 자릿수 상한 검증이 없고 "+" 를 남긴다.
+//     · visit_info.phone fallback 이 없어 store 12(1522-9939, 유일한 공개 허브)에서
+//       전화 CTA 가 통째로 사라졌다 — 같은 업체 Intent 페이지에서는 표시됨.
+//   → Intent 페이지와 동일한 lib/pseo/phone.js 의 resolvePhone() 을 공유한다.
 
 export async function getServerSideProps(ctx) {
   const raw = ctx.params?.storeId;
@@ -165,6 +168,12 @@ export async function getServerSideProps(ctx) {
     .map(([k, label]) => [label, String(vi[k] || "").trim()])
     .filter(([, v]) => v.length > 0);
 
+  // [PSEO-HUB-PHONE-FALLBACK-02] 전화 해석은 서버에서 끝낸다.
+  //   Intent 페이지와 동일한 resolvePhone(). visit_info.phone 원문(문구형)은
+  //   여기서 소비하고 버린다 — props 로 나가지 않는다.
+  //   VISIT_KEYS 화이트리스트는 손대지 않는다(phone 키는 계속 미포함).
+  const resolved = resolvePhone(data.phone, vi.phone);
+
   const store = {
     id: data.id,
     storeName: data.store_name || "",
@@ -172,7 +181,9 @@ export async function getServerSideProps(ctx) {
     region: data.region || "",
     subRegion: data.sub_region || "",
     address: data.address || "",
-    phone: data.phone || "",
+    phone: resolved.display,
+    tel: resolved.tel,
+    smsTel: resolved.smsTel,
     placeUrl: data.naver_place_url || "",
     visit,
   };
@@ -198,8 +209,13 @@ export default function StorePublicPage({ store, intents = [], source }) {
     track(store.id, "page_view", source);
   }, [store.id, source]);
 
-  const tel = dialable(store.phone);
+  // [PSEO-HUB-PHONE-FALLBACK-02] 전화와 문자를 분리 판정한다.
+  //   smsTel 은 store_profiles.phone 경로에서만 채워진다. fallback 대표번호
+  //   (1522 등)는 SMS 수신이 불가하므로 문자 CTA 를 만들지 않는다.
+  const tel = String(store.tel || "");
+  const smsTel = String(store.smsTel || "");
   const hasPhone = tel.length >= 8;
+  const hasSms = smsTel.length >= 8;
   const hasAddress = String(store.address || "").trim().length > 0;
   const hasPlace = String(store.placeUrl || "").trim().length > 0;
 
@@ -242,10 +258,10 @@ export default function StorePublicPage({ store, intents = [], source }) {
         ) : null}
 
         <nav className="row">
-          {hasPhone ? (
+          {hasSms ? (
             <a
               className="chip"
-              href={`sms:${tel}`}
+              href={`sms:${smsTel}`}
               onClick={() => track(store.id, "sms_click", source)}
             >
               문자
