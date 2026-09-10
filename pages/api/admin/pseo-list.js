@@ -17,9 +17,17 @@
 //   · stores-list.js 는 RPC get_stores_admin 경유라 열 추가에 DDL 이 필요하다.
 //     그래서 이 API 는 RPC 를 쓰지 않고 테이블을 직접 읽는다.
 //
-// N+1 주의: 업체 1건마다 eligibility 판정 1회 + Intent 집계 1회 + 글수 1회.
-//   현재 17행 규모라 허용한다(승인분). 100행을 넘으면 재검토 대상이며,
-//   그때도 판정 규칙을 여기에 복제하는 방식은 택하지 않는다.
+// [PSEO-ADMIN-N1-LATENCY-01] N+1 은 유지하되 직렬 깊이만 줄인다.
+//   실측: Production 29566ms / 18행. 총 DB 왕복 67회.
+//     stores 1 + events 1
+//     + isPseoEligible 31 (유료 1건은 subscriptions 1회, 나머지 15건은
+//       구독 미해당으로 accounts 조회가 추가되어 2회씩)
+//     + listQualifiedIntents 17 + countPublishedPosts 17
+//   원인은 N+1 구조 자체가 아니라 for...of + await 로 67 왕복을 한 줄로
+//   세운 것이다(병렬 구간 0). 29566 ÷ 67 ≈ 441ms/왕복.
+//   ★ 대응은 루프 구조 변경뿐이다. 벌크 쿼리·판정 규칙 복제·DDL 은 쓰지 않는다.
+//   ★ EXCLUDED store 의 Intent/글수 조회 생략(C안)은 기각됨 — 표시값이
+//     바뀌므로 지연 개선 축에서 다루지 않는다. 현행 유지.
 // ─────────────────────────────────────────────────────────────
 
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
@@ -36,6 +44,11 @@ const CTA_WINDOW_DAYS = 7;
 // 표에 세는 CTA 3종. 나머지 타입(sms_click / directions_click)은 total 에만 합산.
 const CTA_COLS = ['page_view', 'phone_click', 'post_click'];
 
+// [PSEO-ADMIN-N1-LATENCY-01] store 처리 동시성 상한.
+//   Supabase 커넥션 풀에 부담을 주지 않는 선. 올리면 왕복 수는 그대로이고
+//   직렬 깊이만 더 줄지만, 서버리스 인스턴스당 동시 연결이 늘어난다.
+const STORE_CONCURRENCY = 6;
+
 // 차단 사유 → 화면 라벨. eligibility 의 reason 을 그대로 받고 여기서만 번역한다.
 const REASON_LABEL = {
   EXCLUDED: '테스트 계정 배제',
@@ -49,6 +62,27 @@ const REASON_LABEL = {
   PAID: '',
 };
 
+// [PSEO-ADMIN-N1-LATENCY-01] 동시성 제한 map.
+//   결과는 반드시 입력 순서로 되돌린다(out[i] 직접 대입). 완료 순서로 push 하면
+//   화면 정렬이 store id 오름차순에서 무너진다.
+//   worker 하나가 예외를 던지면 Promise.all 이 그대로 reject → 기존 try/catch 로
+//   전달된다. 오류를 빈 목록으로 삼키지 않는 기존 동작과 동일하다.
+async function mapWithLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let cursor = 0;
+  const size = Math.max(1, Math.min(limit, items.length));
+  const workers = Array.from({ length: size }, async () => {
+    for (;;) {
+      const i = cursor;
+      cursor += 1;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -59,9 +93,10 @@ export default async function handler(req, res) {
   if (!user) return;
 
   const diag = {
-    version: 'v0.1',
+    version: 'v0.2',
     min_posts: MIN_POSTS,
     cta_window_days: CTA_WINDOW_DAYS,
+    concurrency: STORE_CONCURRENCY,
     started_at: new Date().toISOString(),
   };
 
@@ -112,8 +147,10 @@ export default async function handler(req, res) {
     }
 
     // ── 3) 업체별 판정 ───────────────────────────────────────
-    const rows = [];
-    for (const s of stores || []) {
+    //   [PSEO-ADMIN-N1-LATENCY-01] store 단위로 최대 6건 동시 처리.
+    //   판정 순서·호출 함수·상수는 패치 전과 동일하다. 바뀐 것은 실행 구조뿐.
+    const storeList = stores || [];
+    const rows = await mapWithLimit(storeList, STORE_CONCURRENCY, async (s) => {
       // 공개 차단 사유는 공개 페이지와 같은 순서로 판정한다.
       //   배제 → 비활성 → 계정 없음 → 유료 자격.
       let reason;
@@ -127,14 +164,20 @@ export default async function handler(req, res) {
         const elig = await isPseoEligible(s.account_id);
         reason = elig.reason;
       }
+
       // Intent 수 / 글수 — account_id 가 없으면 조회 자체를 하지 않는다.
       //   글수는 countPublishedPosts() 단일 함수 경유. 쿼리를 여기에 복제하지 않는다.
+      //   [PSEO-ADMIN-N1-LATENCY-01] 두 조회는 서로 독립(account_id 만 필요)이므로
+      //   병렬로 돌린다. 순서 의존이 없으며 결과 값도 달라지지 않는다.
       let intentCount = 0;
       let postCount = 0;
       if (s.account_id) {
-        const qualified = await listQualifiedIntents(supabaseAdmin, s.account_id, { limit: 500 });
+        const [qualified, published] = await Promise.all([
+          listQualifiedIntents(supabaseAdmin, s.account_id, { limit: 500 }),
+          countPublishedPosts(supabaseAdmin, s.account_id),
+        ]);
         intentCount = qualified.length;
-        postCount = await countPublishedPosts(supabaseAdmin, s.account_id);
+        postCount = published;
       }
 
       // [PSEO-EMPTY-HUB-01] 허브 최소 글수 Gate.
@@ -147,7 +190,7 @@ export default async function handler(req, res) {
 
       const cta = ctaByStore.get(s.id) || { total: 0 };
 
-      rows.push({
+      return {
         store_id: s.id,
         account_id: s.account_id,
         store_name: s.store_name || '',
@@ -165,8 +208,8 @@ export default async function handler(req, res) {
           post_click: cta.post_click || 0,
           total: cta.total || 0,
         },
-      });
-    }
+      };
+    });
 
     // ── 4) KPI ───────────────────────────────────────────────
     const kpi = {
