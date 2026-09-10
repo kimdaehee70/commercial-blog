@@ -24,7 +24,7 @@
 
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 import { requireOwner } from '../../../lib/guards';
-import { isPseoEligible, listQualifiedIntents, MIN_POSTS } from '../../../lib/pseo/eligibility';
+import { isPseoEligible, listQualifiedIntents, MIN_POSTS, MIN_HUB_POSTS, countPublishedPosts } from '../../../lib/pseo/eligibility';
 
 // 공개 페이지(index.js / [intentSlug].js)의 배제 목록과 같은 값.
 //   store 1 = OWNER 전업종 혼합 테스트 계정.
@@ -45,6 +45,7 @@ const REASON_LABEL = {
   BASIS_CALENDAR: '유효 구독 없음',
   BASIS_NULL: '판정 불가',
   PLAN_NOT_PAID: '무료 플랜',
+  NO_POSTS: '발행글 없음',
   PAID: '',
 };
 
@@ -126,24 +127,23 @@ export default async function handler(req, res) {
         const elig = await isPseoEligible(s.account_id);
         reason = elig.reason;
       }
-      const isPublic = reason === 'PAID';
-
       // Intent 수 / 글수 — account_id 가 없으면 조회 자체를 하지 않는다.
+      //   글수는 countPublishedPosts() 단일 함수 경유. 쿼리를 여기에 복제하지 않는다.
       let intentCount = 0;
       let postCount = 0;
       if (s.account_id) {
         const qualified = await listQualifiedIntents(supabaseAdmin, s.account_id, { limit: 500 });
         intentCount = qualified.length;
-
-        const { count, error: pErr } = await supabaseAdmin
-          .from('publish_history')
-          .select('id', { count: 'exact', head: true })
-          .eq('account_id', s.account_id)
-          .eq('publish_status', 'published')
-          .is('deleted_at', null);
-        if (pErr) throw new Error(`PSEO_ADMIN_POSTS_FAILED code=${pErr.code} msg=${pErr.message}`);
-        postCount = count || 0;
+        postCount = await countPublishedPosts(supabaseAdmin, s.account_id);
       }
+
+      // [PSEO-EMPTY-HUB-01] 허브 최소 글수 Gate.
+      //   공개 페이지(index.js)와 동일 순서·동일 함수·동일 상수.
+      //   유료 판정 통과 이후에만 적용한다 — 다른 차단 사유를 덮어쓰지 않는다.
+      if (reason === 'PAID' && postCount < MIN_HUB_POSTS) {
+        reason = 'NO_POSTS';
+      }
+      const isPublic = reason === 'PAID';
 
       const cta = ctaByStore.get(s.id) || { total: 0 };
 

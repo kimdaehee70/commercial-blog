@@ -34,7 +34,7 @@ import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { isPseoEligible, listQualifiedIntents } from "../../../lib/pseo/eligibility";
+import { isPseoEligible, listQualifiedIntents, MIN_HUB_POSTS, countPublishedPosts } from "../../../lib/pseo/eligibility";
 
 // ── 브라우저로 내보낼 컬럼 화이트리스트 ────────────────────────
 //   여기 없는 컬럼은 HTML 에 절대 나가지 않는다.
@@ -138,6 +138,17 @@ export async function getServerSideProps(ctx) {
   const elig = await isPseoEligible(data.account_id);
   if (!elig.ok) {
     console.warn(`[pseo] hub blocked store=${storeId} reason=${elig.reason}`);
+    return { notFound: true };
+  }
+
+  // ── [PSEO-EMPTY-HUB-01] 허브 최소 글수 Gate ──────────────────
+  //   허브 자격 = 유효 PAID + published >= MIN_HUB_POSTS(=1).
+  //   Intent 자격(core_keyword cnt>=2)과 완전히 별도다. 두 규칙을 섞지 않는다.
+  //   core_keyword 는 이 계산에 개입하지 않는다 — NULL 이어도 글은 글이다.
+  //   유료 Gate 이후에 둔다. 순서를 바꾸면 무자격 store 의 글수를 조회하게 된다.
+  const hubPosts = await countPublishedPosts(sb, data.account_id);
+  if (hubPosts < MIN_HUB_POSTS) {
+    console.warn(`[pseo] hub blocked store=${storeId} reason=NO_POSTS count=${hubPosts}`);
     return { notFound: true };
   }
 
