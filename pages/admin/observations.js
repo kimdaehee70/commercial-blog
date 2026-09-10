@@ -1,4 +1,14 @@
 // pages/admin/observations.js
+// v0.8 [OBS-LEGACY-OBSERVATIONS-RETIRE-01] 플래그 퇴역 (DEC-022 · DEC-007)
+//   · SHOW_LEGACY_OBSERVATIONS=false → 접속 시 /admin/auto-observe 로 이동. 기존 화면은 마운트되지 않는다
+//     (목록 API 호출 0 · +생존/+보합/batch 실행 불가). 복원 = true 1줄.
+//   · 퇴역 사유: 초기 임시 관측판. +생존/+보합 은 세션84 에 이미 문서05 §3-2(입력은 순위 하나)와
+//     충돌해 폐기 대상으로 기록됐다. 실제 검색 없이 버튼 하나로 상태가 기록되고 +보합 은 fossil 로
+//     저장된다(2026-09-10 publish_id 2131 실증). batch 는 과거 값을 오늘 날짜로 복사한다.
+//   · 자동관측 정본 = /admin/auto-observe(관측 기본 화면) · 수동관측 정본 = /admin/publish.
+//   · 아래 본문(926줄)·API·데이터 무삭제. observe-quick / observe-batch 호출 코드는 남아 있으나 도달 불가.
+//   · 종료 조건: 관측 통합 Production 안정 확인 후 OBS-LEGACY-CLEANUP 축에서
+//     본문 및 observe-quick / observe-batch 삭제 여부를 최종 판단한다. 그전에는 보존.
 // v0.7 (세션84) — 관측 상세패널 + 관리자 관측 입력 이관 (A안 1단계)
 //   Publish 는 '운영', Observation 은 '관측'. 두 화면이 각각 한 역할만 한다(DEC-017 연장).
 //   ⚠ 순서 원칙: 대체 경로를 먼저 완성한 뒤 기존 기능을 걷어낸다.
@@ -194,7 +204,7 @@ const mergeTimeline = (adminRows, userRows) => {
   return merged;
 };
 
-export default function ObservationsPage() {
+function ObservationsPage() {
   const router = useRouter();
   const { authState, session, loading: authLoading } = useAdminGuard();
   const [data, setData] = useState(null);
@@ -590,6 +600,17 @@ export default function ObservationsPage() {
       )}
     </AdminLayout>
   );
+}
+
+// [OBS-LEGACY-OBSERVATIONS-RETIRE-01] DEC-007 플래그. true 로 되돌리면 기존 화면이 그대로 복원된다.
+const SHOW_LEGACY_OBSERVATIONS = false;
+
+export default function ObservationsRoute() {
+  const router = useRouter();
+  useEffect(() => {
+    if (!SHOW_LEGACY_OBSERVATIONS) router.replace('/admin/auto-observe');
+  }, [router]);
+  return SHOW_LEGACY_OBSERVATIONS ? <ObservationsPage /> : null;
 }
 
 // ── [세션84] 관측 패널 ────────────────────────────────────────────────────

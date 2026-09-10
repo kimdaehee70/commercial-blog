@@ -198,7 +198,7 @@ export default function QuotaPage() {
           <a href="/admin/dashboard" style={S.link}>대시보드</a>
           <a href="/admin/accounts" style={S.link}>계정</a>
           <a href="/admin/publish" style={S.link}>발행</a>
-          <a href="/admin/observations" style={S.link}>관측</a>
+          <a href="/admin/auto-observe" style={S.link}>관측</a>
         </div>
       </div>
 

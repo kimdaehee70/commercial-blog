@@ -1,4 +1,7 @@
 // pages/admin/publish.js
+// [OBS-LEGACY-OBSERVATIONS-RETIRE-01] (DEC-022) 관측 업무영역 편입 — wrapper 교체만.
+//   AdminLayout → ObservationAdminLayout(current=/admin/publish). 상단 '관측' · 좌측 '수동관측(발행)'.
+//   내부 레이아웃·목록·상세·관측 저장·수동등록·재발행·삭제·CSV 전부 무변경.
 // v0.6 (세션85) — 상세패널 결손분 보강: 재발행 · 수정 · 삭제(Soft Delete).
 //   재발행 = URL 재연결 + 발행 상태 갱신까지. 글 재생성은 재발행이 아니다(= 새 글 생성). 엔진 무접촉.
 //   수정   = 제목만. 본문·키워드는 API 화이트리스트에서 차단 — 관측은 '발행 당시 콘텐츠' 기준으로
@@ -82,7 +85,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabase';
 import { useAdminGuard } from '../../lib/useAdminGuard';
-import { AdminLayout } from '../../lib/adminLayout';
+import { ObservationAdminLayout } from '../../lib/observationLayout';
 import { renderAliveBadge } from '../../lib/adminUI';
 import { T, Btn, inputStyle, selectStyle } from '../../lib/adminTheme';
 import { getCatalogItem, INDUSTRY_CATEGORY_ORDER, INDUSTRY_CATALOG } from '../../lib/industry-catalog';
@@ -1095,14 +1098,14 @@ export default function AdminPublish() {
 
   // 세션76: 인증 대기 화면에도 동일 상단 바. 상태 전환 시 네비가 사라지지 않는다.
   if (authState === 'checking' || authLoading) {
-    return <AdminLayout current="/admin/publish" theme="dark"><div style={S.gate}>인증 확인 중…</div></AdminLayout>;
+    return <ObservationAdminLayout current="/admin/publish"><div style={S.gate}>인증 확인 중…</div></ObservationAdminLayout>;
   }
   if (authState === 'unauth' || authState === 'non-owner') {
-    return <AdminLayout current="/admin/publish" theme="dark"><div style={S.gate}>로그인 페이지로 이동 중…</div></AdminLayout>;
+    return <ObservationAdminLayout current="/admin/publish"><div style={S.gate}>로그인 페이지로 이동 중…</div></ObservationAdminLayout>;
   }
 
   return (
-    <AdminLayout current="/admin/publish" fluid theme="dark">
+    <ObservationAdminLayout current="/admin/publish" fluid>
       <div style={{ ...S.wrap, height: 'auto', flex: '1 1 auto', minHeight: 0 }}>
       {/* 좌측 리스트 */}
       <div style={S.left}>
@@ -1923,7 +1926,7 @@ export default function AdminPublish() {
         )}
       </div>
     </div>
-    </AdminLayout>
+    </ObservationAdminLayout>
   );
 }
 
