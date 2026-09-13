@@ -10,8 +10,10 @@
 //   · Intent SoT       = publish_history.core_keyword (생성시점 확정·역산 금지)
 //   · 귀속             = publish_history.account_id → store_profiles.account_id → id
 //   · 생성 자격        = 동일 account_id + 동일 core_keyword COUNT >= 2
-//   · robots           = noindex, nofollow 유지 (B-2b PASS 전 해제 금지)
-//   · canonical        = 자기 자신
+//   · robots           = 별도 meta robots 없음 → 기본값 index, follow.
+//                        수집 경계는 public/robots.txt 가 플랫폼 차원에서 담당한다.
+//                        (PSEO-META-ROBOTS-NEVER-IMPLEMENTED-01 / SEO-ROBOTS-TXT-01 CLOSE)
+//   · canonical        = 자기 자신. self-canonical 구현됨(PSEO-CANONICAL-FOUNDATION-01).
 //   · publish_history.store_id 백필 금지 / 신규 DDL 금지 / Blog Core 수정 금지
 //
 // 실측 근거:
@@ -48,6 +50,9 @@ import { isPseoEligible } from "../../../lib/pseo/eligibility";
 // [PSEO-HUB-PHONE-FALLBACK-02] 전화 해석은 공용 모듈로 이동.
 //   허브(index.js)와 같은 규칙을 쓰기 위한 것이며, 함수 내용은 무변경이다.
 import { resolvePhone } from "../../../lib/pseo/phone";
+// [PSEO-CANONICAL-FOUNDATION-01] self-canonical 은 URL 단일 파생 지점에서 조립한다.
+//   허브(index.js)와 같은 모듈을 쓴다. 문자열 직접 조립 금지.
+import { intentUrl } from "../../../lib/pseo/url";
 
 // 허브(index.js)와 동일 화이트리스트. 유지보수 시 양쪽을 함께 본다.
 const PUBLIC_FIELDS = [
@@ -403,8 +408,12 @@ export default function IntentPage({
       <Head>
         <title>{`${intent} · ${store.storeName}`}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        {/* B-2b PASS 전까지 색인 차단 유지. 해제는 별도 승인 사항. */}
+        {/* 색인 차단 없음 — 기본값 index, follow. 수집 경계는 public/robots.txt 담당. */}
         <meta name="description" content={`${intent} 관련 안내와 연락처 · ${store.storeName}`} />
+        {/* [PSEO-CANONICAL-FOUNDATION-01] 이 페이지의 정본 주소 고지.
+            intentSlug 는 Next 가 디코드해 넘기고, intentUrl 이 다시 인코딩한다.
+            query string(utm 등)이 붙어도 params 기반이라 값은 불변이다. */}
+        <link rel="canonical" href={intentUrl(store.id, intent)} />
       </Head>
 
       <main className="wrap">

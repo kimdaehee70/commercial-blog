@@ -35,6 +35,9 @@ import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { isPseoEligible, listQualifiedIntents, MIN_HUB_POSTS, countPublishedPosts } from "../../../lib/pseo/eligibility";
+// [PSEO-CANONICAL-FOUNDATION-01] self-canonical 은 URL 단일 파생 지점에서 조립한다.
+//   검색노출 보드와 같은 함수를 쓰므로 두 값이 갈릴 수 없다.
+import { hubUrl } from "../../../lib/pseo/url";
 import { resolvePhone } from "../../../lib/pseo/phone";
 
 // ── 브라우저로 내보낼 컬럼 화이트리스트 ────────────────────────
@@ -237,6 +240,9 @@ export default function StorePublicPage({ store, intents = [], source }) {
           name="description"
           content={`${areaLine ? areaLine + " " : ""}${store.storeName} 연락처와 방문 안내`}
         />
+        {/* [PSEO-CANONICAL-FOUNDATION-01] 이 페이지의 정본 주소 고지.
+            query string(utm 등)이 붙어도 params 기반이라 값은 불변이다. */}
+        <link rel="canonical" href={hubUrl(store.id)} />
       </Head>
 
       <main className="wrap">
