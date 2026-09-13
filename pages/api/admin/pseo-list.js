@@ -33,6 +33,9 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 import { requireOwner } from '../../../lib/guards';
 import { isPseoEligible, listQualifiedIntents, MIN_POSTS, MIN_HUB_POSTS, countPublishedPosts } from '../../../lib/pseo/eligibility';
+// [PSEO-SEARCH-INDEX-BOARD-01] 공개 URL 은 저장하지 않는다 — 단일 파생 지점에서 조립한다.
+//   여기서 문자열을 직접 이어붙이면 도메인 정본이 둘로 갈린다.
+import { hubUrl, intentUrl } from '../../../lib/pseo/url';
 
 // 공개 페이지(index.js / [intentSlug].js)의 배제 목록과 같은 값.
 //   store 1 = OWNER 전업종 혼합 테스트 계정.
@@ -171,12 +174,16 @@ export default async function handler(req, res) {
       //   병렬로 돌린다. 순서 의존이 없으며 결과 값도 달라지지 않는다.
       let intentCount = 0;
       let postCount = 0;
+      // [PSEO-SEARCH-INDEX-BOARD-01] 이미 조회한 목록을 그대로 들고 간다.
+      //   URL 을 만들려고 listQualifiedIntents 를 다시 부르지 않는다 — 왕복 증가 0.
+      let intentList = [];
       if (s.account_id) {
         const [qualified, published] = await Promise.all([
           listQualifiedIntents(supabaseAdmin, s.account_id, { limit: 500 }),
           countPublishedPosts(supabaseAdmin, s.account_id),
         ]);
         intentCount = qualified.length;
+        intentList = qualified;
         postCount = published;
       }
 
@@ -202,6 +209,16 @@ export default async function handler(req, res) {
         reason_label: REASON_LABEL[reason] ?? reason,
         intent_count: intentCount,
         post_count: postCount,
+        // [PSEO-SEARCH-INDEX-BOARD-01] 검색노출 보드용 파생 URL.
+        //   [PSEO-INTENT-SHAPE-01] listQualifiedIntents 는 { intent, count } 객체 배열을 반환한다.
+        //   URL 에는 item.intent 만 사용하고 count 는 검색자산 자격 근거로 보존한다.
+        //   관제 화면은 이 두 필드를 쓰지 않는다 — 추가만 하고 기존 표시는 건드리지 않는다.
+        hub_url: hubUrl(s.id),
+        intents: intentList.map((item) => ({
+          keyword: item.intent,
+          count: item.count,
+          url: intentUrl(s.id, item.intent),
+        })),
         cta: {
           page_view: cta.page_view || 0,
           phone_click: cta.phone_click || 0,
