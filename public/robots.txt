@@ -12,3 +12,5 @@ Disallow: /reset-password
 Disallow: /publish
 Disallow: /keyword
 Disallow: /photo-editor
+
+Sitemap: https://ai-post.ai/sitemap.xml
