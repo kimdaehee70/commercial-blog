@@ -2,8 +2,14 @@
 // ─────────────────────────────────────────────────────────────
 // [PSEO-SITEMAP-FOUNDATION-01] pSEO 검색자산 sitemap. 요청 시점 파생.
 //
-// 이 파일의 정의: "검색엔진이 발견해도 되는 pSEO 공개 URL 목록"을
-//   요청 시점에 파생해서 내보낸다.
+// 이 파일의 정의: "검색엔진이 발견해도 되는 공개 URL 목록"을 내보낸다.
+//   목록은 성격이 다른 두 축으로 구성된다.
+//
+//   ① 고객 pSEO URL  — 요청 시점 파생. eligibility 판정 결과가 그대로 목록이 된다.
+//   ② 공식 검색자산   — 파생물이 아닌 상수. AI-POST 가 직접 소유·발행하는 페이지.
+//
+//   ②는 [AI-POST-OFFICIAL-SEARCH-PAGE-01] 에서 추가됐다. 아래 OFFICIAL_URLS 참조.
+//   두 축을 한 파일에 두되 섞지 않는다. ①의 파생 루프 안에 ②가 들어가면 안 된다.
 //
 // ▸ 정적 public/sitemap.xml 은 기각됐다.
 //   pSEO URL 을 저장하면 두 벌이 된다(PSEO-SEARCH-INDEX-BOARD-01 구조 발견).
@@ -16,6 +22,11 @@
 //   여기서 subscriptions·publish_history 를 직접 읽어 판정하면 규칙이 둘로 갈린다.
 //   /admin/pseo/search(검색노출 보드)와 같은 함수를 쓰므로 두 목록은 같아야 한다.
 //   보드 숫자와 sitemap URL 수가 다르면 그 자체가 결함 신호다(보드 = 조기경보).
+//
+//   ※ [AI-POST-OFFICIAL-SEARCH-PAGE-01] 이후 이 등식은 보정이 필요하다.
+//     비교식:  sitemap <url> 총수 − OFFICIAL_URLS.length  ==  보드 pSEO URL 수
+//     공식 검색자산은 보드 집계 대상이 아니다(고객 pSEO 와 SoT 가 다르다).
+//     보정 없이 총수만 비교하면 OFFICIAL_URLS.length 만큼 상시 불일치로 오독한다.
 //
 // ▸ /api/admin/pseo-list 재호출은 불가하다. 그 API 는 requireOwner 가드 뒤에 있고
 //   sitemap 은 크롤러가 익명으로 받는 공개 엔드포인트다.
@@ -68,6 +79,21 @@ const INTENT_LIMIT = 500;
 
 // store 조회 상한. 보드와 동일.
 const STORE_LIMIT = 500;
+
+// [AI-POST-OFFICIAL-SEARCH-PAGE-01] AI-POST 공식 검색자산.
+//   파생물이 아니다. store_profiles · subscriptions · publish_history · eligibility
+//   어디에도 종속되지 않는다. 그래서 상수다. DB 왕복 증가 = 0.
+//
+//   자사 계정을 고객 pSEO 에 가짜 업체로 넣는 방식은 기각됐다(선장 판정).
+//   EXCLUDED_STORE_IDS = [1] 은 그대로 유지된다. 공식 자산은 이 상수로만 들어온다.
+//
+//   ▸ 페이지 실체: pages/guide/clinic-blog-marketing.js (정적 렌더, self canonical)
+//   ▸ lastmod 는 붙이지 않는다. 위 [PSEO-SITEMAP-FOUNDATION-01] 선장 판정과 동일 원칙.
+//     정적 페이지라 published_at 조차 없다. 부정확한 lastmod 는 크롤러 신뢰를 깎는다.
+//   ▸ 추가/삭제 시 이 배열만 고친다. 파생 루프는 건드리지 않는다.
+const OFFICIAL_URLS = [
+  'https://ai-post.ai/guide/clinic-blog-marketing',
+];
 
 // [PSEO-SITEMAP-COLD-LATENCY-01] 동시 실행 폭.
 //   보드(PSEO-ADMIN-N1-LATENCY-01)가 쓰는 값과 같은 6.
@@ -165,6 +191,13 @@ export async function getServerSideProps({ res }) {
   for (const list of perStore) {
     for (const u of list || []) urls.push(u);
   }
+
+  // [AI-POST-OFFICIAL-SEARCH-PAGE-01] 공식 검색자산은 파생 루프가 끝난 뒤 붙인다.
+  //   ▸ mapWithLimit · eligibility · 캐시 헤더 전부 무접촉.
+  //   ▸ 고객 pSEO URL 뒤에 고정 위치로 들어간다. 출력 순서는 매 요청 동일하다.
+  //   ▸ stores 조회가 실패하면 위에서 이미 throw 다. 즉 공식 URL 만 담긴 sitemap 은
+  //     나가지 않는다. 부분 성공을 정상 응답으로 위장하지 않는다.
+  urls.push(...OFFICIAL_URLS);
 
   // ── 3) XML ────────────────────────────────────────────────
   const body =
