@@ -32,7 +32,7 @@ import {
 } from "../../lib/restaurant-playConfig";
 import {
   openai, calcCharCount, removeDuplicateSentences,
-  stripInlineImages, restoreKeyword, diagnosePost,
+  stripInlineImages, restoreKeywordV2, diagnosePost,   // [STEP6-FIX-A D8] restaurant: restoreKeyword → V2 호출 전환(공용 함수 무수정)
   generateSection, autoSave,
 } from "./generateUtils";
 // 🛡️ 과별 침투 차단
@@ -133,12 +133,15 @@ function buildRestaurantTitle(treatment, region, situation, purpose, seoData, mo
       return v;
     };
     // SCENE 후보: 메뉴 정확매칭 → 카테고리(cat) 폴백.
-    const scenePool = RESTAURANT_TITLE_SCENE[menu]
+    // [STEP6-FIX-A D4] 매장 사실 단정 토큰(주차·포장) 제외 — 입력 없는 사실을 제목에서 단정 금지. data 무수정(소비측 필터).
+    const _FACT_TOKEN = /주차|포장/;
+    const _noFact = (arr) => (arr || []).filter(t => !_FACT_TOKEN.test(t));
+    const scenePool = _noFact(RESTAURANT_TITLE_SCENE[menu]
                    || RESTAURANT_TITLE_SCENE_BY_CATEGORY[cat]
-                   || [];
+                   || []);
     // 40% 확률로 SCENE, 아니면 MIDDLE (SCENE 풀 없으면 항상 MIDDLE).
     const useScene = scenePool.length && Math.random() < 0.4;
-    const midPool = useScene ? scenePool : RESTAURANT_TITLE_MIDDLE;
+    const midPool = useScene ? scenePool : _noFact(RESTAURANT_TITLE_MIDDLE);
     const mid = pickAvoid(midPool, _lastTitleMiddle);
     const suf = pickAvoid(RESTAURANT_TITLE_SUFFIX, _lastTitleSuffix);
     _lastTitleMiddle = mid;
@@ -151,7 +154,8 @@ function buildRestaurantTitle(treatment, region, situation, purpose, seoData, mo
     //   매장명 0·후기형 0 유지. 패턴 없으면 아래 기존 {region} {menu} {mid}｜{suf} 폴백.
     if (seoData?.titlePatterns?.length) {
       const dir = getRestaurantDirection(treatment, situation, purpose) || {};
-      const purLabel = dir.purposeLabel || pur || "";   // 목적 라벨(선택값/메뉴폴백) — 없으면 공백
+      const _purRaw  = dir.purposeLabel || pur || "";   // 목적 라벨(선택값/메뉴폴백) — 없으면 공백
+      const purLabel = _FACT_TOKEN.test(_purRaw) ? "" : _purRaw;   // [STEP6-FIX-A D4] '주차 편한' 등 사실 단정 라벨 제외
       const raw = seoData.titlePatterns[Math.floor(Math.random() * seoData.titlePatterns.length)];
       let t = raw
         .replace(/\{purpose\}/g, purLabel)
@@ -409,20 +413,39 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
     result = result.replace(re, (m) => {
       count++;
       if (count > 3) {
-        const alts = ["이 동네", "이 일대", "근처", "여기"];
-        return alts[(count - 4) % alts.length];
+        // [STEP6-FIX-A D6] 결합 치환 시 메뉴명 유지 → 뒤 조사(메뉴 기준) 그대로 성립
+        const alts = ["이 동네", "이 일대", "근처", "인근"];
+        return `${alts[(count - 4) % alts.length]} ${menu}`;
       }
       return m;
     });
     // ★ region 단독 과밀도 제한 (commercial 8섹션 prefix 반복 차단)
     const regEsc = region.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const reRegion = new RegExp(`${regEsc}(?:\\s*(?:일대|일원|지역|에서|에는|의))?`, "g");
+    // [STEP6-FIX-A D6] 조사 보존: 기존은 에서/에는/의까지 삼켜 대체어만 반환 → 조사 탈락.
+    //   지역 뒤 공간어(일대/일원/지역)는 대체어가 이미 공간어라 흡수, 조사는 캡처 후 대체어 받침에 맞춰 재부착.
+    //   조사 뒤 경계(공백·문장부호·끝) 필수 → 합성어("신내동맛집") 오매칭 방지.
+    const reRegion = new RegExp(
+      `${regEsc}(?:\\s*(?:일대|일원|지역))?(에서는|에서도|에서|에는|에도|에게|에|의|은|는|이|가|을|를|과|와|으로|로|도|까지|부터|만)?(?=[\\s,.!?)」'"]|$)`,
+      "g"
+    );
+    const _hasJong = (w) => { const c = w.charCodeAt(w.length - 1); return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 !== 0; };
+    const _josa = (w, j) => {
+      if (!j) return "";
+      const jong = _hasJong(w);
+      if (j === "은" || j === "는") return jong ? "은" : "는";
+      if (j === "이" || j === "가") return jong ? "이" : "가";
+      if (j === "을" || j === "를") return jong ? "을" : "를";
+      if (j === "과" || j === "와") return jong ? "과" : "와";
+      if (j === "으로" || j === "로") return jong ? "으로" : "로";
+      return j;
+    };
     let rc = 0;
-    result = result.replace(reRegion, (m) => {
+    result = result.replace(reRegion, (m, j) => {
       rc++;
       if (rc > 3) {
         const alts = ["이 동네", "이 일대", "근처", "인근"];
-        return alts[(rc - 4) % alts.length];
+        const alt = alts[(rc - 4) % alts.length];
+        return alt + _josa(alt, j);
       }
       return m;
     });
@@ -495,8 +518,9 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
       result = result.replace(muRe, (m) => {
         muCount++;
         if (muCount > 3) {
-          const alts = [`${menu}은`, "이 메뉴는", "이 메뉴", `${menu}`];
-          return alts[(muCount - 4) % alts.length];
+          // [STEP6-FIX-A D7] 기존 alts(`${menu}은`/"이 메뉴는"/"이 메뉴")는 뒤 조사와 충돌 → "은으로/은로/이 메뉴으로" 비문.
+          //   단위어만 남기면 원문 뒤 조사가 그대로 성립("돼지국밥 한 그릇으로" → "한 그릇으로").
+          return unitWord;
         }
         return m;
       });
@@ -699,20 +723,9 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
         placeholderFixCount++;
         return `${menu} `;
       });
-    } else {
-      // 받침有(예: 김밥/순대/어묵): "메뉴명이 + 비서술어"일 때만 잉여 제거. 서술어면 보존.
-      const phReE2 = new RegExp(`${menuEsc}이\\s+(?!(?:${KEEP}))([가-힣])`, "g");
-      result = result.replace(phReE2, (m, nextCh) => {
-        placeholderFixCount++;
-        return `${menu} ${nextCh}`;
-      });
-      // 공백 없이 바로 붙은 경우: "꼬마김밥이작은" → "꼬마김밥 작은"
-      const phReE3 = new RegExp(`${menuEsc}이(?=(?!(?:${KEEP}))[가-힣])`, "g");
-      result = result.replace(phReE3, () => {
-        placeholderFixCount++;
-        return `${menu} `;
-      });
     }
+    // [STEP6-FIX-A D9] 받침有 분기(phReE2/E3) 삭제 — D8(restoreKeywordV2)로 placeholder '이' 원천 제거.
+    //   잔존 시 정상 주격 조사까지 삭제("돼지국밥이 눈에"→"돼지국밥 눈에", "불족발이나"→"불족발 나"). D8과 세트.
   }
 
   // ─────────────────────────────────────────────────────
@@ -1546,7 +1559,7 @@ ${richPrompt}`;
     let secText = await generateSection({ systemPrompt, userPrompt });
     secText = cleanRestaurantText(secText, treatmentData, region, situation, purpose, validMode);
     secText = stripInlineImages(secText);
-    secText = restoreKeyword(secText, menu);
+    secText = restoreKeywordV2(secText, menu);
 
     if (calcCharCount(secText) < 100) {
       console.log(`[restaurant] ${sec.label}: 빈 섹션 → 재생성`);
@@ -1557,7 +1570,7 @@ ${richPrompt}`;
       });
       retry = cleanRestaurantText(retry, treatmentData, region, situation, purpose, validMode);
       retry = stripInlineImages(retry);
-      retry = restoreKeyword(retry, menu);
+      retry = restoreKeywordV2(retry, menu);
       if (calcCharCount(retry) > calcCharCount(secText)) secText = retry;
     }
 
@@ -1572,7 +1585,7 @@ ${richPrompt}`;
       });
       fixed = cleanRestaurantText(fixed, treatmentData, region, situation, purpose, validMode);
       fixed = stripInlineImages(fixed);
-      fixed = restoreKeyword(fixed, menu);
+      fixed = restoreKeywordV2(fixed, menu);
       // 재생성분이 사전식 탈출 + 최소 길이 확보 시에만 채택
       if (!isDictionaryOpening(fixed, menu) && calcCharCount(fixed) >= 100) {
         secText = fixed;
@@ -1662,7 +1675,8 @@ ${richPrompt}`;
   //   사유: "자리를 찾으면서 가장 먼저 본 건..." 정적 문장 fingerprint
   //   대체: systemPrompt에서 GPT가 본문에 자연 녹임
 
-  assembled += "\n\n" + buildRestaurantHashtags(treatmentData, region, situation, purpose, validMode);
+  // [STEP6-FIX-A D5] 해시태그 부착을 최종 clean 이후로 이동 (아래 D3 직후).
+  //   기존: 해시태그 부착 → 최종 clean 2회 → 지역 과밀 치환이 태그까지 적용 → "#이 동네돼지국밥" 유출.
 
   // ── 최종 클리닝 (조립 후 누수 방지) ──────
   // ★ FREEZE 예외 #2 (제목 보존) — restaurant 전용
@@ -1681,6 +1695,58 @@ ${richPrompt}`;
     }
     assembled = titleLine + "\n\n" + cleanedBody.replace(/^\n+/, "");
   }
+
+  // ── [STEP6-FIX-A D3] 매장 사실 단정 안전망 (보조) ──────
+  //   주 해결은 prompts D1·D2. 여기는 새어 나온 단정문만 문장 단위 제거 + 확인 안내 1회.
+  //   발동 건수(factGuardCount) = 프롬프트 실패 신호 → qc 반환·로그.
+  //   범위: 제목 제외 본문만. 해시태그·📍LocationBlock은 이후 부착 → 무접촉.
+  let factGuardCount = 0;
+  {
+    const FACT_ASSERT = [
+      /주차\s*(?:공간|장|시설)?(?:[이가은는도]|까지)?(?:\s*(?:또한|역시))?\s*(?:마련|여유|넉넉|편리|편해|편하|갖춰|완비|가능)/,
+      /포장(?:\s*서비스)?(?:[이가은는도를]|까지)?\s*(?:가능|제공|된다|됩니다|되니|되어|돼)/,
+      /(?:좌석|자리|테이블|단체석|룸|혼밥석|1인석)(?:[이가은는도]|까지|부터)?\s*(?:마련|준비|넉넉|여유|넓게|갖춰|배치)/,
+      /아침\s*(?:일찍)?부터\s*늦은|아침\s*일찍부터\s*문을|새벽까지\s*.{0,12}(?:운영|영업|즐길|먹을|방문|찾을|열)|늦은\s*(?:시간|밤|저녁)까지\s*(?:운영|영업|문|방문)|24시간\s*(?:운영|영업)|연중무휴/,
+      /(?:공깃밥|사리|반찬)\s*(?:추가|리필)(?:[이가은는도])?\s*(?:가능|무료|됩니다)/,
+      /부담\s*없는\s*가격대/,
+    ];
+    const CHECK_TONE = /확인|(?:포장|주차|좌석|단체석|영업|운영)\s*(?:가능\s*)?여부|매장마다|매장별|다를 수|달라질 수|방문 전|문의|물어보/;
+    const nlIdx2 = assembled.indexOf("\n");
+    const head = nlIdx2 >= 0 ? assembled.slice(0, nlIdx2) : assembled;
+    const body = nlIdx2 >= 0 ? assembled.slice(nlIdx2) : "";
+    const outLines = body.split("\n").map((line) => {
+      const t = line.trim();
+      if (!t || t.startsWith("#") || t.startsWith("[이미지:")) return line;
+      const sents = t.split(/(?<=[.!?])\s+/);
+      const kept = sents.filter((sn) => {
+        if (CHECK_TONE.test(sn)) return true;
+        if (FACT_ASSERT.some((re) => re.test(sn))) { factGuardCount++; return false; }
+        return true;
+      });
+      if (kept.length === sents.length) return line;
+      return kept.length ? kept.join(" ") : null;   // 전 문장 제거된 줄은 삭제
+    });
+    let guarded = outLines.filter((l) => l !== null).join("\n");
+    if (factGuardCount > 0 && !/방문 전(?:에)?\s*확인/.test(guarded)) {
+      // 마지막 본문 문단(이미지 태그 제외) 뒤에 확인 안내 1회
+      const gl = guarded.split("\n");
+      for (let k = gl.length - 1; k >= 0; k--) {
+        const tk = gl[k].trim();
+        if (tk && !tk.startsWith("#") && !tk.startsWith("[이미지:")) {
+          gl.splice(k + 1, 0, "", "좌석·주차·포장 여부와 영업시간은 매장마다 다르니 방문 전 확인해 두면 편합니다.");
+          break;
+        }
+      }
+      guarded = gl.join("\n");
+    }
+    assembled = (head + guarded).replace(/\n{3,}/g, "\n\n");
+    if (factGuardCount > 0) {
+      console.warn(`[restaurant][QC] ⚠️ 사실 단정 안전망 발동 ${factGuardCount}건 — 프롬프트(D1·D2) 실패 신호`);
+    }
+  }
+
+  // [STEP6-FIX-A D5] 해시태그 부착 (최종 clean·D3 이후)
+  assembled += "\n\n" + buildRestaurantHashtags(treatmentData, region, situation, purpose, validMode);
 
   // ★ 본문 인라인 볼드 제거
   assembled = assembled.replace(/(?<![\n^])\*\*([^*\n]+?)\*\*(?!\n)/g, "$1");
@@ -1790,6 +1856,7 @@ ${richPrompt}`;
         ijibui:    qc.fossil_ijibui,
       },
       fullKwCount:     qc.fullKwCount,
+      factGuardCount,   // [STEP6-FIX-A D3] 사실 단정 안전망 발동 건수 (0이 정상)
     },
     validation: { passed: charCountPlain >= 2000, charCount: charCountPlain },
   });
