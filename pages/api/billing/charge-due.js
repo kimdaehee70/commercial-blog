@@ -571,6 +571,49 @@ export default async function handler(req, res) {
     }
   }
 
+  // [SUBSCRIPTION-EXPIRY-ENFORCE-01] period end passed -> expired + plan free
+  // no source exception. idempotent: status filter excludes already-expired rows.
+  try {
+    const nowIso = new Date().toISOString();
+
+    const { data: expTargets, error: expSelErr } = await supabase
+      .from('subscriptions')
+      .select('id, account_id')
+      .in('status', ['active', 'canceled'])
+      .lt('current_period_end', nowIso);
+
+    if (expSelErr) throw expSelErr;
+
+    const expIds  = (expTargets || []).map(r => r.id);
+    const expAccs = [...new Set((expTargets || []).map(r => r.account_id))];
+
+    stats.expired_subs = 0;
+    stats.expired_accounts = 0;
+
+    if (expIds.length) {
+      const { error: expSubErr } = await supabase
+        .from('subscriptions')
+        .update({ status: 'expired', next_billing_at: null, updated_at: nowIso })
+        .in('id', expIds)
+        .in('status', ['active', 'canceled']);
+      if (expSubErr) throw expSubErr;
+      stats.expired_subs = expIds.length;
+
+      const { error: expAccErr } = await supabase
+        .from('accounts')
+        .update({ plan: 'free' })
+        .in('id', expAccs)
+        .neq('plan', 'free');
+      if (expAccErr) throw expAccErr;
+      stats.expired_accounts = expAccs.length;
+    }
+
+    console.log('[charge-due] expiry enforced', stats.expired_subs, stats.expired_accounts);
+  } catch (e) {
+    console.error('[charge-due] expiry enforce failed:', e.message || e);
+    stats.errors.push({ reason: 'expiry enforce failed: ' + (e.message || 'exception') });
+  }
+
   console.log('[charge-due] done', stats);
   return res.status(200).json({ ok: true, ...stats });
 }
