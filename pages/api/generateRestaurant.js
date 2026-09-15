@@ -26,7 +26,8 @@ import {
 } from "../../lib/restaurant-data";
 import {
   buildRestaurantPrompt, getRestaurantDirection,
-  FACT_BOUNDARY,   // [STEP6-FIX-B B-2] commercial systemPrompt 사실 경계(최상위) — P 단일 정의
+  getOpeningRule,  // [STEP6-FIX-C 축3] 재생성 보강문 = 거부 사유 + 원래 섹션 첫 문장 규칙
+  getFactBoundary, // [STEP6-FIX-B B-2 → FIX-C 보충 R3] commercial systemPrompt 사실 경계 — P 단일 정의(주차 제공 시 확인 권고 제외)
 } from "../../lib/restaurant-prompts";
 import {
   getRestaurantSections,
@@ -1477,7 +1478,9 @@ const FACT_GUARD_CHECK = /확인|(?:포장|주차|좌석|단체석|영업|운영
 // 절 경계: 쉼표 / 연결어미(-어서·-아서·-해서·-으며·-며·-지만·-는데·-은데·-니까) 뒤 공백
 const FACT_GUARD_CLAUSE_SPLIT = /,\s*|(?<=[가-힣](?:어서|아서|해서|으며|며|지만|는데|은데|니까))\s+/;
 
-function applyFactGuard(assembled) {
+// [FIX-C FINAL R3-b] providedChecks(commercial 전용)에 '주차'가 있으면 자동 확인문에서 '주차'만 제외.
+//   판정·제거 규칙·appendSkipped 조건은 무변경. 인자 미전달 = 기존 동작과 동일.
+function applyFactGuard(assembled, providedChecks = []) {
   let count = 0;
   const removed = [];
   const nlIdx = assembled.indexOf("\n");
@@ -1518,7 +1521,8 @@ function applyFactGuard(assembled) {
       for (let k = gl.length - 1; k >= 0; k--) {
         const tk = gl[k].trim();
         if (tk && !tk.startsWith("#") && !tk.startsWith("[이미지:")) {
-          gl.splice(k + 1, 0, "", "좌석·주차·포장 여부와 영업시간은 매장마다 다르니 방문 전 확인해 두면 편합니다.");
+          const _noteItems = (Array.isArray(providedChecks) && providedChecks.includes("주차")) ? "좌석·포장" : "좌석·주차·포장";
+          gl.splice(k + 1, 0, "", `${_noteItems} 여부와 영업시간은 매장마다 다르니 방문 전 확인해 두면 편합니다.`);
           break;
         }
       }
@@ -1556,6 +1560,16 @@ export default async function handleRestaurant(req, res) {
     building_desc: req.body?.building_desc,
     parking_info:  req.body?.parking_info,
   };
+  // [STEP6-FIX-C 축5 A안] 하단 운영정보 블록에 값이 있는 항목의 '종류'만 계산(값은 프롬프트로 전달하지 않음).
+  //   [R6 FINAL] SoT = lib/locationBlock.js buildLocationBlock 실제 출력 조건(무수정).
+  //     · address가 trim 후 비면 블록 미생성 → providedChecks = [] (본문이 없는 하단 안내를 참조하지 않게)
+  //     · address가 있으면 각 필드는 String(v || "").trim() 비어 있지 않음만 기준(「-」「없음」「미정」 임의 제외 안 함)
+  //   router·DDL·VISIT_PILOT·locationBlock 무수정.
+  const LOC_CHECK_LABEL = { address: "주소", map_guide: "찾아오는 길", transit: "대중교통", building_desc: "건물 안내", parking_info: "주차" };
+  const _locVal = (k) => String(locStore[k] || "").trim();   // locationBlock과 동일 판정
+  const providedChecks = _locVal("address")
+    ? Object.keys(LOC_CHECK_LABEL).filter(k => _locVal(k)).map(k => LOC_CHECK_LABEL[k])
+    : [];
 
   const name      = program.name || "이 식당";
   const region    = (userRegion || "구리").trim();
@@ -1573,6 +1587,7 @@ export default async function handleRestaurant(req, res) {
   console.log(`[restaurant] mode: ${validMode} | 상황: ${situation || "(미지정)"} | 목적: ${purpose || "(미지정)"}`);
   console.log(`[restaurant][VISIT_PILOT] gate=${!!visitPilot} | fields=${visitInfo ? Object.keys(visitInfo).filter(k => { const v = visitInfo[k]; return v != null && String(v).trim() && !["-","없음","미정"].includes(String(v).trim()); }).length : 0}`);
   console.log(`[restaurant][BUILD] v4.0-people-subject (배포검증: 이 줄이 안 보이면 구버전 실행 중)`);
+  console.log(`[restaurant][STORE] providedChecks=${providedChecks.join(",") || "(없음)"}`);
 
   // ── restaurant 조합 검증 ─────────────────────────────────
   const REST_IDS = RESTAURANT_TREATMENTS.map(t => t.id);
@@ -1613,7 +1628,7 @@ export default async function handleRestaurant(req, res) {
 - 글을 다 읽은 독자에게 "${menu}가 어떤 음식인지 알았다"가 아니라 "오늘 같은 날 ${menu} 먹으러 갈까"라는 마음이 남아야 한다.
 - 비중 기준: 사람의 상황·목적·판단 70 / 메뉴 자체 설명 30.
 - [STEP6-FIX-B] 이 글은 가상의 방문 후기가 아니다. 검색자가 스스로 판단할 수 있도록 조건·기준·확인할 것을 안내한다.
-${FACT_BOUNDARY}
+${getFactBoundary(providedChecks)}
 
 업종: 맛집·식당 | 지역: ${region} | 메뉴: ${menu} | 카테고리: ${cat}
 
@@ -1684,6 +1699,7 @@ ${FACT_BOUNDARY}
       // [VISIT PILOT] commercial + 게이트 ON일 때만 방문정보 가이드 활성 (prompts 내부에서 최종 판정)
       visitPilot: !!visitPilot,
       visitInfo,
+      providedChecks,   // [FIX-C 축5 A안] 항목명만 (commercial storeFeature 전용)
     });
     const prevBlock = validMode === "commercial"
       ? (prevDigest
@@ -1722,9 +1738,14 @@ ${richPrompt}`;
     //   최대 1회. 실측: 시스템 프롬프트 지시만으로는 관성 미돌파 → 감지 후 명령형 재지시.
     if (validMode === "commercial" && isDictionaryOpening(secText, menu)) {
       console.log(`[restaurant] ${sec.label}: ⚠ 사전식 시작 감지 → 첫 문장 강제 재생성`);
+      // [STEP6-FIX-C 축3] 고정 슬롯(「점심시간에는」「혼자 방문한다면」 등) 제거.
+      //   보강문 = 거부 사유 + 이 섹션의 원래 첫 문장 규칙(getOpeningRule — 동행 3상태·시간대 게이트 반영).
+      //   거부된 원래 첫 문장은 로그로만 기록(프롬프트 미주입). isDictionaryOpening·temperature 무변경.
+      const _rejected = (String(secText).trim().split(/[.!?。\n]/)[0] || "").trim().slice(0, 80).replace(/"/g, "'");
+      console.log(`[restaurant][REGEN] section=${sec.key} rejected="${_rejected}"`);
       let fixed = await generateSection({
         systemPrompt,
-        userPrompt: `${userPrompt}\n\n[★★ 첫 문장 강제 — 위반 시 실패]\n- 첫 문장은 반드시 '사람의 상황'으로 연다. 아래 슬롯 중 하나로 시작:\n  · "점심시간에는 …" · "혼자 방문한다면 …" · "둘이 온다면 …" · "가족과 함께라면 …" · "처음 찾는다면 …" · "회식 자리를 알아본다면 …"\n- ❌ 절대 금지 시작: "${menu}" / "${menu}는" / "${menu} 한 그릇은" / "대표적인 ~ 메뉴" / "이 메뉴는" / "매장에서는" / "춘장을/양파는/단무지는" 등 재료·메뉴 주어\n- 재료·조리·맛 설명은 그 상황을 푸는 근거로만, 문장 뒤쪽에 최소한으로.`,
+        userPrompt: `${userPrompt}\n\n[★★ 첫 문장 재작성 — 위반 시 실패]\n- 거부 사유: 직전 초안의 첫 문장이 메뉴·재료·매장을 주어로 한 사전식 문장으로 시작했다. 같은 방식으로 시작하지 않는다.\n- 아래 이 섹션의 원래 첫 문장 규칙을 다시 따른다.${getOpeningRule(sec.key, treatmentData, { situation, purpose })}`,
         temperature: 0.75,
       });
       fixed = cleanRestaurantText(fixed, treatmentData, region, situation, purpose, validMode);
@@ -1847,7 +1868,7 @@ ${richPrompt}`;
   // ── [STEP6-FIX-A D3 → STEP6-FIX-B B-1] 매장 사실 단정 안전망 (최후 안전망) ──
   //   주 해결은 prompts(FACT_BOUNDARY). 여기서 제거되는 문장 = 프롬프트 실패 신호.
   //   B-1: 절 단위 판정 + 제거 원문·rule 로깅 + 안내 생략 흔적 로깅 (applyFactGuard).
-  const _fg = applyFactGuard(assembled);
+  const _fg = applyFactGuard(assembled, validMode === "commercial" ? providedChecks : []);   // [FIX-C FINAL R3-b] personal 불변
   assembled = _fg.text;
   const factGuardCount   = _fg.count;
   const factGuardRemoved = _fg.removed;
