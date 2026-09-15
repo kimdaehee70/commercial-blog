@@ -1,34 +1,34 @@
 // pages/api/billing/charge-due.js
-// ?�기결제 cron
+// 정기결제 cron
 //
-// 매일 1???�행 (Vercel Cron: "0 18 * * *" = 03:00 KST)
+// 매일 1회 실행 (Vercel Cron: "0 18 * * *" = 03:00 KST)
 //
-// ?�증: Authorization: Bearer {CRON_SECRET} (Vercel Cron) ?�는 x-cron-secret ?�더
-// 메서?? POST / GET (Vercel Cron?� GET)
+// 인증: Authorization: Bearer {CRON_SECRET} (Vercel Cron) 또는 x-cron-secret 헤더
+// 메서드: POST / GET (Vercel Cron은 GET)
 //
-// ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-// [BILLING-CHARGE-DUE-RENEWAL-01] 중복 ?�청�?차단 구조
+// ─────────────────────────────────────────────────────────────
+// [BILLING-CHARGE-DUE-RENEWAL-01] 중복 실청구 차단 구조
 //
-//   구버?? SELECT ??charge ??UPDATE next_billing_at
-//     ?�청�?배제 ?�점??"�?�� ?�후"?�?? �?��?� 배제 ?�이??모든 중단
-//     (?�?�아??/ ?�로?�스 crash / DB UPDATE ?�패)???�일 ?�청구로 직결?�다.
+//   구버전: SELECT → charge → UPDATE next_billing_at
+//     재청구 배제 시점이 "청구 이후"였다. 청구와 배제 사이의 모든 중단
+//     (타임아웃 / 프로세스 crash / DB UPDATE 실패)이 익일 재청구로 직결됐다.
 //
-//   ?�버?? SELECT ??claim ??pending ?�기�???charge ??settle
-//     ??배제 ?�점??"�?�� ?�전"?�로 ??��?? ?�것?????�일???�일???�심?�다.
-//     claim(next_billing_at ?�전�???커밋???�에�?charge??진입?��?�?
-//     charge ?�후 무엇???�패?�도 ?�음 ?�행??due 쿼리??걸리지 ?�는??
+//   현버전: SELECT → claim → pending 선기록 → charge → settle
+//     ★ 배제 시점을 "청구 이전"으로 옮겼다. 이것이 이 파일의 유일한 핵심이다.
+//     claim(next_billing_at 선전진)이 커밋된 뒤에만 charge에 진입하므로,
+//     charge 이후 무엇이 실패해도 다음 실행의 due 쿼리에 걸리지 않는다.
 //
-//   3�?방어 (?�로 ?�립):
-//     G1 claim            ??관측값 조건부 UPDATE. ?�자 1명만 charge 진입
-//     G2 deterministic id ??같�? (구독, cycle, attempt)?�면 ??�� 같�? paymentId.
-//                           PortOne??paymentId�?URL ?�원?�로 ?��?�??�사?�을 ?�버가 거�?
-//     G3 payment_id UNIQUE ??payment_history_payment_id_key. DB ?�벨 최종 차단
+//   3중 방어 (서로 독립):
+//     G1 claim            — 관측값 조건부 UPDATE. 승자 1명만 charge 진입
+//     G2 deterministic id — 같은 (구독, cycle, attempt)이면 항상 같은 paymentId.
+//                           PortOne이 paymentId를 URL 자원으로 쓰므로 재사용을 서버가 거부
+//     G3 payment_id UNIQUE — payment_history_payment_id_key. DB 레벨 최종 차단
 //
-//   ????3�?�??�느 것도 ?�거?��? ?�는?? ?�나?��? ?�회 ?�나리오가 존재?�다.
-// ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+//   ★ 이 3개 중 어느 것도 제거하지 않는다. 하나씩은 우회 시나리오가 존재한다.
+// ─────────────────────────────────────────────────────────────
 //
-// [CHARGE-DUE-OVERAGE-LIVE-01] calcOverage import ?�거 ???�청�??�산 경로 ?�단.
-//   ?�품?�책 A: ?�진 ??차단 · ?�불 초과�?�� ?�음.
+// [CHARGE-DUE-OVERAGE-LIVE-01] calcOverage import 제거 — 실청구 합산 경로 절단.
+//   상품정책 A: 소진 시 차단 · 후불 초과청구 없음.
 
 import { createClient } from '@supabase/supabase-js';
 import { isConfigured, chargeBillingKey, getPayment } from '../../../lib/portone';
@@ -37,10 +37,10 @@ const supabaseUrl    = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const CRON_SECRET    = process.env.CRON_SECRET || '';
 
-const MAX_BATCH       = 20;   // 1???�행??최�? 처리 건수 (?�?�아???�유 ?�보)
-const RETRY_HOURS     = 24;   // ?�패 ???�시???��??�간
-const MAX_FAILED      = 2;    // ???�수???�달?�면 canceled
-const RECONCILE_MIN   = 15;   // pending ?�을 미결�?간주?�기까�????�예(�?
+const MAX_BATCH       = 20;   // 1회 실행당 최대 처리 건수 (타임아웃 여유 확보)
+const RETRY_HOURS     = 24;   // 실패 후 재시도 대기 시간
+const MAX_FAILED      = 2;    // 이 횟수에 도달하면 canceled
+const RECONCILE_MIN   = 15;   // pending 행을 미결로 간주하기까지의 유예(분)
 const RECONCILE_BATCH = 20;
 
 function addMonths(date, months) {
@@ -51,18 +51,19 @@ function addMonths(date, months) {
   return d;
 }
 
-// ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-// [G2] 결정??paymentId
-//   ?�위 = (구독, 갱신주기, ?�도?�차). 같�? 갱신 건이�?�?�??�실?�해??같�? 문자??
+// ─────────────────────────────────────────────
+// [G2] 결정적 paymentId
+//   단위 = (구독, 갱신주기, 시도회차). 같은 갱신 건이면 몇 번 재실행해도 같은 문자열.
 //
-//   · cycleKey: claim ?�전??관측한 ?�커 ?�각??UTC �??�위�??�축.
-//     ?�실???�에??DB??같�? 값을 ?�으므�??�일?�게 ?�생?�다.
-//   · attempt : failed_payment_count. "?�패가 DB??기록???�에�? 증�??��?�?
-//     기록 ?�이 중단???�실?��? 같�? attempt = 같�? id�?묶인??
-//     ???�차�?분리?�는 ?�유: PortOne?� ?�패??paymentId???�비?�다.
-//       ?�시?�에 같�? id�??�면 PG가 거�????�시???�체가 불�??�해진다.
-//   · account_id ?�용 근거: executeBillingIssue.js L425-468???�구�???INSERT가 ?�니??//     UPDATE�??��?�?account??subscriptions ?��? 1개다.
-// ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+//   · cycleKey: claim 이전에 관측한 앵커 시각을 UTC 분 단위로 압축.
+//     재실행 시에도 DB의 같은 값을 읽으므로 동일하게 재생된다.
+//   · attempt : failed_payment_count. "실패가 DB에 기록된 뒤에만" 증가하므로,
+//     기록 없이 중단된 재실행은 같은 attempt = 같은 id로 묶인다.
+//     ★ 회차를 분리하는 이유: PortOne은 실패한 paymentId도 소비한다.
+//       재시도에 같은 id를 쓰면 PG가 거부해 재시도 자체가 불가능해진다.
+//   · account_id 사용 근거: executeBillingIssue.js L425-468이 재구매 시 INSERT가 아니라
+//     UPDATE를 하므로 account당 subscriptions 행은 1개다.
+// ─────────────────────────────────────────────
 function buildPaymentId(sub, cycleAnchorIso, attempt) {
   const d = new Date(cycleAnchorIso);
   const cycleKey =
@@ -74,20 +75,20 @@ function buildPaymentId(sub, cycleAnchorIso, attempt) {
   return `r_${sub.account_id}_${cycleKey}_a${attempt}`;
 }
 
-// ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+// ─────────────────────────────────────────────
 // 결제 결과 3분류
 //
-//   ??ok:false �??��? "?�패"�?처리?�면 ???�다.
-//     lib/portone.js L67??NETWORK_ERROR??fetch ?�체가 ?�긴 것이�?
-//     PortOne???�청???��? ?�신·?�인???�에??발생?�다.
-//     �?"?�패"가 ?�니??"결과 불명"?�다.
+//   ★ ok:false 를 전부 "실패"로 처리하면 안 된다.
+//     lib/portone.js L67의 NETWORK_ERROR는 fetch 자체가 끊긴 것이고,
+//     PortOne이 요청을 이미 수신·승인한 뒤에도 발생한다.
+//     즉 "실패"가 아니라 "결과 불명"이다.
 //
-//     ?��? ?�패�?처리?�면 failed_payment_count가 ?�라가�???attempt가 바뀌고
-//     ??paymentId가 ?�라????G2가 무력?�되??24h ???�중�?��가 ?�다.
+//     이를 실패로 처리하면 failed_payment_count가 올라가고 → attempt가 바뀌고
+//     → paymentId가 달라져 → G2가 무력화되어 24h 뒤 이중청구가 된다.
 //
-//   INDETERMINATE???�무것도 ?�정?��? ?�는?? pending ?�을 ?�겨?�고
-//   ?�음 ?�행??reconcile??getPayment()�?PortOne??직접 물어 ?�정?�다.
-// ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+//   INDETERMINATE는 아무것도 확정하지 않는다. pending 행을 남겨두고
+//   다음 실행의 reconcile이 getPayment()로 PortOne에 직접 물어 확정한다.
+// ─────────────────────────────────────────────
 const RESULT = { PAID: 'paid', FAILED: 'failed', INDETERMINATE: 'indeterminate' };
 
 function classifyCharge(charge) {
@@ -95,35 +96,37 @@ function classifyCharge(charge) {
 
   const code = String((charge && charge.code) || '');
 
-  // ?�트?�크 ?�단 · ?�?�아????결과 불명
+  // 네트워크 절단 · 타임아웃 → 결과 불명
   if (code === 'NETWORK_ERROR') return RESULT.INDETERMINATE;
 
-  // HTTP_5xx / HTTP_408 ??PG�?미확?? 결과 불명
+  // HTTP_5xx / HTTP_408 → PG측 미확정. 결과 불명
   const m = code.match(/^HTTP_(\d{3})$/);
   if (m) {
     const s = Number(m[1]);
     if (s === 408 || s >= 500) return RESULT.INDETERMINATE;
   }
 
-  // ?��? 결제??paymentId ??G2가 ?�동??�?
-  //   ??PortOne ?�류 type 문자?�값??문서�??�정?��? ?�았?��?�??�정 문자?�에
-  //     ?�존???�공?�로 ?�정?��? ?�는?? 불명?�로 ?�고 getPayment가 ?�정?�다.
+  // 이미 결제된 paymentId → G2가 작동한 것.
+  //   ★ PortOne 오류 type 문자열값이 문서로 확정되지 않았으므로 특정 문자열에
+  //     의존해 성공으로 단정하지 않는다. 불명으로 두고 getPayment가 확정한다.
   if (/ALREADY|PAID/i.test(code)) return RESULT.INDETERMINATE;
 
-  // �???카드 거절 ??PortOne??type???�어 보낸 ?�답) = ?�정 ?�패
+  // 그 외(카드 거절 등 PortOne이 type을 실어 보낸 응답) = 확정 실패
   return RESULT.FAILED;
 }
 
-// PortOne 결제 ?�건 조회 결과 ??3분류
+// PortOne 결제 단건 조회 결과 → 3분류
 function classifyLookup(look) {
   if (!look || !look.ok) {
     const code = String((look && look.code) || '');
-    if (code === 'HTTP_404') return RESULT.FAILED;   // 결제 ?�체가 ?�성?��? ?�음
-    return RESULT.INDETERMINATE;                      // 조회 불�? ???�정?��? ?�는??  }
+    if (code === 'HTTP_404') return RESULT.FAILED;   // 결제 자체가 생성되지 않음
+    return RESULT.INDETERMINATE;                      // 조회 불가 → 확정하지 않는다
+  }
   const st = String((look.data && look.data.status) || '').toUpperCase();
   if (st === 'PAID') return RESULT.PAID;
   if (st === 'FAILED' || st === 'CANCELLED' || st === 'CANCELED') return RESULT.FAILED;
-  return RESULT.INDETERMINATE;  // READY / PENDING / VIRTUAL_ACCOUNT_ISSUED ??}
+  return RESULT.INDETERMINATE;  // READY / PENDING / VIRTUAL_ACCOUNT_ISSUED 등
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST' && req.method !== 'GET') {
@@ -149,7 +152,7 @@ export default async function handler(req, res) {
     charged: 0,
     failed:  0,
     skipped: 0,
-    pending: 0,          // 결과 불명?�로 ?�긴 건수
+    pending: 0,          // 결과 불명으로 남긴 건수
     reconciled_paid:   0,
     reconciled_failed: 0,
     errors:  [],
@@ -163,12 +166,14 @@ export default async function handler(req, res) {
     billing_keys!inner(id, billing_key, status)
   `;
 
-  // ?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═??  // 0) RECONCILE ???�전 ?�행???�긴 pending ?�리
+  // ═══════════════════════════════════════════
+  // 0) RECONCILE — 이전 실행이 남긴 pending 정리
   //
-  //   "?��? ?�갔?�데 DB 처리가 ???? ?�태???�일???�소 경로.
-  //   charge ?�후 crash / settle ?�패 / NETWORK_ERROR 가 ?��? ?�기�?모인??
-  //   ???�청구하지 ?�는?? PortOne???�제 ?�태�?물어보고 �??�을 ?��? 뿐이??
-  // ?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═??  if (isConfigured()) {
+  //   "돈은 나갔는데 DB 처리가 덜 된" 상태의 유일한 해소 경로.
+  //   charge 이후 crash / settle 실패 / NETWORK_ERROR 가 전부 여기로 모인다.
+  //   ★ 재청구하지 않는다. PortOne에 실제 상태를 물어보고 그 답을 따를 뿐이다.
+  // ═══════════════════════════════════════════
+  if (isConfigured()) {
     const staleBefore = new Date(now.getTime() - RECONCILE_MIN * 60 * 1000).toISOString();
 
     const { data: pendings, error: pendErr } = await supabase
@@ -187,7 +192,7 @@ export default async function handler(req, res) {
         const look = await getPayment(ph.payment_id);
         const verdict = classifyLookup(look);
 
-        if (verdict === RESULT.INDETERMINATE) continue;  // ?�음 ?�차???�시 본다
+        if (verdict === RESULT.INDETERMINATE) continue;  // 다음 회차에 다시 본다
 
         if (verdict === RESULT.PAID) {
           await supabase
@@ -201,9 +206,9 @@ export default async function handler(req, res) {
             .eq('id', ph.id)
             .eq('status', 'pending');
 
-          // 구독 기간 settle ??미반?�이?�다�?지�?반영?�다.
-          //   next_billing_at?� claim?�서 ?��? ?�정?�으므�?건드리�? ?�는??
-          //   lt() 조건?�로 ?��? 반영??경우??no-op???�다.
+          // 구독 기간 settle — 미반영이었다면 지금 반영한다.
+          //   next_billing_at은 claim에서 이미 확정됐으므로 건드리지 않는다.
+          //   lt() 조건으로 이미 반영된 경우는 no-op이 된다.
           if (ph.subscription_id && ph.period_end) {
             await supabase
               .from('subscriptions')
@@ -220,7 +225,7 @@ export default async function handler(req, res) {
           }
           stats.reconciled_paid++;
         } else {
-          // ?�정 ?�패 ???�패 ?�력?�로 굳히�?retry ?�로 보낸??
+          // 확정 실패 → 실패 이력으로 굳히고 retry 큐로 보낸다.
           await supabase
             .from('payment_history')
             .update({
@@ -262,10 +267,12 @@ export default async function handler(req, res) {
     }
   }
 
-  // ?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═??  // 1) ?�기결제 ?�??조회
-  //   ??cancel_at_period_end=false ?�수. ?��? ?�약 구독??�?��?�면 ???�다.
-  //     (만료 ??status ?�환?� ?�랜 변�??�책 축에??별도 처리 ???�기?�는 �?���?막는??
-  // ?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═??  const { data: dueSubs, error: dueErr } = await supabase
+  // ═══════════════════════════════════════════
+  // 1) 정기결제 대상 조회
+  //   ★ cancel_at_period_end=false 필수. 해지 예약 구독을 청구하면 안 된다.
+  //     (만료 시 status 전환은 플랜 변경 정책 축에서 별도 처리 — 여기서는 청구만 막는다)
+  // ═══════════════════════════════════════════
+  const { data: dueSubs, error: dueErr } = await supabase
     .from('subscriptions')
     .select(SUB_FIELDS)
     .eq('status', 'active')
@@ -279,7 +286,8 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'query failed', detail: dueErr.message });
   }
 
-  // 2) past_due ?�시???�??  const retryThreshold = new Date(now.getTime() - RETRY_HOURS * 60 * 60 * 1000);
+  // 2) past_due 재시도 대상
+  const retryThreshold = new Date(now.getTime() - RETRY_HOURS * 60 * 60 * 1000);
   const { data: retrySubs, error: retryErr } = await supabase
     .from('subscriptions')
     .select(SUB_FIELDS)
@@ -300,14 +308,16 @@ export default async function handler(req, res) {
   stats.scanned = targets.length;
 
   if (!isConfigured()) {
-    console.log('[charge-due] portone not configured ??noop', stats);
+    console.log('[charge-due] portone not configured — noop', stats);
     return res.status(200).json({ ok: true, dummy: true, ...stats });
   }
 
-  // ?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═??  // 3) ?�차 결제 처리
-  // ?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═?�═??  for (const { sub, kind } of targets) {
+  // ═══════════════════════════════════════════
+  // 3) 순차 결제 처리
+  // ═══════════════════════════════════════════
+  for (const { sub, kind } of targets) {
     try {
-      // ?�?� ?�전 검??(claim ?�전???�낸?? claim ???�탈?�면 롤백???�요?�진?? ?�?�
+      // ── 사전 검사 (claim 이전에 끝낸다. claim 후 이탈하면 롤백이 필요해진다) ──
       if (!sub.billing_keys || sub.billing_keys.status !== 'active') {
         stats.skipped++;
         stats.errors.push({ sub_id: sub.id, reason: 'billing_key not active' });
@@ -317,12 +327,12 @@ export default async function handler(req, res) {
       const periodStart = new Date(sub.current_period_end || now);
       const periodEnd   = addMonths(periodStart, 1);
       const baseAmount  = sub.plans.price_krw;
-      const totalAmount = baseAmount;   // [CHARGE-DUE-OVERAGE-LIVE-01] 초과�?�� ?�음
+      const totalAmount = baseAmount;   // [CHARGE-DUE-OVERAGE-LIVE-01] 초과청구 없음
 
       const attempt = sub.failed_payment_count || 0;
 
-      // cycle ?�커: recurring?� next_billing_at, retry??current_period_end.
-      //   ???�실???�에??DB??같�? 값을 ?�어???��?�?now()�??��? ?�는??
+      // cycle 앵커: recurring은 next_billing_at, retry는 current_period_end.
+      //   ★ 재실행 시에도 DB의 같은 값을 읽어야 하므로 now()를 쓰지 않는다.
       const cycleAnchor = kind === 'recurring'
         ? sub.next_billing_at
         : (sub.current_period_end || sub.next_billing_at);
@@ -335,22 +345,22 @@ export default async function handler(req, res) {
 
       const paymentId = buildPaymentId(sub, cycleAnchor, attempt);
 
-      // ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-      // [G1] ATOMIC CLAIM ??�?�� ?�전????갱신주기�??�점?�다.
+      // ─────────────────────────────────────
+      // [G1] ATOMIC CLAIM — 청구 이전에 이 갱신주기를 독점한다.
       //
-      //   관측값??WHERE??그�?�??�는 optimistic lock.
-      //   Postgres가 ?�일 ??UPDATE�?직렬?�하므�??�자???�확??1명이??
-      //   ?�자???�평가 ?�점??값이 ?��? 바뀌어 0?�을 받는??
+      //   관측값을 WHERE에 그대로 넣는 optimistic lock.
+      //   Postgres가 단일 행 UPDATE를 직렬화하므로 승자는 정확히 1명이다.
+      //   패자는 재평가 시점에 값이 이미 바뀌어 0행을 받는다.
       //
-      //   ??status='charging' 같�? ???�태값을 ?��? ?�는 ?�유:
-      //     crash ??구독??active가 ?�닌 ?�태�?고착?�어 ?�비?��? ?�기�?
-      //     ?�떤 쿼리?�도 ?�히지 ?�는 고아 ?�이 ?�다.
-      //     기존 컬럼???�진?�키�?crash?�도 구독?� active�??�는??
-      // ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+      //   ★ status='charging' 같은 새 상태값을 쓰지 않는 이유:
+      //     crash 시 구독이 active가 아닌 상태로 고착되어 서비스가 끊기고,
+      //     어떤 쿼리에도 잡히지 않는 고아 행이 된다.
+      //     기존 컬럼을 전진시키면 crash해도 구독은 active로 남는다.
+      // ─────────────────────────────────────
       let claimed = null;
 
       if (kind === 'recurring') {
-        // next_billing_at??미리 ?�진 ???�음 ?�행??due 쿼리?�서 즉시 배제?�다
+        // next_billing_at을 미리 전진 → 다음 실행의 due 쿼리에서 즉시 배제된다
         const { data, error } = await supabase
           .from('subscriptions')
           .update({ next_billing_at: periodEnd.toISOString(), updated_at: new Date().toISOString() })
@@ -362,7 +372,8 @@ export default async function handler(req, res) {
         if (error) throw error;
         claimed = data;
       } else {
-        // last_failed_at???�진 ??24h ?�시??�?밖으�?밀?�낸??        const { data, error } = await supabase
+        // last_failed_at을 전진 → 24h 재시도 창 밖으로 밀어낸다
+        const { data, error } = await supabase
           .from('subscriptions')
           .update({ last_failed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq('id', sub.id)
@@ -376,14 +387,14 @@ export default async function handler(req, res) {
       }
 
       if (!claimed) {
-        // ?�른 ?�행???��? ?�점?�거???�태가 변?�다. �?�� 진입 금�?.
+        // 다른 실행이 이미 선점했거나 상태가 변했다. 청구 진입 금지.
         stats.skipped++;
         stats.errors.push({ sub_id: sub.id, reason: 'claim lost', kind });
         continue;
       }
 
-      // claim ?�후 ?�탈 ???�돌리기 ??pending INSERT ?�패 경로?�서�??�용?�다.
-      //   조건부 UPDATE?��?�??�른 ?�행???��? 바꿔?��? ?�태�???? ?�는??
+      // claim 이후 이탈 시 되돌리기 — pending INSERT 실패 경로에서만 사용한다.
+      //   조건부 UPDATE이므로 다른 실행이 이미 바꿔놓은 상태를 덮지 않는다.
       const releaseClaim = async () => {
         if (kind === 'recurring') {
           await supabase
@@ -400,22 +411,23 @@ export default async function handler(req, res) {
         }
       };
 
-      // ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
-      // pending ?�기�???�?�� ?�전??증거�??�긴??
+      // ─────────────────────────────────────
+      // pending 선기록 — 청구 이전에 증거를 남긴다.
       //
-      //   ??INSERT ?�패 ??�?��?��? ?�는??
-      //     증거 ?�이 ?�을 빼면 reconcile??�?건을 ?�영 찾�? 못한??
+      //   ★ INSERT 실패 시 청구하지 않는다.
+      //     증거 없이 돈을 빼면 reconcile이 그 건을 영영 찾지 못한다.
       //
-      //   ??kind??'recurring' 고정.
+      //   ★ kind는 'recurring' 고정.
       //     [PAYMENT-HISTORY-KIND-RETRY-CHECK-VIOLATION-01]
       //     payment_history_kind_check = ARRAY['recurring','initial','manual','refund'].
-      //     'retry'???�용값이 ?�니??CHECK ?�반(23514)?�로 INSERT가 조용???�패???�다
-      //     (구버??L178???�러�??�인?��? ?�았??. �?결과 ?�시??결제???�청구되?�도
-      //     ?�력???��? ?�았�? reconcile·UNIQUE 방어가 ?�시??무력?�됐??
-      //     retry??결제???�격???�니???�일 recurring 결제???�시?�이므�?      //     kind='recurring'?�로 기록?�고 ?�차??paymentId??a{n}?�로 ?�별?�다. (DDL 무�?�?
+      //     'retry'는 허용값이 아니라 CHECK 위반(23514)으로 INSERT가 조용히 실패해 왔다
+      //     (구버전 L178이 에러를 확인하지 않았다). 그 결과 재시도 결제는 실청구되어도
+      //     이력이 남지 않았고, reconcile·UNIQUE 방어가 동시에 무력화됐다.
+      //     retry는 결제의 성격이 아니라 동일 recurring 결제의 재시도이므로
+      //     kind='recurring'으로 기록하고 회차는 paymentId의 a{n}으로 식별한다. (DDL 무변경)
       //
-      //   ??status??컬럼 DEFAULT가 'pending'?��?�??�도�??�러?�기 ?�해 명시?�다.
-      // ?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+      //   ★ status는 컬럼 DEFAULT가 'pending'이지만 의도를 드러내기 위해 명시한다.
+      // ─────────────────────────────────────
       const { data: phRow, error: phErr } = await supabase
         .from('payment_history')
         .insert({
@@ -436,20 +448,20 @@ export default async function handler(req, res) {
         .single();
 
       if (phErr || !phRow) {
-        // [G3] payment_id UNIQUE ?�반(23505) = 같�? cycle/attempt가 ?��? 존재?�다.
-        //   claim???�과?�는???�기??걸렸?�면 ?�전 ?�행??미결 건이??
-        //   ???�청구하지 ?�는?? claim???�돌리�? ?�는???�돌리면 ?�청�?경로가 ?�린??.
-        //   기존 ?�을 reconcile???�정?�다.
+        // [G3] payment_id UNIQUE 위반(23505) = 같은 cycle/attempt가 이미 존재한다.
+        //   claim을 통과했는데 여기서 걸렸다면 이전 실행의 미결 건이다.
+        //   ★ 재청구하지 않는다. claim도 되돌리지 않는다(되돌리면 재청구 경로가 열린다).
+        //   기존 행을 reconcile이 확정한다.
         if (phErr && phErr.code === '23505') {
           stats.pending++;
           stats.errors.push({
             sub_id: sub.id,
-            reason: 'duplicate payment_id ??left to reconcile',
+            reason: 'duplicate payment_id — left to reconcile',
             payment_id: paymentId,
           });
           continue;
         }
-        console.error('[charge-due] pending insert failed ??charge aborted', sub.id, phErr);
+        console.error('[charge-due] pending insert failed — charge aborted', sub.id, phErr);
         await releaseClaim();
         stats.skipped++;
         stats.errors.push({
@@ -460,29 +472,29 @@ export default async function handler(req, res) {
         continue;
       }
 
-      // ?�?�?� PG 결제 ?�출 ?�?�?�
+      // ─── PG 결제 호출 ───
       const charge = await chargeBillingKey({
         billingKey: sub.billing_keys.billing_key,
         paymentId,
-        orderName: `${sub.plans.label} ?�랜 ?�기결제`,
+        orderName: `${sub.plans.label} 플랜 정기결제`,
         amount: totalAmount,
         customer: { customerId: sub.account_id },
       });
 
       const verdict = classifyCharge(charge);
 
-      // ?�?�?� 결과 불명 ???�무것도 ?�정?��? ?�는???�?�?�
-      //   failed_payment_count�??�리지 ?�는?? ?�리�?attempt가 바뀌어
-      //   ?�음 ?�도??paymentId가 ?�라지�?G2가 무너진다.
+      // ─── 결과 불명 → 아무것도 확정하지 않는다 ───
+      //   failed_payment_count를 올리지 않는다. 올리면 attempt가 바뀌어
+      //   다음 시도의 paymentId가 달라지고 G2가 무너진다.
       if (verdict === RESULT.INDETERMINATE) {
-        console.warn('[charge-due] indeterminate ??left pending', paymentId, charge && charge.code);
+        console.warn('[charge-due] indeterminate — left pending', paymentId, charge && charge.code);
         stats.pending++;
         stats.errors.push({
           sub_id: sub.id,
           reason: `indeterminate: ${(charge && charge.code) || '?'}`,
           payment_id: paymentId,
         });
-        continue;   // pending ???��? ???�음 ?�행 reconcile???�정
+        continue;   // pending 행 유지 → 다음 실행 reconcile이 확정
       }
 
       if (verdict === RESULT.PAID) {
@@ -496,9 +508,9 @@ export default async function handler(req, res) {
           })
           .eq('id', phRow.id);
 
-        // ????UPDATE ?�패가 ?�래 settle??막게 ?��? ?�는??
-        //   ?��? ?��? ?�갔?��?�??�비?�는 부?�해???�다.
-        //   ?��? pending?�로 ?�고 reconcile???�수?�다.
+        // ★ 이 UPDATE 실패가 아래 settle을 막게 하지 않는다.
+        //   돈은 이미 나갔으므로 서비스는 부여해야 한다.
+        //   행은 pending으로 남고 reconcile이 회수한다.
         if (upErr) console.error('[charge-due] CRITICAL ph paid update failed', paymentId, upErr);
 
         const { error: setErr } = await supabase
@@ -507,7 +519,7 @@ export default async function handler(req, res) {
             status:               'active',
             current_period_start: periodStart.toISOString(),
             current_period_end:   periodEnd.toISOString(),
-            // next_billing_at?� claim?�서 ?��? ?�정. ?�기록하지 ?�는??
+            // next_billing_at은 claim에서 이미 확정. 재기록하지 않는다.
             failed_payment_count: 0,
             last_failed_at:       null,
             updated_at:           new Date().toISOString(),
@@ -515,15 +527,15 @@ export default async function handler(req, res) {
           .eq('id', sub.id);
 
         if (setErr) {
-          // ?�청�?차단 근거??settle???�니??claim?��?�??�중과금?� ?�다.
-          // quota 기간�?미갱?�으�??�고, paid ??기�??�로 복구 가?�하??
+          // 재청구 차단 근거는 settle이 아니라 claim이므로 이중과금은 없다.
+          // quota 기간만 미갱신으로 남고, paid 행 기준으로 복구 가능하다.
           console.error('[charge-due] CRITICAL settle failed', sub.id, paymentId, setErr);
           stats.errors.push({ sub_id: sub.id, reason: 'settle failed (charged)', payment_id: paymentId });
         }
 
         stats.charged++;
       } else {
-        // ?�?�?� ?�정 ?�패�??�기�??�다 ?�?�?�
+        // ─── 확정 실패만 여기로 온다 ───
         await supabase
           .from('payment_history')
           .update({
@@ -552,8 +564,8 @@ export default async function handler(req, res) {
         stats.errors.push({ sub_id: sub.id, reason: (charge && charge.reason) || 'pg failed', kind });
       }
     } catch (e) {
-      // claim?� ?��? 커밋?�다. ?�돌리�? ?�는?????�돌리면 ?�청�?경로가 ?�린??
-      // pending ?�이 ?�아 ?�으�?reconcile??처리?�다.
+      // claim은 이미 커밋됐다. 되돌리지 않는다 — 되돌리면 재청구 경로가 열린다.
+      // pending 행이 남아 있으면 reconcile이 처리한다.
       console.error('[charge-due] sub error', sub.id, e);
       stats.errors.push({ sub_id: sub.id, reason: e.message || 'exception' });
     }
