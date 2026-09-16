@@ -27,6 +27,7 @@ import {
 import {
   buildRestaurantPrompt, getRestaurantDirection,
   getOpeningRule,  // [STEP6-FIX-C 축3] 재생성 보강문 = 거부 사유 + 원래 섹션 첫 문장 규칙
+  COMMERCIAL_TONE, // [STEP6-FIX-D B3-2] commercial 문체 단일 규칙 — P 단일 정의
   getFactBoundary, // [STEP6-FIX-B B-2 → FIX-C 보충 R3] commercial systemPrompt 사실 경계 — P 단일 정의(주차 제공 시 확인 권고 제외)
 } from "../../lib/restaurant-prompts";
 import {
@@ -335,13 +336,15 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
     const reB = new RegExp(`${menuEsc}\\s+메뉴(?!판)${_JOSA_TAIL_RE}`, "g");
     const _metaAlts = [`이 ${direction.servingUnit || "한 그릇"}`, "이거", "그것"];
 
+    // [STEP6-FIX-D B4-b] commercial: 선행 대상 = 메뉴명 자신 → 대체어 대신 메뉴명+조사(고아 「이 한 그릇」 차단). personal 무변경.
+    const _pickA = (r0) => (mode === "commercial" ? menu : r0);
     result = result.replace(reA, (m, tail) => {
-      const r = _metaAlts[menuMetaCount % _metaAlts.length];
+      const r = _pickA(_metaAlts[menuMetaCount % _metaAlts.length]);
       menuMetaCount++;
       return r + remapJosa(tail, r);
     });
     result = result.replace(reB, (m, tail) => {
-      const r = _metaAlts[menuMetaCount % _metaAlts.length];
+      const r = _pickA(_metaAlts[menuMetaCount % _metaAlts.length]);
       menuMetaCount++;
       return r + remapJosa(tail, r);
     });
@@ -364,17 +367,29 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
     const _obj   = altBatchim ? "을" : "를";
     const _with  = altBatchim ? "으로" : "로";
     const _if    = altBatchim ? "이면" : "면";
+    // [STEP6-FIX-D B4-a] commercial: 앞 글자가 한글이면 「이 메뉴」로 보지 않음(「속풀이 메뉴」 오치환 차단). personal 무변경(구조 발견 49 기록).
+    const _nb = mode === "commercial" ? "(?<![가-힣])" : "";
+    // [STEP6-FIX-D B4-c] commercial: 같은 문단 앞에 메뉴명이 없으면 메뉴명+조사, 있으면 「이 ${unit}」.
+    const _cWord = (offset, str) => {
+      if (mode !== "commercial" || !menu) return null;
+      const ps = str.lastIndexOf("\n", offset - 1) + 1;
+      return str.slice(ps, offset).includes(menu) ? null : menu;
+    };
     // (가) 이중조사/접미 흡수: 이 메뉴(+조사)? + (으로|이면|씩...)
-    result = result.replace(/이\s*메뉴(?:는|은|이|가|을|를|의|도|에)?(으로|이면|씩|이나|이라도|에는|에서)/g, (m, tail) => {
+    result = result.replace(new RegExp(_nb + /이\s*메뉴(?:는|은|이|가|을|를|의|도|에)?(으로|이면|씩|이나|이라도|에는|에서)/.source, "g"), (m, tail, offset, str) => {
       menuMetaCount++;
+      const _w = _cWord(offset, str);
+      if (_w) return _w + remapJosa(tail, _w);
       let t = tail;
       if (tail === "으로" || tail === "로") t = _with;
       else if (tail === "이면") t = _if;
       return ALT + t;
     });
     // (나) 이 메뉴 + 단일조사 → 받침 정규화
-    result = result.replace(/이\s*메뉴(는|은|이|가|을|를|의|도|에|와|과)/g, (m, j) => {
+    result = result.replace(new RegExp(_nb + /이\s*메뉴(는|은|이|가|을|를|의|도|에|와|과)/.source, "g"), (m, j, offset, str) => {
       menuMetaCount++;
+      const _w = _cWord(offset, str);
+      if (_w) return _w + remapJosa(j, _w);
       if (j === "는" || j === "은") return ALT + _topic;
       if (j === "이" || j === "가") return ALT + _subj;
       if (j === "을" || j === "를") return ALT + _obj;
@@ -382,7 +397,11 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
       return ALT + j;   // 의/도/에 그대로
     });
     // (다) 그 외 "이 메뉴" (메뉴판 제외) — [B-3 / C1] 뒤 조사(로·랑·면 등) 캡처 후 재정합
-    result = result.replace(new RegExp(`이\\s*메뉴(?!판)${_JOSA_TAIL_RE}`, "g"), (m, tail) => { menuMetaCount++; return ALT + remapJosa(tail, ALT); });
+    result = result.replace(new RegExp(`${_nb}이\\s*메뉴(?!판)${_JOSA_TAIL_RE}`, "g"), (m, tail, offset, str) => {
+      menuMetaCount++;
+      const _w = _cWord(offset, str) || ALT;
+      return _w + remapJosa(tail, _w);
+    });
   }
 
   // 조사 보정
@@ -986,20 +1005,22 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
   // ─────────────────────────────────────────────────────
   let efficacyFixCount = 0;
   {
+    // [STEP6-FIX-D A4] 행 = [정규식, personal 결과문, commercial 결과문(생략 시 personal과 동일)].
+    //   commercial 결과문은 해장·빈도(경우가 많다·찾는 편) 재주입 차단. personal 결과문 무변경.
     const effConv = [
       // 숙취/해장 효능 단정 → 행동 표현
-      [/숙취\s*해소에\s*도움(?:을)?\s*(?:줄\s*수\s*있다|준다|된다)\.?/g, "해장 메뉴로 찾는 사람들도 있다."],
-      [/숙취\s*해소에\s*좋다\.?/g, "해장용으로 찾는 사람들도 있다."],
-      [/해장에\s*(?:좋다|효과적이다|그만이다)\.?/g, "해장용으로 찾는 경우도 있다."],
+      [/숙취\s*해소에\s*도움(?:을)?\s*(?:줄\s*수\s*있다|준다|된다)\.?/g, "해장 메뉴로 찾는 사람들도 있다.", "든든한 한 끼로 고르는 메뉴다."],
+      [/숙취\s*해소에\s*좋다\.?/g, "해장용으로 찾는 사람들도 있다.", "든든한 한 끼로 고르는 메뉴다."],
+      [/해장에\s*(?:좋다|효과적이다|그만이다)\.?/g, "해장용으로 찾는 경우도 있다.", "든든한 한 끼로 고르는 메뉴다."],
       // 해장용 '적합/인기' 단정 → 식사 선택 표현 (효능 암시 완화)
       [/(?:회식\s*후\s*)?해장용으로(?:도)?\s*(?:적합하다|좋다|제격이다)\.?/g, "간단한 한 끼로 선택하는 경우도 있다."],
-      [/해장(?:을\s*위한)?\s*속풀이\s*메뉴로(?:도)?\s*인기가?\s*(?:높다|많다|높으며|많으며|높고|많고)/g, "든든한 한 끼로 찾는 경우가 많으며"],
-      [/해장용으로\s*찾는\s*이들이\s*많(?:으며|다)/g, "든든한 한 끼로 찾는 경우가 많으며"],
+      [/해장(?:을\s*위한)?\s*속풀이\s*메뉴로(?:도)?\s*인기가?\s*(?:높다|많다|높으며|많으며|높고|많고)/g, "든든한 한 끼로 찾는 경우가 많으며", "든든한 한 끼로 고를 수 있으며"],
+      [/해장용으로\s*찾는\s*이들이\s*많(?:으며|다)/g, "든든한 한 끼로 찾는 경우가 많으며", "든든한 한 끼로 고를 수 있으며"],
       // 스트레스 해소 효능 → 행동·취향 표현
       [/스트레스\s*해소에\s*(?:적합한|좋은|도움(?:을)?\s*(?:줄\s*수\s*있다|준다|되는))/g, "매운맛이 생각날 때 찾기 좋은"],
-      [/매운맛이\s*스트레스(?:를|가)?\s*날려(?:줄\s*수\s*있는|주는)?\s*역할(?:을\s*한다|을\s*할\s*수\s*있다|도\s*한다)?\.?/g, "칼칼한 맛을 즐기는 사람들이 찾는 편이다."],
-      [/스트레스(?:를|가)?\s*날려(?:줄\s*수\s*있는|주는)\s*역할(?:을\s*한다|을\s*할\s*수\s*있다)?\.?/g, "칼칼한 맛을 즐기는 사람들이 찾는 편이다."],
-      [/스트레스(?:를|가)?\s*(?:해소)(?:하는|시키는|할\s*수\s*있는)?(?:\s*데)?\s*(?:도움(?:을)?\s*(?:줄\s*수\s*있다|준다|되는|되며)|역할(?:을\s*한다|을\s*할\s*수\s*있다)?)\.?/g, "칼칼한 맛을 즐기는 사람들이 찾는 편이다."],
+      [/매운맛이\s*스트레스(?:를|가)?\s*날려(?:줄\s*수\s*있는|주는)?\s*역할(?:을\s*한다|을\s*할\s*수\s*있다|도\s*한다)?\.?/g, "칼칼한 맛을 즐기는 사람들이 찾는 편이다.", "칼칼한 맛이 당길 때 고르는 메뉴다."],
+      [/스트레스(?:를|가)?\s*날려(?:줄\s*수\s*있는|주는)\s*역할(?:을\s*한다|을\s*할\s*수\s*있다)?\.?/g, "칼칼한 맛을 즐기는 사람들이 찾는 편이다.", "칼칼한 맛이 당길 때 고르는 메뉴다."],
+      [/스트레스(?:를|가)?\s*(?:해소)(?:하는|시키는|할\s*수\s*있는)?(?:\s*데)?\s*(?:도움(?:을)?\s*(?:줄\s*수\s*있다|준다|되는|되며)|역할(?:을\s*한다|을\s*할\s*수\s*있다)?)\.?/g, "칼칼한 맛을 즐기는 사람들이 찾는 편이다.", "칼칼한 맛이 당길 때 고르는 메뉴다."],
       [/스트레스(?:를)?\s*해소(?:하길|하고자)\s*(?:원하는|찾는)\s*경우/g, "매운맛이 생각나는 경우"],
       [/스트레스\s*해소/g, "기분 전환"],
       // 해장 '원할 때/위한 아침' + 숙취 '달램' → 식사 표현
@@ -1012,8 +1033,8 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
       [/속을\s*편안하게\s*(?:해주는|해\s*주는|만들어주는)/g, "따뜻하게 즐기기 좋은"],
       [/속을\s*편안하게\s*(?:해준다|해\s*준다|만들어준다)\.?/g, "따뜻한 국물을 즐길 수 있다."],
       // 입맛 돋움 / 상쇄 / 업그레이드 — 기능성 표현 완화
-      [/입맛을\s*돋우는\s*역할(?:을\s*한다|을\s*하며|을\s*한다고\s*알려져\s*있다)?\.?/g, "함께 곁들이는 경우가 많다."],
-      [/(?:기름진\s*맛|느끼함)(?:을|를)?\s*상쇄(?:시켜준다|해준다|시킨다|한다)\.?/g, "함께 곁들이는 경우가 많다."],
+      [/입맛을\s*돋우는\s*역할(?:을\s*한다|을\s*하며|을\s*한다고\s*알려져\s*있다)?\.?/g, "함께 곁들이는 경우가 많다.", "함께 곁들여 먹기도 한다."],
+      [/(?:기름진\s*맛|느끼함)(?:을|를)?\s*상쇄(?:시켜준다|해준다|시킨다|한다)\.?/g, "함께 곁들이는 경우가 많다.", "함께 곁들여 먹기도 한다."],
       [/(?:얼큰함|매콤함|풍미)(?:을|를)?\s*(?:한층\s*)?업그레이드\s*(?:시킨다|해준다|시켜준다|한다)\.?/g, "함께 곁들이는 경우도 있다."],
       [/(?:부드러운\s*)?크림의\s*풍미가\s*매운맛을\s*완화해/g, "크림의 풍미가 매운맛과 균형을 이뤄"],
       [/매운맛을\s*완화(?:해|시켜|하여)(?=\s)/g, "매운맛과 균형을 이뤄"],
@@ -1023,7 +1044,38 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
       [/건강에\s*좋다\.?/g, "부담 없이 즐기는 사람들도 있다."],
       [/면역력?(?:에|을)\s*(?:좋다|높여준다|도움)\.?/g, "꾸준히 찾는 사람들도 있다."],
     ];
-    for (const [re, to] of effConv) {
+    // [STEP6-FIX-D B3-1] commercial 합니다체 종결 대응 — 원 규칙(한다체)보다 먼저 적용.
+    //   원 규칙의 선택적 종결 그룹이 합니다체 문장 앞부분만 잘라 먹는 부분 치환(「…역할」+「을 합니다.」 잔존)을 막는다.
+    //   결과문은 합니다체. personal 미적용(동작 불변). 원 규칙 20행과 1:1 대응. (+ supConv 1행 = commercial 도달 규칙 21개 전부)
+    const effConvHap = mode === "commercial" ? [
+      [/숙취\s*해소에\s*도움(?:을)?\s*(?:줄\s*수\s*있습니다|줍니다|됩니다)\.?/g, "든든한 한 끼로 고르는 메뉴입니다."],            // 숙취 도움
+      [/숙취\s*해소에\s*좋습니다\.?/g, "든든한 한 끼로 고르는 메뉴입니다."],                                                     // 숙취 좋다
+      [/해장에\s*(?:좋습니다|효과적입니다|그만입니다)\.?/g, "든든한 한 끼로 고르는 메뉴입니다."],                                 // 해장에 좋다
+      [/(?:회식\s*후\s*)?해장용으로(?:도)?\s*(?:적합합니다|좋습니다|제격입니다)\.?/g, "간단한 한 끼로 선택하는 경우도 있습니다."], // 해장용 적합
+      [/해장(?:을\s*위한)?\s*속풀이\s*메뉴로(?:도)?\s*인기가?\s*(?:높습니다|많습니다)\.?/g, "든든한 한 끼로 고를 수 있습니다."],   // 속풀이 인기
+      [/해장용으로\s*찾는\s*이들이\s*많습니다\.?/g, "든든한 한 끼로 고를 수 있습니다."],
+      // [FIX-D B4-a 연동] 「속풀이 메뉴」가 이제 보존되어 원 규칙(연결형 결과문)이 종결형 「높다/많다」에도 적중 → 「있으며.」 비문. 종결형은 여기서 먼저 처리.
+      [/해장(?:을\s*위한)?\s*속풀이\s*메뉴로(?:도)?\s*인기가?\s*(?:높다|많다)\./g, "든든한 한 끼로 고를 수 있다."],                                         // 해장용 찾는 이들
+      [/스트레스\s*해소에\s*도움(?:을)?\s*(?:줄\s*수\s*있습니다|줍니다)\.?/g, "매운맛이 생각날 때 고르기 좋습니다."],              // 스트레스 도움
+      [/매운맛이\s*스트레스(?:를|가)?\s*날려(?:줄\s*수\s*있는|주는)?\s*역할(?:을\s*합니다|을\s*할\s*수\s*있습니다|도\s*합니다)\.?/g, "칼칼한 맛이 당길 때 고르는 메뉴입니다."],
+      [/스트레스(?:를|가)?\s*날려(?:줄\s*수\s*있는|주는)\s*역할(?:을\s*합니다|을\s*할\s*수\s*있습니다)\.?/g, "칼칼한 맛이 당길 때 고르는 메뉴입니다."],
+      [/스트레스(?:를|가)?\s*(?:해소)(?:하는|시키는|할\s*수\s*있는)?(?:\s*데)?\s*(?:도움(?:을)?\s*(?:줄\s*수\s*있습니다|줍니다)|역할(?:을\s*합니다|을\s*할\s*수\s*있습니다))\.?/g, "칼칼한 맛이 당길 때 고르는 메뉴입니다."],
+      [/해장이나\s*술안주로(?:도)?\s*적합(?:합니다|한\s*메뉴입니다)\.?/g, "가벼운 모임에서 선택하는 경우도 있습니다."],            // 해장·안주 적합
+      [/(?:전날의\s*)?숙취를\s*달래기(?:에)?\s*좋습니다\.?/g, "따뜻하게 즐기기 좋습니다."],                                      // 숙취 달램
+      [/속을\s*편안하게\s*(?:해줍니다|해\s*줍니다|만들어줍니다)\.?/g, "따뜻한 국물을 즐길 수 있습니다."],                          // 속 편안
+      [/입맛을\s*돋우는\s*역할(?:을\s*합니다|을\s*한다고\s*알려져\s*있습니다)\.?/g, "함께 곁들여 먹기도 합니다."],                 // 입맛 돋움
+      [/(?:기름진\s*맛|느끼함)(?:을|를)?\s*상쇄(?:시켜줍니다|해줍니다|시킵니다|합니다)\.?/g, "함께 곁들여 먹기도 합니다."],         // 상쇄
+      [/(?:얼큰함|매콤함|풍미)(?:을|를)?\s*(?:한층\s*)?업그레이드\s*(?:시킵니다|해줍니다|시켜줍니다|합니다)\.?/g, "함께 곁들이는 경우도 있습니다."],
+      [/속을\s*풀어줍니다\.?/g, "속을 달래려 찾는 경우도 있습니다."],                                                            // 속 풀어줌
+      [/피로\s*해소에\s*도움(?:을)?\s*(?:줄\s*수\s*있습니다|줍니다)\.?/g, "가볍게 한 끼로 찾는 경우도 있습니다."],                  // 피로
+      [/건강에\s*좋습니다\.?/g, "부담 없이 즐기는 사람들도 있습니다."],                                                          // 건강
+      [/면역력?(?:에|을)\s*(?:좋습니다|높여줍니다|도움(?:을)?\s*(?:줄\s*수\s*있습니다|줍니다|됩니다))\.?/g, "꾸준히 찾는 사람들도 있습니다."], // 면역
+    ] : [];
+    for (const [re, to] of effConvHap) {
+      result = result.replace(re, () => { efficacyFixCount++; return to; });
+    }
+    for (const [re, toPersonal, toCommercial] of effConv) {
+      const to = (mode === "commercial" && toCommercial !== undefined) ? toCommercial : toPersonal;
       result = result.replace(re, () => { efficacyFixCount++; return to; });
     }
     if (efficacyFixCount > 0) result = normalizeWhitespace(result);
@@ -1119,6 +1171,8 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
   let superlativeFixCount = 0;
   {
     const supConv = [
+      // [STEP6-FIX-D B3-1] commercial 합니다체 종결 대응 — 아래 원 규칙보다 먼저 (personal 미적용)
+      ...(mode === "commercial" ? [[/완벽한\s*한\s*끼[를을]?\s*즐길\s*수\s*있습니다/g, "함께 즐기기 좋은 조합입니다"]] : []),
       [/완벽한\s*한\s*끼[를을]?\s*즐길\s*수\s*있다/g, "함께 즐기기 좋은 조합이다"],
       [/완벽한\s*한\s*끼/g, "괜찮은 한 끼"],
       [/완벽한\s*조합/g, "잘 어울리는 조합"],
@@ -1290,14 +1344,19 @@ function runQC(text, treatment, region, situation, purpose, mode, fullKeyword) {
 
   // [STEP6-FIX-B B-3 §8] 사실 경계 QC (commercial·측정 전용) — 구조 패턴만 사용
   let storeClaimCount = 0, expLeakCount = 0, josaUnitLeakCount = 0;
+  let toneHanCount = 0;        // [STEP6-FIX-D B3-2] commercial 한다체 종결 문장(로그 전용 · 기대 0)
+  let factTypeClaimCount = 0;   // [STEP6-FIX-D A5] 최종 본문 FACT_TYPE 잔존(측정 전용 · 기대 0)
   if (mode === "commercial") {
     const bodyOnly = text.split("\n")
       .filter(l => { const t = l.trim(); return t && !t.startsWith("#") && !t.startsWith("[이미지:"); })
       .join("\n");
     const sents = bodyOnly.split(/(?<=[.!?])\s+|\n+/).map(x => x.trim()).filter(Boolean);
     const storeRe = FACT_GUARD_RULES.find(r => r.id === "STORE_SUBJ").re;
+    const factTypeRe = FACT_GUARD_RULES.find(r => r.id === "FACT_TYPE").re;
     for (const sn of sents) {
       if (storeRe.test(sn) && !FACT_GUARD_CHECK.test(sn)) storeClaimCount++;
+      if (/[가-힣]다[.!]?["')]*$/.test(sn) && !/니다[.!]?["')]*$/.test(sn)) toneHanCount++;
+      if (sn.split(FACT_GUARD_CLAUSE_SPLIT).some(cl => cl && !FACT_GUARD_CHECK.test(cl) && factTypeRe.test(cl))) factTypeClaimCount++;
       // 경험 전제: 종결 어간이 과거 선어말(ㅆ받침, 있·겠 제외) + 다/어요/습니다 / 재방문 의향 구조
       const endM = sn.match(/([가-힣])(?:다|어요|아요|습니다)[.!?]*["')]*$/);
       if (endM && !/[있겠]/.test(endM[1]) && (endM[1].charCodeAt(0) - 0xac00) % 28 === 20) expLeakCount++;   // 있다·겠다(비과거) 제외
@@ -1411,7 +1470,7 @@ function runQC(text, treatment, region, situation, purpose, mode, fullKeyword) {
   if (mode === "commercial") {
     console.log(`[restaurant][QC] 1인칭(commercial 위반): ${firstPersonCount}건`);
     console.log(`[restaurant][QC] 가격명시(commercial 위반): ${priceCount}건`);
-    console.log(`[restaurant][QC] 매장 사실 서술 storeClaim(0 필수): ${storeClaimCount}건 / 경험 전제 expLeak(0 필수): ${expLeakCount}건 / 단위 조사오류 josaUnit(0 필수): ${josaUnitLeakCount}건`);
+    console.log(`[restaurant][QC] 매장 사실 서술 storeClaim(0 필수): ${storeClaimCount}건 / 경험 전제 expLeak(0 필수): ${expLeakCount}건 / 단위 조사오류 josaUnit(0 필수): ${josaUnitLeakCount}건 / 사실유형 잔존 factType(0 기대): ${factTypeClaimCount}건 / 한다체 종결 toneHan(0 기대): ${toneHanCount}건`);
   }
 
   return {
@@ -1429,6 +1488,8 @@ function runQC(text, treatment, region, situation, purpose, mode, fullKeyword) {
     fossil_chokchok, fossil_majimak, fossil_cheossul, fossil_ijibui,
     fullKwCount, charCount,
     storeClaimCount, expLeakCount, josaUnitLeakCount,   // [STEP6-FIX-B B-3]
+    factTypeClaimCount,   // [STEP6-FIX-D A5] 로그 전용
+    toneHanCount,         // [STEP6-FIX-D B3-2] 로그 전용
   };
 }
 
@@ -1472,6 +1533,12 @@ const FACT_GUARD_RULES = [
   { id: "STORE_SUBJ", re: /(?:매장에서(?:는|도)?|매장의|이곳(?:에서(?:는)?|은|의)?|이\s*집(?:에서(?:는)?|은|의)|여기서(?:는)?)\s*.{0,40}?(?:제공|나오|나온|준비되|준비돼|마련|운영|대표|중심|유명|인기)/ },
   // [B-1 구조 규칙] 서비스·곁들임 명사 + 가능·제공·확보·나옴 서술 (양방향)
   { id: "SVC",     re: /(?:예약|웨이팅|리필|반찬|밑반찬|기본찬|소스|곁들임|사리|단체석|포장|배달)(?:을\s*통해|으로|로|[이가은는을를도])?\s*.{0,15}?(?:가능합니다|가능하다|가능해요|제공(?:됩니다|된다|되며|되어|되는|하는|합니다)|확보할\s*수\s*있|받을\s*수\s*있|나옵니다|나온다|나오는|나온)|(?:제공되는|제공하는|나오는|나온)\s*(?:[가-힣]+\s+){0,2}?(?:반찬|밑반찬|기본찬|소스|곁들임)/ },
+  // [STEP6-FIX-D A5] 주어 무관 사실 유형 — 제공·준비·대기·빈도가 매장 운영 사실로 바뀐 서술 (FACT_BOUNDARY ⓐ·ⓑ 검출 축)
+  //   commercial 전용(personal 불변). 최후 안전망 — 발동은 생성계약 실패 지표.
+  //   ※ 한글 음절 결합: 「되」+「ㄴ다」=「된다」이므로 어간을 (?:되|된|돼|됩)로 둔다(합니다체 포함).
+  //   ※ 「선택할 수 있다」는 판단문 오탐 위험으로 미포함(A1 원천 차단).
+  { id: "FACT_TYPE", commercialOnly: true,
+    re: /제공(?:된다|됩니다|되며|되어|돼|되기|한다|합니다)|(?:양|구성|그릇|접시|뚝배기|형태|크기|담겨|곁들여|함께)(?:으로|로|이|가|에)?\s*나(?:온다|옵니다|오며|오기|오는\s*(?:편|경우가\s*많))|준비(?:된다|됩니다|되며|되어|돼|되기)|(?:대기|웨이팅|기다림)\s*(?:없이|없다|없어|짧|적)|기다리지\s*않고|(?:많이|자주|흔히)\s*(?:찾|고려(?:되|된|돼|됩)|선택(?:되|된|돼|됩)|주문(?:되|된|돼|됩)|시키)|찾는\s*(?:사람|손님|이|경우)들?[이가]\s*많/ },
 ];
 // 확인 톤: 확인 요청·매장별 차이·간접의문(-는지/-한지 …)·일반 가정("~한 곳도 있다" — 특정 매장 단정 아님)
 const FACT_GUARD_CHECK = /확인|(?:포장|주차|좌석|단체석|영업|운영|예약)\s*(?:가능\s*)?여부|매장마다|매장별|다를\s*수|달라질\s*수|방문\s*전|문의|물어보|(?:는지|한지|인지|은지|을지)(?=[\s,.!?]|$)|(?:곳|경우|매장)(?:도|이)\s*있/;
@@ -1480,7 +1547,8 @@ const FACT_GUARD_CLAUSE_SPLIT = /,\s*|(?<=[가-힣](?:어서|아서|해서|으�
 
 // [FIX-C FINAL R3-b] providedChecks(commercial 전용)에 '주차'가 있으면 자동 확인문에서 '주차'만 제외.
 //   판정·제거 규칙·appendSkipped 조건은 무변경. 인자 미전달 = 기존 동작과 동일.
-function applyFactGuard(assembled, providedChecks = []) {
+// [STEP6-FIX-D A5] mode: commercialOnly 규칙 적용 여부. 기본값 personal = 기존 동작과 동일.
+function applyFactGuard(assembled, providedChecks = [], mode = "personal") {
   let count = 0;
   const removed = [];
   const nlIdx = assembled.indexOf("\n");
@@ -1491,7 +1559,7 @@ function applyFactGuard(assembled, providedChecks = []) {
     const clauses = sn.split(FACT_GUARD_CLAUSE_SPLIT).filter(Boolean);
     for (const cl of clauses) {
       if (FACT_GUARD_CHECK.test(cl)) continue;
-      const hit = FACT_GUARD_RULES.find((r) => r.re.test(cl));
+      const hit = FACT_GUARD_RULES.find((r) => (!r.commercialOnly || mode === "commercial") && r.re.test(cl));
       if (hit) return hit.id;
     }
     return null;
@@ -1621,8 +1689,8 @@ export default async function handleRestaurant(req, res) {
 당신의 임무는 ${region} 일대에서 "오늘 ${menu}를 먹으러 갈까?" 하고 검색하는 사람의 상황을 읽고, 그 사람이 "이 한 끼면 내 상황이 해결되겠다"고 스스로 판단하도록 돕는 것입니다.
 
 [★★ 최상위 관점 — 글의 주어는 '메뉴'가 아니라 '사람'이다]
-- 사람들은 재료나 조리법이 궁금해서 검색하지 않는다. 자신의 상황(배고픔·혼밥·해장·가족식사·추운 날 국물)을 해결하려고 식당을 찾는다.
-- 그러므로 모든 섹션은 '${menu}는 ~한 음식이다'(메뉴 주어)가 아니라 '~한 상황의 사람은 ${menu}로 ~를 해결한다'(사람 주어)로 쓴다.
+- 사람들은 재료나 조리법이 궁금해서 검색하지 않는다. 자신의 상황(배고픔·혼밥·가족식사·추운 날 국물)을 해결하려고 식당을 찾는다.
+- 그러므로 모든 섹션은 '${menu}는 ~한 음식이다'(메뉴 주어)가 아니라 '~한 상황의 사람은 ${menu}로 ~를 해결합니다'(사람 주어)로 쓴다.
 - 메뉴 설명(재료·국물·식감·곁들임)은 그 자체가 목적이 아니라, "이 상황의 사람에게 왜 맞는가"를 뒷받침하는 근거로만 등장한다.
 - 사전·백과사전식 정의("${menu}는 ~로 만든 음식으로, ~가 특징이다") 금지. 사람의 하루·끼니·상황에서 출발한다.
 - 글을 다 읽은 독자에게 "${menu}가 어떤 음식인지 알았다"가 아니라 "오늘 같은 날 ${menu} 먹으러 갈까"라는 마음이 남아야 한다.
@@ -1644,7 +1712,9 @@ ${getFactBoundary(providedChecks)}
 - "일반적으로 ~ 안내됩니다" / "매장별 차이가 있습니다"
 - "방문 시 매장에서 확인 가능합니다"
 
-3인칭 정보형(독자에게 말 거는 질문체 허용). 자연스러운 안내 톤.
+3인칭 정보형. 자연스러운 안내 톤.
+${COMMERCIAL_TONE}
+- [FIX-D B2] 섹션 사이를 잇는 예고·전환 문장("다음으로는 …", "이어서 …", "~를 살펴보게 됩니다")을 쓰지 않는다.
 [문단 길이] 한 문단 2~4줄로 유지 (5줄 이상 ❌).`
     : `당신은 ${region} 일대를 자주 다니는 일반인입니다. ${region}에서 ${menu} 한 그릇 먹은 1인칭 블로그 후기를 작성합니다.
 업종: 맛집·식당 | 지역: ${region} | 메뉴: ${menu} | 카테고리: ${cat}
@@ -1712,7 +1782,7 @@ ${getFactBoundary(providedChecks)}
     const userPrompt = `업종: restaurant | 지역: ${region} | 메뉴: ${menu} | 카테고리: ${cat} | 상황: ${situation} | 목적: ${purpose} | 모드: ${validMode}
 ${prevBlock}
 ---
-[현재 섹션: ${sec.label} (${sec.key})]
+${validMode === "commercial" ? `[작성 범위: ${sec.key}]` : `[현재 섹션: ${sec.label} (${sec.key})]`}
 ⚠️ 이 섹션만 작성. 의료·카페·학습·광고 어휘 금지. ${sec.minLength}자 이상.
 ${richPrompt}`;
 
@@ -1765,7 +1835,7 @@ ${richPrompt}`;
     prevTextRaw += "\n" + secText;
     if (validMode === "commercial") {
       const _first = (secText.trim().split(/(?<=[.!?])\s+/)[0] || "").replace(/\s+/g, " ").slice(0, 30);
-      if (_first) prevDigest += `- [${sec.label}] ${_first}…\n`;
+      if (_first) prevDigest += `- ${_first}…\n`;   // [STEP6-FIX-D B2] 구 섹션 라벨 미주입
     }
   }
 
@@ -1868,7 +1938,7 @@ ${richPrompt}`;
   // ── [STEP6-FIX-A D3 → STEP6-FIX-B B-1] 매장 사실 단정 안전망 (최후 안전망) ──
   //   주 해결은 prompts(FACT_BOUNDARY). 여기서 제거되는 문장 = 프롬프트 실패 신호.
   //   B-1: 절 단위 판정 + 제거 원문·rule 로깅 + 안내 생략 흔적 로깅 (applyFactGuard).
-  const _fg = applyFactGuard(assembled, validMode === "commercial" ? providedChecks : []);   // [FIX-C FINAL R3-b] personal 불변
+  const _fg = applyFactGuard(assembled, validMode === "commercial" ? providedChecks : [], validMode);   // [FIX-D A5] commercialOnly 규칙 게이트   // [FIX-C FINAL R3-b] personal 불변
   assembled = _fg.text;
   const factGuardCount   = _fg.count;
   const factGuardRemoved = _fg.removed;
@@ -1904,7 +1974,7 @@ ${richPrompt}`;
   const seoScore  = diagnosePost(assembled, menu);
   console.log(`[restaurant] 완료: ${charCount}자 / SEO ${seoScore}점 / mode=${validMode}`);
   if (validMode === "commercial") {
-    console.log(`[restaurant][QC][FACT] D3=${factGuardCount} storeClaim=${qc.storeClaimCount} expLeak=${qc.expLeakCount} josaUnit=${qc.josaUnitLeakCount} 1인칭=${qc.firstPersonCount}`);
+    console.log(`[restaurant][QC][FACT] D3=${factGuardCount} storeClaim=${qc.storeClaimCount} factType=${qc.factTypeClaimCount} toneHan=${qc.toneHanCount} expLeak=${qc.expLeakCount} josaUnit=${qc.josaUnitLeakCount} 1인칭=${qc.firstPersonCount}`);
   }
 
   // 경고
