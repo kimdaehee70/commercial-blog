@@ -160,7 +160,22 @@ function buildRestaurantTitle(treatment, region, situation, purpose, seoData, mo
       const _purRaw  = dir.purposeLabel || pur || "";   // 목적 라벨(선택값/메뉴폴백) — 없으면 공백
       const purLabel = _FACT_TOKEN.test(_purRaw) ? "" : _purRaw;   // [STEP6-FIX-A D4] '주차 편한' 등 사실 단정 라벨 제외
       const raw = seoData.titlePatterns[Math.floor(Math.random() * seoData.titlePatterns.length)];
-      let t = raw
+      // [STEP6-FIX-E T-1·T-2] 관형형 MIDDLE이 문말에 매달리는 구조 결함 교정 — data 무수정, 조립단만.
+      //   T-2: 목적 라벨(관형형)이 있으면 MIDDLE을 버린다(관형어 2중 = C3 중복 해소).
+      //   T-1: 없으면 MIDDLE을 {menu} 앞으로 옮긴다("신내동 족발 깔끔한" → "신내동 깔끔한 족발").
+      //   SCENE 풀(useScene)은 관형형 보장이 없으므로 이동 대상에서 제외한다.
+      let pat = raw;
+      const _purInPat = pat.includes("{purpose}") && !!purLabel;
+      if (/\{searchword\}\s*$/.test(pat)) {   // [LOCAL-FIX-01 A] SCENE 풀도 전부 관형형 — 제외 조건 제거
+        if (_purInPat) {
+          pat = pat.replace(/\s*\{searchword\}\s*$/, "");
+        } else if (pat.includes("{menu}")) {
+          pat = pat.replace(/\s*\{searchword\}\s*$/, "").replace("{menu}", "{searchword} {menu}");
+        } else {
+          pat = pat.replace(/\s*\{searchword\}\s*$/, "");
+        }
+      }
+      let t = pat
         .replace(/\{purpose\}/g, purLabel)
         .replace(/\{region\}/g, region)
         .replace(/\{menu\}/g, menu)
@@ -176,7 +191,8 @@ function buildRestaurantTitle(treatment, region, situation, purpose, seoData, mo
       if (t) return t;
     }
 
-    return `${region} ${menu} ${mid}｜${suf}`;
+    // [STEP6-FIX-E T-1 · LOCAL-FIX-01 A] 폴백 경로도 관형형 문말 매달림 교정(SCENE 포함)
+    return `${region} ${mid} ${menu}｜${suf}`;
   }
 
   // personal — titlePatterns 우선 (placeholder 치환)
@@ -414,7 +430,10 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
   //   교정: 메뉴명+(이|가|은|는|에|을|를) + 장소명사 → "이 장소명사"
   //   QC: particleErrorCount 누적 → 후단 로그
   // ─────────────────────────────────────────────────────
-  const PLACE_NOUNS = "(동네|일대|집|골목|쪽|근처|거리|상권|먹자골목|가게|매장|식당|집안|안쪽|입구)";
+  // [STEP6-FIX-E H-1] commercial: '집'을 장소명사에서 제외 — "집에서(가정)" → "이 집에서(매장 지칭)" 생성 차단(구조 발견 58)
+  const PLACE_NOUNS = mode === "commercial"
+    ? "(동네|일대|골목|쪽|근처|거리|상권|먹자골목|가게|매장|식당|집안|안쪽|입구)"
+    : "(동네|일대|집|골목|쪽|근처|거리|상권|먹자골목|가게|매장|식당|집안|안쪽|입구)";
   const PARTICLES   = "(이|가|은|는|에|을|를)";
   let particleErrorCount = 0;
 
@@ -444,7 +463,10 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
   //    1)·2) 둘 다 놓친 케이스 (예: "수제비가 동네", "라멘에 일대")
   //    조건: 앞 단어가 한글 0~3자 + 음식어미 + 조사 + 공백 + 장소명사
   //    보수적: 흔한 음식 어미 — {0,3}로 단독 단어("치킨", "수제비")도 매칭
-  const safetyFoodRe = /[가-힣]{0,3}(?:국수|수제비|치킨|피자|초밥|라멘|우동|냉면|짬뽕|짜장|돈까스|회덮밥|덮밥|토스트|버거|파스타|커리|샐러드|샌드위치)(이|가|은|는|에|을|를)\s+(동네|일대|집|골목|쪽|근처|거리|상권|먹자골목)/g;
+  const _safetyPlace = mode === "commercial"
+    ? "(동네|일대|골목|쪽|근처|거리|상권|먹자골목)"
+    : "(동네|일대|집|골목|쪽|근처|거리|상권|먹자골목)";
+  const safetyFoodRe = new RegExp(`[가-힣]{0,3}(?:국수|수제비|치킨|피자|초밥|라멘|우동|냉면|짬뽕|짜장|돈까스|회덮밥|덮밥|토스트|버거|파스타|커리|샐러드|샌드위치)(이|가|은|는|에|을|를)\\s+${_safetyPlace}`, "g");
   result = result.replace(safetyFoodRe, (m, _p, place) => {
     particleErrorCount++;
     return `이 ${place}`;
@@ -510,7 +532,8 @@ function cleanRestaurantText(text, treatment, region, situation, purpose, mode =
     result = result.replace(/(?:^|[\s,.])저는\s+/g, " ");
     result = result.replace(/(?:^|[\s,.])제가\s+/g, " ");
     result = result.replace(/(?:^|[\s,.])내가\s+/g, " ");
-    result = result.replace(/(?:^|[\s,.])나는\s+/g, " ");
+    // [STEP6-FIX-E H-2] 동사 활용형("감칠맛 나는") 오삭제 차단 — 문두·문장 종결 뒤의 주어 '나는'만 제거(선행 구두점 보존)
+    result = result.replace(/(^|\n|[.!?]\s+)나는\s+/g, "$1");
     result = result.replace(/(?:^|[\s,.])저도\s+/g, " ");
 
     const verbConv = [
@@ -1689,7 +1712,7 @@ export default async function handleRestaurant(req, res) {
 당신의 임무는 ${region} 일대에서 "오늘 ${menu}를 먹으러 갈까?" 하고 검색하는 사람의 상황을 읽고, 그 사람이 "이 한 끼면 내 상황이 해결되겠다"고 스스로 판단하도록 돕는 것입니다.
 
 [★★ 최상위 관점 — 글의 주어는 '메뉴'가 아니라 '사람'이다]
-- 사람들은 재료나 조리법이 궁금해서 검색하지 않는다. 자신의 상황(배고픔·혼밥·가족식사·추운 날 국물)을 해결하려고 식당을 찾는다.
+- 사람들은 재료나 조리법이 궁금해서 검색하지 않는다. 자신의 상황(끼니·자리·목적)을 해결하려고 식당을 찾는다.
 - 그러므로 모든 섹션은 '${menu}는 ~한 음식이다'(메뉴 주어)가 아니라 '~한 상황의 사람은 ${menu}로 ~를 해결합니다'(사람 주어)로 쓴다.
 - 메뉴 설명(재료·국물·식감·곁들임)은 그 자체가 목적이 아니라, "이 상황의 사람에게 왜 맞는가"를 뒷받침하는 근거로만 등장한다.
 - 사전·백과사전식 정의("${menu}는 ~로 만든 음식으로, ~가 특징이다") 금지. 사람의 하루·끼니·상황에서 출발한다.
