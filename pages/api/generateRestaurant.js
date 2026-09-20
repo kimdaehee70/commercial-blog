@@ -29,6 +29,7 @@ import {
   getOpeningRule,  // [STEP6-FIX-C 축3] 재생성 보강문 = 거부 사유 + 원래 섹션 첫 문장 규칙
   COMMERCIAL_TONE, // [STEP6-FIX-D B3-2] commercial 문체 단일 규칙 — P 단일 정의
   getFactBoundary, // [STEP6-FIX-B B-2 → FIX-C 보충 R3] commercial systemPrompt 사실 경계 — P 단일 정의(주차 제공 시 확인 권고 제외)
+  verifyTitleToken, // [STEP6-FIX-F E] 제목 토큰 축 검증 — axisState와 대조, 증명 불가 토큰은 미사용
 } from "../../lib/restaurant-prompts";
 import {
   getRestaurantSections,
@@ -136,16 +137,20 @@ function buildRestaurantTitle(treatment, region, situation, purpose, seoData, mo
       return v;
     };
     // SCENE 후보: 메뉴 정확매칭 → 카테고리(cat) 폴백.
-    // [STEP6-FIX-A D4] 매장 사실 단정 토큰(주차·포장) 제외 — 입력 없는 사실을 제목에서 단정 금지. data 무수정(소비측 필터).
-    const _FACT_TOKEN = /주차|포장/;
-    const _noFact = (arr) => (arr || []).filter(t => !_FACT_TOKEN.test(t));
-    const scenePool = _noFact(RESTAURANT_TITLE_SCENE[menu]
+    // [STEP6-FIX-F E] 축 검증 게이트 — 토큰을 축으로 태깅해 이 메뉴의 축 상태와 대조한다.
+    //   · axisState와 일치하는 검증 가능한 토큰만 사용
+    //   · UNKNOWN 축 단정 / 축 모순 → 배제
+    //   · 축으로 해석되지 않는 토큰은 안전을 증명할 수 없으므로 사용하지 않는다(미매칭 = 통과 아님)
+    //   · 남는 토큰이 없으면 안전 제목({region} {menu})으로 축소한다. data 무수정(소비측 필터).
+    const _verified = (arr) => (arr || []).filter(t => verifyTitleToken(t, menu));
+    const scenePool = _verified(RESTAURANT_TITLE_SCENE[menu]
                    || RESTAURANT_TITLE_SCENE_BY_CATEGORY[cat]
                    || []);
     // 40% 확률로 SCENE, 아니면 MIDDLE (SCENE 풀 없으면 항상 MIDDLE).
+    const midFallback = _verified(RESTAURANT_TITLE_MIDDLE);
     const useScene = scenePool.length && Math.random() < 0.4;
-    const midPool = useScene ? scenePool : _noFact(RESTAURANT_TITLE_MIDDLE);
-    const mid = pickAvoid(midPool, _lastTitleMiddle);
+    const midPool = useScene ? scenePool : midFallback;
+    const mid = midPool.length ? pickAvoid(midPool, _lastTitleMiddle) : "";
     const suf = pickAvoid(RESTAURANT_TITLE_SUFFIX, _lastTitleSuffix);
     _lastTitleMiddle = mid;
     _lastTitleSuffix = suf;
@@ -158,7 +163,7 @@ function buildRestaurantTitle(treatment, region, situation, purpose, seoData, mo
     if (seoData?.titlePatterns?.length) {
       const dir = getRestaurantDirection(treatment, situation, purpose) || {};
       const _purRaw  = dir.purposeLabel || pur || "";   // 목적 라벨(선택값/메뉴폴백) — 없으면 공백
-      const purLabel = _FACT_TOKEN.test(_purRaw) ? "" : _purRaw;   // [STEP6-FIX-A D4] '주차 편한' 등 사실 단정 라벨 제외
+      const purLabel = verifyTitleToken(_purRaw, menu) ? _purRaw : "";   // [STEP6-FIX-F E] 목적 라벨도 동일 축 검증
       const raw = seoData.titlePatterns[Math.floor(Math.random() * seoData.titlePatterns.length)];
       // [STEP6-FIX-E T-1·T-2] 관형형 MIDDLE이 문말에 매달리는 구조 결함 교정 — data 무수정, 조립단만.
       //   T-2: 목적 라벨(관형형)이 있으면 MIDDLE을 버린다(관형어 2중 = C3 중복 해소).
@@ -167,7 +172,7 @@ function buildRestaurantTitle(treatment, region, situation, purpose, seoData, mo
       let pat = raw;
       const _purInPat = pat.includes("{purpose}") && !!purLabel;
       if (/\{searchword\}\s*$/.test(pat)) {   // [LOCAL-FIX-01 A] SCENE 풀도 전부 관형형 — 제외 조건 제거
-        if (_purInPat) {
+        if (_purInPat || !mid) {   // [FIX-F E] 검증 통과 토큰이 없으면 슬롯 자체를 버린다
           pat = pat.replace(/\s*\{searchword\}\s*$/, "");
         } else if (pat.includes("{menu}")) {
           pat = pat.replace(/\s*\{searchword\}\s*$/, "").replace("{menu}", "{searchword} {menu}");
@@ -192,7 +197,8 @@ function buildRestaurantTitle(treatment, region, situation, purpose, seoData, mo
     }
 
     // [STEP6-FIX-E T-1 · LOCAL-FIX-01 A] 폴백 경로도 관형형 문말 매달림 교정(SCENE 포함)
-    return `${region} ${mid} ${menu}｜${suf}`;
+    // [STEP6-FIX-F E] 안전 제목 축소 — 검증 토큰이 없으면 {region} {menu}. SUFFIX(체험형)는 commercial에서 쓰지 않는다.
+    return `${region} ${mid} ${menu}`.replace(/\s{2,}/g, " ").trim();
   }
 
   // personal — titlePatterns 우선 (placeholder 치환)
