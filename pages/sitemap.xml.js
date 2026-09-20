@@ -95,6 +95,10 @@ const STORE_LIMIT = 500;
 //   [AI-POST-OWNED-SEARCH-CONTENT-01] 문제해결 탐색축 10건 추가(2026-09-20).
 //     업종 pSEO 가 아니다. AI-POST 자체 도메인의 검색유입 자산이다.
 //     ①clinic 은 업종축 1호, ②~⑪은 문제축. 검색의도가 서로 겹치지 않는다.
+//
+//   [AI-POST-OWNED-SEARCH-CONTENT-02] 문제해결 탐색축 20건 추가(2026-09-20).
+//     ⑫~㉛. 기존 11건과 검색의도가 겹치지 않는다. 업종 pSEO 가 아니다.
+//     구현체는 pages/guide/*.js 20개. 공용 셸은 CONTENT-01 의 GuideShell 을 그대로 쓴다.
 const OFFICIAL_URLS = [
   'https://ai-post.ai/guide/clinic-blog-marketing',
   'https://ai-post.ai/guide/blog-not-ranking',
@@ -107,6 +111,28 @@ const OFFICIAL_URLS = [
   'https://ai-post.ai/guide/ai-blog-writing',
   'https://ai-post.ai/guide/local-search-marketing',
   'https://ai-post.ai/guide/blog-marketing-start',
+
+  // ── CONTENT-02 (20) ──
+  'https://ai-post.ai/guide/blog-title-writing',
+  'https://ai-post.ai/guide/blog-post-length',
+  'https://ai-post.ai/guide/blog-photo-guide',
+  'https://ai-post.ai/guide/blog-duplicate-content',
+  'https://ai-post.ai/guide/blog-traffic-drop',
+  'https://ai-post.ai/guide/blog-hashtag-guide',
+  'https://ai-post.ai/guide/blog-first-paragraph',
+  'https://ai-post.ai/guide/blog-vs-instagram',
+  'https://ai-post.ai/guide/blog-review-request',
+  'https://ai-post.ai/guide/blog-comment-neighbor',
+  'https://ai-post.ai/guide/blog-banned-words',
+  'https://ai-post.ai/guide/blog-account-penalty',
+  'https://ai-post.ai/guide/small-business-marketing-budget',
+  'https://ai-post.ai/guide/store-opening-promotion',
+  'https://ai-post.ai/guide/slow-season-marketing',
+  'https://ai-post.ai/guide/customer-question-content',
+  'https://ai-post.ai/guide/blog-outsourcing-guide',
+  'https://ai-post.ai/guide/ai-vs-agency',
+  'https://ai-post.ai/guide/chatgpt-blog-limits',
+  'https://ai-post.ai/guide/blog-automation-limits',
 ];
 
 // [PSEO-SITEMAP-COLD-LATENCY-01] 동시 실행 폭.
