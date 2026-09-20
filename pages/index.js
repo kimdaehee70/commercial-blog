@@ -6799,7 +6799,7 @@ function AccountLeaveButton({ isOwner }) {
 }
 
 function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, authEmail, industry, hubPosts, hubSurvival, hubSurvivalItems, hubLoading, treatmentNames, treatments, treatmentCats, onFillInput, onGenerate, hubRanks, rankDraft, setRankDraft, saveRank, rankSaving, coachOpen, setCoachOpen, hubStore, setHubStore, saveStore, createStore, storeSaving, industrySidePick, industryCenterSel, setIndustryCenterSel, centerSpecialty,
-  calMonth, setCalMonth, menuWeights, setMenuWeights, savedWeights, setSavedWeights, weightsDirty, setWeightsDirty, activePlan, setActivePlan, extraMenus, setExtraMenus, newMenuInput, setNewMenuInput, masterMenuNames, currentIndustry, myMenusMap, setMyMenusMap, editingMenus, setEditingMenus, menuToast, setMenuToast, onCoachMessage, onTabChange, onCalendarPick, onOpenTools, toolsActive, onGoIndustryCenter, onCoachVideo, authUserId, storeEditRef, publishApi,
+  calMonth, setCalMonth, menuWeights, setMenuWeights, savedWeights, setSavedWeights, weightsDirty, setWeightsDirty, activePlan, setActivePlan, extraMenus, setExtraMenus, newMenuInput, setNewMenuInput, masterMenuNames, currentIndustry, menuScopeKey, menuScopeResolving, myMenusMap, setMyMenusMap, editingMenus, setEditingMenus, menuToast, setMenuToast, onCoachMessage, onTabChange, onCalendarPick, onOpenTools, toolsActive, onGoIndustryCenter, onCoachVideo, authUserId, storeEditRef, publishApi,
   // [MultiDeptMenu 2026-07-12] 병원 다중 진료과 — 우측 '나의 메뉴' 통합 뷰용.
   //   미전달(비병원·단일과) = undefined → 기존 currentIndustry 단일 로직 폴백(하위호환).
   isMultiDept, myMenuFlat, deptLabelOf, onRemoveMyMenuDept,
@@ -6940,11 +6940,12 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
     if (ratioEditInitDone.current) return;
     const base = Array.isArray(treatmentNames) ? treatmentNames : [];
     if (base.length === 0) return; // 목록 로드 전 — 재시도
-    const cur = (myMenusMap && Array.isArray(myMenusMap[currentIndustry])) ? myMenusMap[currentIndustry] : [];
+    if (menuScopeResolving) return;   // [STORE-SWITCH-01] 업체 확인 중에는 판정 보류
+    const cur = (menuScopeKey && Array.isArray(myMenusMap[menuScopeKey])) ? myMenusMap[menuScopeKey] : [];
     setEditingMenus(cur.length === 0); // 주력 미설정 → 편집기 / 설정완료 → 비율카드
     ratioEditInitDone.current = true;
     /* eslint-disable-next-line */
-  }, [view, tab, treatmentNames, myMenusMap, currentIndustry]);
+  }, [view, tab, treatmentNames, myMenusMap, menuScopeKey, menuScopeResolving]);
 
   const q = quotaInfo || {};
   const displayName = storeName || (authEmail ? authEmail.split("@")[0] : "사용자");
@@ -7793,10 +7794,15 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
       // [v45] 발행비율설정 = 시술선택 + 비율설정 통합(1단계).
       //   생성기 카드 UI 재활용. 카드 내부에 [☑사용 / 발행요율 숫자입력].
       //   null=미설정(키없음) / 0=사용안함 / 1~100=사용. 첫 진입 시 전 항목 기본 50(위 useEffect).
+      // [STORE-SWITCH-01] 로딩(resolving)과 빈 목록(empty)을 구분한다.
+      //   업체 확인 중에는 이전 업체 목록을 그리지 않고 대기 화면으로 간다.
+      if (menuScopeResolving) {
+        return pendingCard("업체 정보를 불러오는 중입니다", "현재 업체가 확인되면 메뉴가 표시됩니다.");
+      }
       const baseMenus = Array.isArray(treatmentNames) ? treatmentNames : [];
       const allMenus = [...baseMenus, ...extraMenus];
       if (allMenus.length === 0) {
-        return pendingCard("진료 목록을 불러오는 중입니다", "업체 업종이 설정되면 진료 항목이 여기에 표시됩니다.");
+        return pendingCard("표시할 메뉴가 없습니다", "업체 업종이 설정되면 항목이 여기에 표시됩니다.");
       }
 
       // 카드 메타(이모지·카테고리) — treatments 객체에서 이름으로 매칭. 추가 항목은 기본 이모지.
@@ -7875,7 +7881,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
         // [MultiDeptMenu] 다중과 = 전 진료과 통합 목록 기준. 단일과 = 기존 단일 키.
         const cur = (isMultiDept && Array.isArray(myMenuFlat))
           ? myMenuFlat.map(x => x.name)
-          : ((myMenusMap && Array.isArray(myMenusMap[currentIndustry])) ? myMenusMap[currentIndustry] : []);
+          : ((menuScopeKey && Array.isArray(myMenusMap[menuScopeKey])) ? myMenusMap[menuScopeKey] : []);
         if (cur.length === 0) { window.alert(`주력${_ITEM_WORD}를 1개 이상 선택해 주세요.`); return; }
         // [v151] 저장 시 나의 메뉴 항목 weight 시드 — 카드가 회색 OFF로 보이는 모순 방지.
         //   이미 값이 있는 항목(주력/보조)은 보존, 값 없는 항목만 보조(30)로 ON.
@@ -7909,7 +7915,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
       const _multi = !!isMultiDept && _flat.length >= 0 && !!isMultiDept;
       const curMyMenu = _multi
         ? _flat.map(x => x.name)
-        : ((myMenusMap && Array.isArray(myMenusMap[currentIndustry])) ? myMenusMap[currentIndustry] : []);
+        : ((menuScopeKey && Array.isArray(myMenusMap[menuScopeKey])) ? myMenusMap[menuScopeKey] : []);
       // 메뉴명 → 진료과 라벨(배지). 단일과 = 빈 문자열(배지 미표시).
       const deptBadgeOf = (name) => {
         if (!_multi) return "";
@@ -7926,8 +7932,9 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
           return;
         }
         setMyMenusMap(prev => {
-          const cur = Array.isArray(prev[currentIndustry]) ? prev[currentIndustry] : [];
-          return { ...prev, [currentIndustry]: cur.filter(x => x !== name) };
+          if (!menuScopeKey) return prev;                     // [STORE-SWITCH-01]
+          const cur = Array.isArray(prev[menuScopeKey]) ? prev[menuScopeKey] : [];
+          return { ...prev, [menuScopeKey]: cur.filter(x => x !== name) };
         });
       };
       // [v150] 발행비율 사용법 모달 (stats 내부 전용 — 새 탭/좌측메뉴 없음)
@@ -9304,12 +9311,21 @@ export default function Home() {
   const RESTAURANT_LIVE_CAT = "분식"; // 현재 운영매장 cat (맵꼬). 멀티매장 전환 시 hubStore에서 동적 도출.
   // [v148] 업종별 "내 메뉴" — 마스터 메뉴 중 사용자가 고른 항목만 발행비율/AI글쓰기/달력에 노출.
   //   형태: { dental:[...], legal:[...] }. 미설정(키 없음/빈배열) = fallback(마스터 전체) — 기존 사용자 무손상.
-  //   저장은 localStorage(aipost_mymenus_v1) 단독 키. plan_state와 분리 → 리셋(plan)이 내 메뉴를 안 건드림.
+  //   저장은 localStorage(aipost_mymenus_v2__<uid>) 계정별 키. plan_state와 분리 → 리셋(plan)이 내 메뉴를 안 건드림.
   //   ※ menuTreatments(아래)가 참조하므로 반드시 그 위에서 선언(TDZ 방지).
+  //   [STORE-SWITCH-01] 키 = 업종 → **스코프(`${storeId}:${industry}`)**. 업체가 다르면 같은 업종이어도 분리된다.
+  //   저장소도 계정별(v2). v1(업종 단일 키)은 소유 업체를 알 수 없으므로 **이관하지 않고 폐기**한다.
   const [myMenusMap,   setMyMenusMap]   = useState({});
   const [editingMenus, setEditingMenus] = useState(false); // 발행비율 탭 "내 메뉴 편집" 모드 토글
   const [menuToast, setMenuToast] = useState("");           // [v-menuclean] 저장 Toast (1.5s)
-  const LS_MYMENU_KEY = "aipost_mymenus_v1";
+  const LS_MYMENU_KEY_V1 = "aipost_mymenus_v1";             // [STORE-SWITCH-01] 삭제 전용(읽지 않음)
+  const lsMyMenuKeyFor = (uid) => (uid ? `aipost_mymenus_v2__${uid}` : null);
+  // [FIX-2] 발행비율도 스코프별 보관 — 메뉴와 같은 축(accountId → storeId → industry → specialty).
+  //   activePlan은 파생·실행 상태이므로 영구 스코프화하지 않는다(전환 시 기존대로 폐기).
+  const lsRatioKeyFor  = (uid) => (uid ? `aipost_ratio_v2__${uid}` : null);
+  // [STORE-SWITCH-01] 업체 확인 중 플래그 — refreshStore 시작 즉시 true.
+  //   true 동안 메뉴/주력주제/발행비율은 이전 업체 값을 읽지 않고 resolving으로 간다.
+  const [storeRefreshing, setStoreRefreshing] = useState(false);
 
   // [이동됨] quotaInfo — 원래 아래쪽 useState 묶음에 있었으나 masterMenus OWNER 게이트가 참조 → 상단 이동(TDZ 방지).
   const [quotaInfo,    setQuotaInfo]    = useState(null);
@@ -9371,12 +9387,26 @@ export default function Home() {
   // [v148] 내 메뉴 필터 — myMenusMap[업종]에 항목이 있으면 그 항목만 노출. 없으면 마스터 전체(fallback, 기존 사용자 무손상).
   //   menuTreatments는 발행비율·AI글쓰기·달력·최근발행 4곳의 단일 소스 → 여기 한 번 거르면 전 화면 동시 반영.
   const nameOfT = (t) => (t.menu || t.menuRef || t.name);
-  const myMenuList = (myMenusMap && Array.isArray(myMenusMap[CURRENT_INDUSTRY])) ? myMenusMap[CURRENT_INDUSTRY] : [];
+  // [STORE-SWITCH-01] 메뉴 스코프 = accountId(저장소) → storeId:industry(값 격리).
+  //   scopeKey === null = 미확정 → 어떤 메뉴도 읽지 않는다(이전 업체 값 노출 금지).
+  const _storeId = (hubStore && hubStore.id) || null;
+  // [FIX-1] 음식점은 전문점(specialty)까지 메뉴 정체성에 포함한다.
+  //   족발 → 순대국은 storeId·industry가 모두 그대로라 전환이 감지되지 않았다(G1 FAIL).
+  //   ★ restaurant 한정 — 병원·그 외 엔진의 기존 스코프 의미는 건드리지 않는다.
+  const _scopeSpec = (ind) => ((ind === "restaurant" && _restaurantSpecialtyCat) ? `:${_restaurantSpecialtyCat}` : "");
+  const menuScopeOf = (ind) => (_storeId && ind ? `${_storeId}:${ind}${_scopeSpec(ind)}` : null);
+  const menuScopeKey = storeRefreshing ? null : menuScopeOf(CURRENT_INDUSTRY);
+  const menuScopeResolving = !menuScopeKey;   // 업체 확인 중이거나 storeId·업종 미확정
+  const readMyMenus = (key) => ((key && myMenusMap && Array.isArray(myMenusMap[key])) ? myMenusMap[key] : []);
+  const myMenuList = readMyMenus(menuScopeKey);
   // [MultiDeptMenu] menuTreatments 는 아래 Spine 선언 후 재정의된다(_menuTreatmentsBase = 단일과 원본).
   //   ⚠️ 아래 `const menuTreatments`(Spine) 가 실제 소비값. 여기선 폴백 원본만 보관.
-  const _menuTreatmentsBase = (myMenuList.length > 0)
+  //   [STORE-SWITCH-01 M5] 교집합 0 = 화면 고착 방지용으로만 마스터를 보인다.
+  //     이 폴백은 표시 전용이며 myMenusMap에 아무것도 기록하지 않는다(저장값 승계 금지).
+  const _menuPicked = (myMenuList.length > 0)
     ? masterMenus.filter(t => myMenuList.includes(nameOfT(t)))
-    : masterMenus;
+    : [];
+  const _menuTreatmentsBase = (_menuPicked.length > 0) ? _menuPicked : masterMenus;
   // ══════════════════════════════════════════════════════════════
   // [MultiDeptMenu Spine 2026-07-12] 병원 다중 진료과 — 메뉴 선택 UX에서 CURRENT_INDUSTRY 의존 제거.
   // ──────────────────────────────────────────────────────────────
@@ -9459,7 +9489,7 @@ export default function Home() {
     const out = [];
     const seen = new Set();
     for (const d of deptList) {
-      const arr = (myMenusMap && Array.isArray(myMenusMap[d])) ? myMenusMap[d] : [];
+      const arr = readMyMenus(menuScopeOf(d));   // [STORE-SWITCH-01] 진료과도 스코프 경유(같은 업체 내 분리는 기존과 동일)
       for (const nm of arr) {
         if (seen.has(nm)) continue; // C안: 중복 이름 1회만
         seen.add(nm);
@@ -9468,7 +9498,7 @@ export default function Home() {
       }
     }
     return out;
-  }, [deptList.join(","), JSON.stringify(myMenusMap), hospitalMenuSections]);
+  }, [deptList.join(","), JSON.stringify(myMenusMap), hospitalMenuSections, menuScopeKey]);
   const myMenuFlatNames = myMenuFlat.map(x => x.name);
 
   // 병원 전체 마스터 treatment 객체(진료과 무관) — menuTreatments 산출용.
@@ -9489,15 +9519,17 @@ export default function Home() {
 
   // 좌측 추가 — 해당 진료과 키에 저장(저장구조 유지).
   const addMyMenuDept = (name, dept) => setMyMenusMap(prev => {
-    const d = dept || deptOfMenu(name) || CURRENT_INDUSTRY;
-    const cur = Array.isArray(prev[d]) ? prev[d] : [];
-    return cur.includes(name) ? prev : { ...prev, [d]: [...cur, name] };
+    const k = menuScopeOf(dept || deptOfMenu(name) || CURRENT_INDUSTRY);   // [STORE-SWITCH-01]
+    if (!k) return prev;                                                   // 스코프 미확정 시 기록 금지
+    const cur = Array.isArray(prev[k]) ? prev[k] : [];
+    return cur.includes(name) ? prev : { ...prev, [k]: [...cur, name] };
   });
   // 우측 삭제 — 소속 진료과 키에서 제거.
   const removeMyMenuDept = (name, dept) => setMyMenusMap(prev => {
-    const d = dept || deptOfMenu(name) || CURRENT_INDUSTRY;
-    const cur = Array.isArray(prev[d]) ? prev[d] : [];
-    return { ...prev, [d]: cur.filter(x => x !== name) };
+    const k = menuScopeOf(dept || deptOfMenu(name) || CURRENT_INDUSTRY);   // [STORE-SWITCH-01]
+    if (!k) return prev;
+    const cur = Array.isArray(prev[k]) ? prev[k] : [];
+    return { ...prev, [k]: cur.filter(x => x !== name) };
   });
 
   // ★ menuTreatments 최종 — 발행비율·AI글쓰기·달력·최근발행 4곳 단일 소스.
@@ -9517,8 +9549,10 @@ export default function Home() {
     return { emoji: (t && t.emoji) || "📄", cat: (t && t.cat) || "" };
   };
   const addMyMenuParent = (name) => setMyMenusMap(prev => {
-    const cur = Array.isArray(prev[CURRENT_INDUSTRY]) ? prev[CURRENT_INDUSTRY] : [];
-    return cur.includes(name) ? prev : { ...prev, [CURRENT_INDUSTRY]: [...cur, name] };
+    const k = menuScopeKey;                                                // [STORE-SWITCH-01]
+    if (!k) return prev;
+    const cur = Array.isArray(prev[k]) ? prev[k] : [];
+    return cur.includes(name) ? prev : { ...prev, [k]: [...cur, name] };
   });
   const activeCats     = CURRENT_INDUSTRY === "dental"  ? DENTAL_CATS
                        : CURRENT_INDUSTRY === "ent"     ? ENT_CATS
@@ -9756,6 +9790,7 @@ export default function Home() {
         const stj = await stRes.value.json();
         if (stj?.ok) {
           const s = stj.store || {
+            id: stj.storeId || null,   // [STORE-SWITCH-01] 스코프 키 재료 — 폴백 경로에서도 id 보존
             industry: stj.industry, store_name: stj.storeName || stj.store_name,
           };
           setHubStore(s || {});
@@ -9775,6 +9810,43 @@ export default function Home() {
       setHubLoading(false);
     }
   }, []);
+
+  // [STORE-SWITCH-01 M6] 현재 업체 재확인 — /api/me/store 1건만 읽는다(posts 1000건 재요청 방지).
+  //   호출 즉시 storeRefreshing=true → 화면은 이전 업체 메뉴를 읽지 않고 resolving으로 간다.
+  //   실패해도 finally에서 해제하되, 기존 hubStore를 새 업체로 간주하지 않는다(setHubStore 미호출).
+  const storeRefreshTimer = useRef(0);
+  const refreshStore = useCallback(async () => {
+    const now = Date.now();
+    if (now - storeRefreshTimer.current < 1500) return;   // T1·T2 공유 디바운스
+    storeRefreshTimer.current = now;
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess?.session?.access_token;
+      if (!token) return;
+      setStoreRefreshing(true);
+      const r = await fetch("/api/me/store", { headers: { Authorization: `Bearer ${token}` } });
+      const j = await r.json();
+      if (!j?.ok) return;
+      const next = j.store || { id: j.storeId, industry: j.industry, store_name: j.storeName };
+      setHubStore(next || {});
+    } catch (e) {
+      console.warn("[store] 재확인 실패:", e?.message);
+    } finally {
+      setStoreRefreshing(false);
+    }
+  }, []);
+  // T1 탭 복귀 · T2 창 포커스 — 관리자에서 업체를 바꾸고 돌아오는 경로를 덮는다.
+  useEffect(() => {
+    if (!authUserId) return;
+    const onVis = () => { if (document.visibilityState === "visible") refreshStore(); };
+    const onFocus = () => refreshStore();
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [authUserId, refreshStore]);
 
   // [Observation Spine 이관 2026-07-06] saveRank 본문 → lib/Observation.js makeObservationApi.
   //   [v24] 오늘 순위 저장(post_ranks upsert, basis별 분리 기록) 로직은 모듈로 이동.
@@ -9836,6 +9908,9 @@ export default function Home() {
         try {
           window.localStorage.removeItem("aipost_plan_state_v1");
           window.localStorage.removeItem("aipost_mymenus_v1");
+          // [STORE-SWITCH-01] 계정별 v2 키도 정리
+          const _k = lsMyMenuKeyFor(authUserId); if (_k) window.localStorage.removeItem(_k);
+          const _kr = lsRatioKeyFor(authUserId); if (_kr) window.localStorage.removeItem(_kr);   // [FIX-2]
         } catch {}
       }
       else fetchStoreName();
@@ -9972,6 +10047,11 @@ export default function Home() {
   const [extraMenus,   setExtraMenus]   = useState([]);
   const [newMenuInput, setNewMenuInput] = useState("");
   const planHydrated = useRef(false);
+  const myMenuHydrated = useRef(false);   // [STORE-SWITCH-01] 내 메뉴 복원 완료(계정별)
+  const prevScopeRef   = useRef(null);    // [STORE-SWITCH-01] 직전 메뉴 스코프(업체 전환 감지)
+  const ratioRef       = useRef({});      // [FIX-2] { scopeKey: { menuWeights, savedWeights } }
+  const ratioHydrated  = useRef(false);
+  const ratioScopeRef  = useRef(null);    // [FIX-2] 비율이 현재 반영돼 있는 스코프(전환 직후 오기록 차단)
   // 마운트 후 1회 localStorage 복원(SSR 하이드레이션 불일치 방지 — 초기값은 기본값으로 두고 이후 주입)
   useEffect(() => {
     const s = loadPlanState();
@@ -10025,7 +10105,7 @@ export default function Home() {
           setActivePlan(c.activePlan || null);
           setWeightsDirty(false);
           if (Array.isArray(c.extraMenus)) setExtraMenus(c.extraMenus);
-          if (c.myMenusMap && typeof c.myMenusMap === "object") setMyMenusMap(c.myMenusMap);
+          // [STORE-SWITCH-01] plan 캐시의 myMenusMap(업종 키)은 읽지 않는다 — v1 구조 폐기.
         }
       } catch {}
       const s = await fetchPlanStateDB();
@@ -10039,31 +10119,39 @@ export default function Home() {
           setWeightsDirty(false);
         }
         if (Array.isArray(s.extraMenus)) setExtraMenus(s.extraMenus);
-        if (s.myMenusMap && typeof s.myMenusMap === "object") setMyMenusMap(s.myMenusMap);
+        // [STORE-SWITCH-01] plan_state의 myMenusMap(업종 키)은 읽지 않는다 — v1 구조 폐기.
       }
       planDbLoaded.current = true;
     })();
     return () => { alive = false; };
   }, [authUserId]);
-  // [v148] 내 메뉴 복원(마운트 1회) — plan_state와 별도 키. 리셋이 절대 건드리지 않는 영역.
+  // [v148 → STORE-SWITCH-01 M3] 내 메뉴 복원 — 계정별 v2 키. deps=[authUserId].
+  //   v1(업종 단일 키)은 읽지 않는다. 소유 업체를 알 수 없어 이관 시 동일 버그를 재생산한다.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    try { window.localStorage.removeItem(LS_MYMENU_KEY_V1); } catch {}   // 폐기(1회)
+    const k = lsMyMenuKeyFor(authUserId);
+    if (!k) { setMyMenusMap({}); myMenuHydrated.current = false; return; }
     try {
-      const raw = window.localStorage.getItem(LS_MYMENU_KEY);
+      const raw = window.localStorage.getItem(k);
       const m = raw ? JSON.parse(raw) : null;
-      if (m && typeof m === "object") setMyMenusMap(m);
-    } catch {}
-  }, []);
-  // [v148] 내 메뉴 저장 — 복원 완료 후에만(빈 값 덮어쓰기 방지). plan effect와 독립.
+      setMyMenusMap(m && typeof m === "object" ? m : {});
+    } catch { setMyMenusMap({}); }
+    myMenuHydrated.current = true;
+  }, [authUserId]);
+  // [v148 → STORE-SWITCH-01 M3-b] 내 메뉴 저장 — 복원 완료 + 계정 확정일 때만.
   useEffect(() => {
-    if (typeof window === "undefined" || !planHydrated.current) return;
-    try { window.localStorage.setItem(LS_MYMENU_KEY, JSON.stringify(myMenusMap || {})); } catch {}
-  }, [myMenusMap]);
+    if (typeof window === "undefined" || !myMenuHydrated.current) return;
+    const k = lsMyMenuKeyFor(authUserId);
+    if (!k) return;
+    try { window.localStorage.setItem(k, JSON.stringify(myMenusMap || {})); } catch {}
+  }, [myMenusMap, authUserId]);
   // 보존 대상 변경 시 localStorage 저장(복원 완료 후에만 — 복원 직전 빈 값으로 덮어쓰기 방지)
   useEffect(() => {
     if (typeof window === "undefined" || !planHydrated.current) return;
     // [v122] plan에 업종 태깅 — 업종 전환 시 이전 업종 계획(치과 달력 등) 폐기 판정용.
-    const payload = { menuWeights, savedWeights, activePlan, extraMenus, myMenusMap, industry: CURRENT_INDUSTRY || null };
+    // [STORE-SWITCH-01] myMenus는 plan_state에 쓰지 않는다(스코프 저장소 v2가 단일 소스).
+    const payload = { menuWeights, savedWeights, activePlan, extraMenus, industry: CURRENT_INDUSTRY || null };
     try {
       window.localStorage.setItem(LS_PLAN_KEY, JSON.stringify(payload));
       // [D-5 축①] 계정별 캐시 — 로그아웃 시 공용키만 지워도 계정 캐시는 보존된다.
@@ -10073,7 +10161,77 @@ export default function Home() {
     if (!authUserId || !planDbLoaded.current) return;
     if (planSaveTimer.current) clearTimeout(planSaveTimer.current);
     planSaveTimer.current = setTimeout(() => { savePlanStateDB(payload); }, 800);
-  }, [menuWeights, savedWeights, activePlan, extraMenus, myMenusMap, CURRENT_INDUSTRY, authUserId]);
+  }, [menuWeights, savedWeights, activePlan, extraMenus, CURRENT_INDUSTRY, authUserId]);
+  // [STORE-SWITCH-01 M4] 업체 스코프 전환 리셋 — 업종이 같아도 업체가 다르면 발동한다.
+  //   이전 업체의 비율·계획·직접추가 메뉴가 새 업체 화면에 남지 않게 한다.
+  //   myMenusMap 자체는 스코프별로 보관되므로 지우지 않는다(A 복귀 시 복원 = G4).
+  //   scopeKey가 null(미확정·확인중)이면 비교도 리셋도 하지 않는다.
+  //   [FIX-2] 비율(menuWeights·savedWeights)은 폐기하지 않고 스코프별로 보관·복원한다.
+  useEffect(() => {
+    if (!menuScopeKey) return;
+    const _persistRatio = () => {
+      const k = lsRatioKeyFor(authUserId);
+      if (k) { try { window.localStorage.setItem(k, JSON.stringify(ratioRef.current)); } catch {} }
+    };
+    if (prevScopeRef.current === null) {
+      // 최초 확정 — 이 스코프의 저장본이 있으면 복원(없으면 기존 복원 경로를 그대로 둔다)
+      prevScopeRef.current = menuScopeKey;
+      ratioScopeRef.current = menuScopeKey;
+      const init = ratioRef.current[menuScopeKey];
+      if (init) {
+        setMenuWeights(init.menuWeights || {});
+        setSavedWeights(init.savedWeights || null);
+        setWeightsDirty(false);
+      }
+      return;
+    }
+    if (prevScopeRef.current === menuScopeKey) return;
+    const _prev = prevScopeRef.current;
+    prevScopeRef.current = menuScopeKey;
+    // [FIX-1] 축별 판정 — storeId 단독 비교 금지.
+    //   · storeId 변경                         → 업체 전환            → 리셋
+    //   · storeId 동일 + specialty 변경        → 음식점 전문점 전환   → 리셋
+    //   · storeId·specialty 동일 + industry만  → 병원 진료과 전환     → 리셋 제외(_sameHospital 보존)
+    const _parts = (k) => { const a = String(k).split(":"); return { store: a[0], ind: a[1] || "", spec: a[2] || "" }; };
+    const _p = _parts(_prev), _n = _parts(menuScopeKey);
+    if (_p.store === _n.store && _p.spec === _n.spec) {
+      // 진료과만 바뀐 경우 — 기존 정책대로 비율을 유지한다(회귀 없음). 기록 스코프만 옮긴다.
+      ratioScopeRef.current = menuScopeKey;
+      return;
+    }
+    // [FIX-2] 나가는 스코프의 비율을 보관하고, 들어오는 스코프의 저장본을 복원한다.
+    //   저장본이 없으면 신규 설정 상태({} / null)로 시작한다 — A 비율을 B에 쓰지 않는다.
+    ratioRef.current = { ...ratioRef.current, [_prev]: { menuWeights, savedWeights } };
+    _persistRatio();
+    const _nx = ratioRef.current[menuScopeKey] || null;
+    setMenuWeights(_nx ? (_nx.menuWeights || {}) : {});
+    setSavedWeights(_nx ? (_nx.savedWeights || null) : null);
+    ratioScopeRef.current = menuScopeKey;
+    setWeightsDirty(false); setActivePlan(null);   // activePlan은 전환 시 폐기(영구 스코프화 금지)
+    setExtraMenus([]);          // [선장 지시] 직접추가 메뉴도 업체 전환 시 화면에서 폐기
+    setEditingMenus(false);
+  }, [menuScopeKey, authUserId]);
+  // [FIX-2] 비율 복원(계정별) — 메뉴 복원과 동일 규칙. v1 구조 없음(신규 키).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const k = lsRatioKeyFor(authUserId);
+    if (!k) { ratioRef.current = {}; ratioHydrated.current = false; return; }
+    try {
+      const raw = window.localStorage.getItem(k);
+      const m = raw ? JSON.parse(raw) : null;
+      ratioRef.current = (m && typeof m === "object") ? m : {};
+    } catch { ratioRef.current = {}; }
+    ratioHydrated.current = true;
+  }, [authUserId]);
+  // [FIX-2] 비율 보관 — 현재 스코프에 비율이 반영된 뒤에만 기록한다.
+  //   전환 직후 1프레임(이전 값이 남아 있는 시점)에 새 스코프로 잘못 기록되는 것을 ratioScopeRef로 막는다.
+  useEffect(() => {
+    if (typeof window === "undefined" || !ratioHydrated.current) return;
+    if (!menuScopeKey || ratioScopeRef.current !== menuScopeKey) return;
+    ratioRef.current = { ...ratioRef.current, [menuScopeKey]: { menuWeights, savedWeights } };
+    const k = lsRatioKeyFor(authUserId);
+    if (k) { try { window.localStorage.setItem(k, JSON.stringify(ratioRef.current)); } catch {} }
+  }, [menuWeights, savedWeights, menuScopeKey, authUserId]);
   // [v122] 업종 전환 시 이전 업종 plan 캐시(치과 달력 등) 폐기.
   //   plan 복원은 마운트 1회([])라 hubStore 도착 전 치과 plan이 복원될 수 있음.
   //   hubStore.industry 확정 후, 저장된 plan.industry와 다르면 비율·계획 전부 리셋.
@@ -13116,6 +13274,8 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                         try {
                           window.localStorage.removeItem("aipost_plan_state_v1");
                           window.localStorage.removeItem("aipost_mymenus_v1");
+                          const _k = lsMyMenuKeyFor(authUserId); if (_k) window.localStorage.removeItem(_k);   // [STORE-SWITCH-01]
+                          const _kr = lsRatioKeyFor(authUserId); if (_kr) window.localStorage.removeItem(_kr);  // [FIX-2]
                         } catch {}
                         await supabase.auth.signOut();
                         window.location.href = "/";
@@ -13231,7 +13391,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                         </div>
                       )
                   ) : (() => {
-                    const picked = (myMenusMap && Array.isArray(myMenusMap[CURRENT_INDUSTRY])) ? myMenusMap[CURRENT_INDUSTRY] : [];
+                    const picked = readMyMenus(menuScopeKey);   // [STORE-SWITCH-01]
                     const avail = masterMenuNamesAll.filter(n => !picked.includes(n));
                     if (masterMenuNamesAll.length === 0) {
                       return <div style={{ fontSize: 14, color: "#aaa" }}>업체 업종이 설정되면 업무 항목이 표시됩니다.</div>;
@@ -13861,6 +14021,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     masterMenuNames={masterMenus.map(t => (t.menu || t.menuRef || t.name)).filter(Boolean)}
                     currentIndustry={CURRENT_INDUSTRY}
                     myMenusMap={myMenusMap} setMyMenusMap={setMyMenusMap}
+                    menuScopeKey={menuScopeKey} menuScopeResolving={menuScopeResolving}
                     isMultiDept={_isMultiDept}
                     myMenuFlat={myMenuFlat}
                     deptLabelOf={deptLabel}
@@ -13932,6 +14093,8 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     onTabChange={(tabId) => {
                       // [v18x] 최근발행 URL 등록 성공 → 목록 갱신 신호. 탭 전환 아님.
                       if (tabId === "__refreshHub") { fetchHub(); return; }
+                      // [STORE-SWITCH-01 T3] 발행비율 탭 진입 시 현재 업체 재확인.
+                      if (tabId === "stats") refreshStore();
                       // [v42] 우측 운영허브 내부 탭 전환 시 좌측 연동.
                       //   로그인: AI 코치 패널(CoachPanel)이 stats/coach/posts/survival/account/plans/store/manage 처리.
                       //   비로그인: HELP_CONTENT 있는 탭만 정적 안내.
