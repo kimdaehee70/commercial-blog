@@ -61,7 +61,15 @@ function authorized(req) {
   return bearer === CRON_SECRET || header === CRON_SECRET;
 }
 
+// [OBS-AUTO-DAILY-RECOVERY-01] self-call origin 고정.
+//   Cron 실행 컨텍스트의 host 는 배포 전용 URL(*.vercel.app)이며, 이 도메인은
+//   Deployment Protection(Vercel Authentication · Standard) 대상이라
+//   쿠키 없는 서버 간 fetch 가 차단된다 → enqueue 비200 → tick 이 전건 blocked 집계.
+//   프로덕션 도메인은 보호 예외이므로 OBSERVER_SELF_ORIGIN 으로 고정한다.
+//   미설정 시 기존 헤더 유도 방식으로 폴백(로컬·프리뷰 동작 보존).
 function originOf(req) {
+  const fixed = (process.env.OBSERVER_SELF_ORIGIN || '').trim();
+  if (fixed) return fixed.replace(/\/+$/, '');
   const proto = req.headers['x-forwarded-proto'] || 'https';
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   return `${proto}://${host}`;
@@ -209,6 +217,7 @@ export default async function handler(req, res) {
         done: stats.done,
         deferred,
         note: [
+          `origin=${origin}`,
           `start=${AUTO_START}`,
           `cand=${posts.length}`,
           `legacy_excl=${legacyExcluded}`,
