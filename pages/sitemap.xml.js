@@ -87,12 +87,26 @@ const STORE_LIMIT = 500;
 //   자사 계정을 고객 pSEO 에 가짜 업체로 넣는 방식은 기각됐다(선장 판정).
 //   EXCLUDED_STORE_IDS = [1] 은 그대로 유지된다. 공식 자산은 이 상수로만 들어온다.
 //
-//   ▸ 페이지 실체: pages/guide/clinic-blog-marketing.js (정적 렌더, self canonical)
+//   ▸ 페이지 실체: pages/guide/*.js (정적 렌더, self canonical)
 //   ▸ lastmod 는 붙이지 않는다. 위 [PSEO-SITEMAP-FOUNDATION-01] 선장 판정과 동일 원칙.
 //     정적 페이지라 published_at 조차 없다. 부정확한 lastmod 는 크롤러 신뢰를 깎는다.
 //   ▸ 추가/삭제 시 이 배열만 고친다. 파생 루프는 건드리지 않는다.
+//
+//   [AI-POST-OWNED-SEARCH-CONTENT-01] 문제해결 탐색축 10건 추가(2026-09-20).
+//     업종 pSEO 가 아니다. AI-POST 자체 도메인의 검색유입 자산이다.
+//     ①clinic 은 업종축 1호, ②~⑪은 문제축. 검색의도가 서로 겹치지 않는다.
 const OFFICIAL_URLS = [
   'https://ai-post.ai/guide/clinic-blog-marketing',
+  'https://ai-post.ai/guide/blog-not-ranking',
+  'https://ai-post.ai/guide/local-customer-search',
+  'https://ai-post.ai/guide/naver-blog-time-saving',
+  'https://ai-post.ai/guide/blog-posting-routine',
+  'https://ai-post.ai/guide/local-business-blog',
+  'https://ai-post.ai/guide/blog-keyword-guide',
+  'https://ai-post.ai/guide/business-blog-marketing',
+  'https://ai-post.ai/guide/ai-blog-writing',
+  'https://ai-post.ai/guide/local-search-marketing',
+  'https://ai-post.ai/guide/blog-marketing-start',
 ];
 
 // [PSEO-SITEMAP-COLD-LATENCY-01] 동시 실행 폭.
