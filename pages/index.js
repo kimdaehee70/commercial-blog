@@ -10228,6 +10228,15 @@ export default function Home() {
   useEffect(() => {
     if (typeof window === "undefined" || !ratioHydrated.current) return;
     if (!menuScopeKey || ratioScopeRef.current !== menuScopeKey) return;
+    // [FIX-3] G7(3G) — 메뉴 미도착 상태의 전환 중간값(null/{})을 저장본 위에 기록 금지.
+    //   storeRefreshing은 store fetch만 커버 — 메뉴 목록 도착은 masterMenus로 판별한다(기존 파생값).
+    if (!Array.isArray(masterMenus) || masterMenus.length === 0) return;
+    //   중간 scope(`storeId:industry`) 경유 시 savedWeights=null이 기존 저장본을 파괴하는 것까지 차단.
+    //   사용자가 직접 비우는 경우는 weightsDirty 경유 저장이라 영향 없다.
+    if (savedWeights === null) {
+      const _keep = ratioRef.current[menuScopeKey];
+      if (_keep && _keep.savedWeights) return;
+    }
     ratioRef.current = { ...ratioRef.current, [menuScopeKey]: { menuWeights, savedWeights } };
     const k = lsRatioKeyFor(authUserId);
     if (k) { try { window.localStorage.setItem(k, JSON.stringify(ratioRef.current)); } catch {} }
