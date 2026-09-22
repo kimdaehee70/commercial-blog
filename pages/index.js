@@ -43,6 +43,7 @@ import { LAWYER_TREATMENTS, LAWYER_META, LAWYER_CATS } from "../lib/lawyer-data"
 import { DAYCARE_TREATMENTS, DAYCARE_META, DAYCARE_CATS } from "../lib/daycare-data";  // ← 데이케어센터 (정보형·기관화자, lawyer 복사 베이스)
 import { HOMECARE_TREATMENTS, HOMECARE_META, HOMECARE_CATS } from "../lib/homecare-data";  // ← 방문요양 (정보형·기관화자, daycare 복사 베이스)
 import { FUNERAL_TREATMENTS, FUNERAL_META, FUNERAL_CATS } from "../lib/funeral-data";  // ← 상조 (정보형·장례지도사화자, daycare 복사 베이스)
+import { NURSINGHOME_TREATMENTS, NURSINGHOME_META, NURSINGHOME_CATS } from "../lib/nursinghome-data";  // ← 요양원(노인요양시설) (정보형·기관화자, daycare 복사 베이스·단일호출 / 10 CAT Purpose Spine)
 import { TAX_TREATMENTS, TAX_META, TAX_CATS } from "../lib/tax-data";  // ← 세무사 (정보형·세무사화자, funeral 복사 베이스)
 import { LABOR_TREATMENTS, LABOR_META, LABOR_CATS } from "../lib/labor-data";  // ← 노무사 (정보형·공인노무사화자, tax 복사 베이스)
 import { FLOWER_TREATMENTS, FLOWER_META, FLOWER_CATS } from "../lib/flower-data";  // ← 꽃배달 (정보형·플로리스트화자, daycare 복사 베이스·단일호출)
@@ -464,6 +465,7 @@ const FAMILY_CATS   = ["전체", "검진", "예방접종", "만성질환", "감�
 const LEGAL_CATS    = ["전체", "부동산", "법인", "상속", "회생·파산", "보전·집행", "가족관계"];  // ← 법무사 (v150 — legal-data 6개 cat과 일치)
 const LAWYER_CATS_LOCAL = LAWYER_CATS;  // ← 변호사 (v29 — 형사·가사·상속·민사, lawyer-data 소유)
 const DAYCARE_CATS_LOCAL = DAYCARE_CATS;  // ← 데이케어센터 (8메뉴, daycare-data 소유)
+const NURSINGHOME_CATS_LOCAL = NURSINGHOME_CATS;  // ← 요양원 (10 CAT, nursinghome-data 소유 · RESEARCH-01 SoT)
 const KINDERGARTEN_CATS_LOCAL = KINDERGARTEN_CATS;  // ← 유치원 (반장 edu cats, kindergarten-data 소유)
 const FISHING_CATS_LOCAL = FISHING_CATS;  // ← 고패킹 (글유형 3종: 방법형·분석형·비교형, fishing-catalog 소유)
 const HOMECARE_CATS_LOCAL = HOMECARE_CATS;  // ← 방문요양 (7메뉴, homecare-data 소유)
@@ -565,6 +567,7 @@ const LABELS = {
   labor:      { hoursLabel: "상담시간", hoursPh: "예: 평일 09:00-18:00", hoursHint: "변동 시 수정 — 노무 상담 안내 문맥에 활용", industryWord: "분야", itemWord: "안내", bizWord: "노무사" },
   flower:     { hoursLabel: "영업시간", hoursPh: "예: 매일 08:00-21:00 / 연중무휴", hoursHint: "변동 시 수정 — 꽃배달 주문 안내 문맥에 활용", industryWord: "분야", itemWord: "안내", bizWord: "꽃집" },
   // [v-lex-silver 2026-07-22] 실버케어 4종 itemWord="서비스". daycare/homecare 미등록 → MED_LABELS("시술") 폴백되던 문제 교정.
+  nursinghome: { hoursLabel: "상담시간", hoursPh: "예: 평일 09:00-18:00 / 토 09:00-13:00", hoursHint: "변동 시 수정 — 요양원 입소 상담·사전 방문 안내 문맥에 활용", industryWord: "분야", itemWord: "서비스", bizWord: "요양원" },
   daycare:    { hoursLabel: "운영시간", hoursPh: "예: 평일 08:00-19:00 / 토 09:00-13:00", hoursHint: "변동 시 수정 — 주간보호 상담·방문 안내 문맥에 활용", industryWord: "분야", itemWord: "서비스", bizWord: "센터" },
   homecare:   { hoursLabel: "상담시간", hoursPh: "예: 평일 09:00-18:00 / 토 09:00-13:00", hoursHint: "변동 시 수정 — 방문요양 상담 안내 문맥에 활용", industryWord: "분야", itemWord: "서비스", bizWord: "센터" },
   welfarecare: { hoursLabel: "운영시간", hoursPh: "예: 평일 09:00-18:00 / 토 09:00-13:00", hoursHint: "변동 시 수정 — 복지용구 상담·방문 안내 문맥에 활용", industryWord: "분야", itemWord: "서비스", bizWord: "사업소" },
@@ -643,6 +646,7 @@ const INDUSTRY_TREATMENTS = {
   legal:      LEGAL_TREATMENTS,         // ← 법무사 (v142 — 비의료·정보형)
   bedding:    BEDDING_TREATMENTS,       // ← 이브자리 침구 (v10 — 비의료·정보형·매장화자)
   lawyer:     LAWYER_TREATMENTS,        // ← 변호사 (v29 — 4대분류·정보형·사무소화자)
+  nursinghome: NURSINGHOME_TREATMENTS,  // ← 요양원(노인요양시설) (정보형·기관화자·Purpose Spine 10축)
   daycare:    DAYCARE_TREATMENTS,       // ← 데이케어센터 (정보형·기관화자)
   homecare:   HOMECARE_TREATMENTS,      // ← 방문요양 (정보형·기관화자)
   funeral:    FUNERAL_TREATMENTS,       // ← 상조 (정보형·장례지도사화자)
@@ -1095,6 +1099,17 @@ const INDUSTRY_CONFIG = {
       "용인 손해배상 청구 절차 안내",
     ],
     badge: "lawyer v1.0 (정보형·사무소화자)",
+  },
+  nursinghome: {
+    label: "요양원",
+    greeting: "안녕하세요! 요양원(노인요양시설) 블로그 생성기입니다. 입소자격·장기요양등급·비용구조·선택기준을 보호자 관점으로 안내합니다.",
+    examples: [
+      "요양원 입소 대상은 어떻게 되나요?",
+      "요양원 비용은 어떤 구조로 나뉘나요",
+      "요양원과 요양병원, 무엇이 다른가요",
+      "요양원 면회·외출·외박 안내",
+    ],
+    badge: "nursinghome v1.0 (정보형·기관화자·Purpose Spine)",
   },
   daycare: {
     label: "데이케어센터",
@@ -2038,7 +2053,7 @@ function parseNaturalInput(text) {
     console.log(`[parseNaturalInput] region: "${region}" (입력: "${text.slice(0, 60)}")`);
   }
 
-  const allT = [...CLINIC_TREATMENTS, ...DENTAL_TREATMENTS, ...ENT_TREATMENTS, ...UROLOGY_TREATMENTS, ...ORIENTAL_TREATMENTS, ...ORTHO_TREATMENTS, ...PEDIATRICS_TREATMENTS, ...GASTRO_TREATMENTS, ...PULMO_TREATMENTS, ...CARD_TREATMENTS, ...ENDO_TREATMENTS, ...GENERAL_V2_TREATMENTS, ...OBGYN_TREATMENTS, ...PAIN_TREATMENTS, ...RADIO_TREATMENTS, ...NEURO_TREATMENTS, ...PSY_TREATMENTS, ...EYE_TREATMENTS, ...FAMILY_TREATMENTS, ...CAFE_TREATMENTS, ...KINDERGARTEN_TREATMENTS, ...FISHING_TREATMENTS, ...RESTAURANT_TREATMENTS, ...CHINESE_TREATMENTS, ...KOREAN_TREATMENTS, ...SNACK_TREATMENTS, ...JAPANESE_TREATMENTS, ...WESTERN_TREATMENTS, ...CHICKEN_TREATMENTS, ...MEAT_TREATMENTS, ...LEGAL_TREATMENTS, ...BEDDING_TREATMENTS, ...LAWYER_TREATMENTS, ...DAYCARE_TREATMENTS, ...HOMECARE_TREATMENTS, ...FUNERAL_TREATMENTS, ...TAX_TREATMENTS, ...LABOR_TREATMENTS, ...FLOWER_TREATMENTS, ...WELFARECARE_TREATMENTS, ...SENIORGOODS_TREATMENTS, ...ADMIN_TREATMENTS, ...REALESTATE_TREATMENTS, ...CLEANING_TREATMENTS, ...MOVING_TREATMENTS, ...INTERIOR_TREATMENTS, ...GROUT_TREATMENTS, ...COATING_TREATMENTS, ...SYSTEMAIR_TREATMENTS, ...AIRCLEAN_TREATMENTS, ...SCREEN_TREATMENTS, ...PESTCONTROL_TREATMENTS, ...BUILDINGCLEAN_TREATMENTS, ...BIRDCONTROL_TREATMENTS, ...TANKCLEAN_TREATMENTS, ...LEAKDETECT_TREATMENTS, ...SEWER_TREATMENTS, ...PLUMBING_TREATMENTS, ...BOILER_TREATMENTS, ...HOMEFIX_TREATMENTS, ...ELECTRICREPAIR_TREATMENTS, ...SINKREPAIR_TREATMENTS, ...BATHROOM_TREATMENTS, ...DOBAE_TREATMENTS, ...FLOORING_TREATMENTS, ...FILM_TREATMENTS, ...DOOR_TREATMENTS, ...WATERPROOF_TREATMENTS, ...PAINT_TREATMENTS, ...TILE_TREATMENTS, ...WINDOW_TREATMENTS, ...DEMOLITION_TREATMENTS, ...LIGHTING_TREATMENTS, ...FURNITURE_TREATMENTS, ...SHAMAN_TREATMENTS];
+  const allT = [...CLINIC_TREATMENTS, ...DENTAL_TREATMENTS, ...ENT_TREATMENTS, ...UROLOGY_TREATMENTS, ...ORIENTAL_TREATMENTS, ...ORTHO_TREATMENTS, ...PEDIATRICS_TREATMENTS, ...GASTRO_TREATMENTS, ...PULMO_TREATMENTS, ...CARD_TREATMENTS, ...ENDO_TREATMENTS, ...GENERAL_V2_TREATMENTS, ...OBGYN_TREATMENTS, ...PAIN_TREATMENTS, ...RADIO_TREATMENTS, ...NEURO_TREATMENTS, ...PSY_TREATMENTS, ...EYE_TREATMENTS, ...FAMILY_TREATMENTS, ...CAFE_TREATMENTS, ...KINDERGARTEN_TREATMENTS, ...FISHING_TREATMENTS, ...RESTAURANT_TREATMENTS, ...CHINESE_TREATMENTS, ...KOREAN_TREATMENTS, ...SNACK_TREATMENTS, ...JAPANESE_TREATMENTS, ...WESTERN_TREATMENTS, ...CHICKEN_TREATMENTS, ...MEAT_TREATMENTS, ...LEGAL_TREATMENTS, ...BEDDING_TREATMENTS, ...LAWYER_TREATMENTS, ...NURSINGHOME_TREATMENTS, ...DAYCARE_TREATMENTS, ...HOMECARE_TREATMENTS, ...FUNERAL_TREATMENTS, ...TAX_TREATMENTS, ...LABOR_TREATMENTS, ...FLOWER_TREATMENTS, ...WELFARECARE_TREATMENTS, ...SENIORGOODS_TREATMENTS, ...ADMIN_TREATMENTS, ...REALESTATE_TREATMENTS, ...CLEANING_TREATMENTS, ...MOVING_TREATMENTS, ...INTERIOR_TREATMENTS, ...GROUT_TREATMENTS, ...COATING_TREATMENTS, ...SYSTEMAIR_TREATMENTS, ...AIRCLEAN_TREATMENTS, ...SCREEN_TREATMENTS, ...PESTCONTROL_TREATMENTS, ...BUILDINGCLEAN_TREATMENTS, ...BIRDCONTROL_TREATMENTS, ...TANKCLEAN_TREATMENTS, ...LEAKDETECT_TREATMENTS, ...SEWER_TREATMENTS, ...PLUMBING_TREATMENTS, ...BOILER_TREATMENTS, ...HOMEFIX_TREATMENTS, ...ELECTRICREPAIR_TREATMENTS, ...SINKREPAIR_TREATMENTS, ...BATHROOM_TREATMENTS, ...DOBAE_TREATMENTS, ...FLOORING_TREATMENTS, ...FILM_TREATMENTS, ...DOOR_TREATMENTS, ...WATERPROOF_TREATMENTS, ...PAINT_TREATMENTS, ...TILE_TREATMENTS, ...WINDOW_TREATMENTS, ...DEMOLITION_TREATMENTS, ...LIGHTING_TREATMENTS, ...FURNITURE_TREATMENTS, ...SHAMAN_TREATMENTS];
   for (const t of allT) { if (text.includes(t.name)) { treatmentId = t.id; treatmentName = t.name; break; } }
   if (!treatmentId) {
     if      (text.includes("쌍꺼풀") || text.includes("눈매"))                                  { treatmentId = "natural_double"; treatmentName = "자연유착 쌍꺼풀"; }
@@ -9587,6 +9602,7 @@ export default function Home() {
                        : CURRENT_INDUSTRY === "legal"       ? LEGAL_CATS
                        : CURRENT_INDUSTRY === "bedding"     ? BEDDING_CATS
                        : CURRENT_INDUSTRY === "lawyer"      ? LAWYER_CATS_LOCAL
+                       : CURRENT_INDUSTRY === "nursinghome" ? NURSINGHOME_CATS_LOCAL
                        : CURRENT_INDUSTRY === "daycare"     ? DAYCARE_CATS_LOCAL
                        : CURRENT_INDUSTRY === "homecare"    ? HOMECARE_CATS_LOCAL
                        : CURRENT_INDUSTRY === "funeral"     ? FUNERAL_CATS_LOCAL
@@ -10624,7 +10640,7 @@ export default function Home() {
         // [v159] 누락 복구 — 비의료 3종(legal/cafe/restaurant) 추가. allT(상단)·treatmentData와 정합.
         //   legal id fallback 미검색 → treatment=undefined → keyword="" → save-generated 400 원인.
         // [v10] bedding(이브자리 침구) 추가 — 동일 정합.
-        ...CAFE_TREATMENTS, ...KINDERGARTEN_TREATMENTS, ...FISHING_TREATMENTS, ...RESTAURANT_TREATMENTS, ...CHINESE_TREATMENTS, ...KOREAN_TREATMENTS, ...SNACK_TREATMENTS, ...JAPANESE_TREATMENTS, ...WESTERN_TREATMENTS, ...CHICKEN_TREATMENTS, ...MEAT_TREATMENTS, ...LEGAL_TREATMENTS, ...BEDDING_TREATMENTS, ...LAWYER_TREATMENTS, ...DAYCARE_TREATMENTS, ...HOMECARE_TREATMENTS, ...FUNERAL_TREATMENTS, ...TAX_TREATMENTS, ...LABOR_TREATMENTS, ...FLOWER_TREATMENTS, ...WELFARECARE_TREATMENTS, ...SENIORGOODS_TREATMENTS, ...ADMIN_TREATMENTS, ...REALESTATE_TREATMENTS, ...CLEANING_TREATMENTS, ...MOVING_TREATMENTS, ...INTERIOR_TREATMENTS, ...GROUT_TREATMENTS, ...COATING_TREATMENTS, ...SYSTEMAIR_TREATMENTS, ...AIRCLEAN_TREATMENTS, ...SCREEN_TREATMENTS, ...PESTCONTROL_TREATMENTS, ...BUILDINGCLEAN_TREATMENTS, ...BIRDCONTROL_TREATMENTS, ...TANKCLEAN_TREATMENTS, ...LEAKDETECT_TREATMENTS, ...SEWER_TREATMENTS, ...PLUMBING_TREATMENTS, ...BOILER_TREATMENTS, ...HOMEFIX_TREATMENTS, ...ELECTRICREPAIR_TREATMENTS, ...SINKREPAIR_TREATMENTS, ...BATHROOM_TREATMENTS, ...DOBAE_TREATMENTS, ...FLOORING_TREATMENTS, ...FILM_TREATMENTS, ...DOOR_TREATMENTS, ...WATERPROOF_TREATMENTS, ...PAINT_TREATMENTS, ...TILE_TREATMENTS, ...WINDOW_TREATMENTS, ...DEMOLITION_TREATMENTS, ...LIGHTING_TREATMENTS, ...FURNITURE_TREATMENTS, ...SHAMAN_TREATMENTS,
+        ...CAFE_TREATMENTS, ...KINDERGARTEN_TREATMENTS, ...FISHING_TREATMENTS, ...RESTAURANT_TREATMENTS, ...CHINESE_TREATMENTS, ...KOREAN_TREATMENTS, ...SNACK_TREATMENTS, ...JAPANESE_TREATMENTS, ...WESTERN_TREATMENTS, ...CHICKEN_TREATMENTS, ...MEAT_TREATMENTS, ...LEGAL_TREATMENTS, ...BEDDING_TREATMENTS, ...LAWYER_TREATMENTS, ...NURSINGHOME_TREATMENTS, ...DAYCARE_TREATMENTS, ...HOMECARE_TREATMENTS, ...FUNERAL_TREATMENTS, ...TAX_TREATMENTS, ...LABOR_TREATMENTS, ...FLOWER_TREATMENTS, ...WELFARECARE_TREATMENTS, ...SENIORGOODS_TREATMENTS, ...ADMIN_TREATMENTS, ...REALESTATE_TREATMENTS, ...CLEANING_TREATMENTS, ...MOVING_TREATMENTS, ...INTERIOR_TREATMENTS, ...GROUT_TREATMENTS, ...COATING_TREATMENTS, ...SYSTEMAIR_TREATMENTS, ...AIRCLEAN_TREATMENTS, ...SCREEN_TREATMENTS, ...PESTCONTROL_TREATMENTS, ...BUILDINGCLEAN_TREATMENTS, ...BIRDCONTROL_TREATMENTS, ...TANKCLEAN_TREATMENTS, ...LEAKDETECT_TREATMENTS, ...SEWER_TREATMENTS, ...PLUMBING_TREATMENTS, ...BOILER_TREATMENTS, ...HOMEFIX_TREATMENTS, ...ELECTRICREPAIR_TREATMENTS, ...SINKREPAIR_TREATMENTS, ...BATHROOM_TREATMENTS, ...DOBAE_TREATMENTS, ...FLOORING_TREATMENTS, ...FILM_TREATMENTS, ...DOOR_TREATMENTS, ...WATERPROOF_TREATMENTS, ...PAINT_TREATMENTS, ...TILE_TREATMENTS, ...WINDOW_TREATMENTS, ...DEMOLITION_TREATMENTS, ...LIGHTING_TREATMENTS, ...FURNITURE_TREATMENTS, ...SHAMAN_TREATMENTS,
       ];
       treatment = ALL_TREATMENTS_FLAT.find(t => t.id === treatmentId)
                || ALL_TREATMENTS_FLAT.find(t => t.name === treatmentName);
