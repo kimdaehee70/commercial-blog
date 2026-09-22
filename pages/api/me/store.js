@@ -27,6 +27,7 @@ const INDUSTRY_KEYS = new Set([ 'shaman', 'pulmo', 'card', 'endo', 'radio',
   "legal", "lawyer", "tax", "labor", "administrative", "realestate",
   // 실버케어
   "daycare", "homecare", "funeral", "welfarecare", "seniorgoods",
+  "nursinghome", // [NURSINGHOME-OPEN 2026-09-22] 온보딩 POST / PATCH 허용
   // 교육·행사 / 레저
   "kindergarten", "fishing",
   // 리빙·홈
