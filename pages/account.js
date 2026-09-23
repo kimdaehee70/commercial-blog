@@ -1,4 +1,6 @@
 // pages/account.js
+// v0.9 — ACCOUNT-PASSWORD-CHANGE-01 (로그인 사용자 비밀번호 직접 변경 카드 추가)
+//   현재 비번 signInWithPassword 검증 → updateUser({password}). 신규 API/DDL 0, 타 파일 무수정
 // v0.8 — 82차 (Free 플랜 카드 표시 / subscription null 사용자 surface)
 // v0.7 — quota 임박 경고 라인 추가 (카드 2 내부 surface only)
 // v0.6 — 81차 (F: data.account null 가드 추가 / 79차 발견 #3 해소)
@@ -89,6 +91,14 @@ export default function AccountPage() {
   const [regionErr, setRegionErr] = useState(null);
   const [regionSaved, setRegionSaved] = useState(false);
 
+  // ACCOUNT-PASSWORD-CHANGE-01 — 비밀번호 변경 state (평문은 state에만, 저장·로그 금지)
+  const [curPw, setCurPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [newPw2, setNewPw2] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwErr, setPwErr] = useState(null);
+  const [pwDone, setPwDone] = useState(false);
+
   useEffect(() => {
     let aborted = false;
     (async () => {
@@ -168,6 +178,52 @@ export default function AccountPage() {
     } catch (e) {
       setDeactivateErr(String(e?.message || e));
       setDeactivating(false);
+    }
+  }
+
+  // ACCOUNT-PASSWORD-CHANGE-01 — 현재 비번 검증 후 변경
+  const PW_MIN = 6; // Supabase Auth Minimum password length 와 동일
+  function pwErrorMessage(err) {
+    const code = err?.code || "";
+    if (code === "same_password") return "새 비밀번호가 현재 비밀번호와 같습니다. 다른 비밀번호를 입력하세요.";
+    if (code === "weak_password") return `비밀번호가 너무 약합니다. ${PW_MIN}자 이상으로 입력하세요.`;
+    if (code === "over_request_rate_limit" || err?.status === 429) return "요청이 너무 많습니다. 잠시 후 다시 시도하세요.";
+    return "비밀번호 변경에 실패했습니다. 잠시 후 다시 시도하세요.";
+  }
+
+  async function handleChangePassword() {
+    setPwErr(null);
+    setPwDone(false);
+    if (!curPw) { setPwErr("현재 비밀번호를 입력하세요."); return; }
+    if (newPw.length < PW_MIN) { setPwErr(`새 비밀번호는 ${PW_MIN}자 이상이어야 합니다.`); return; }
+    if (newPw !== newPw2) { setPwErr("새 비밀번호와 확인이 일치하지 않습니다."); return; }
+    if (newPw === curPw) { setPwErr("새 비밀번호가 현재 비밀번호와 같습니다. 다른 비밀번호를 입력하세요."); return; }
+
+    setPwBusy(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const email = sess?.session?.user?.email;
+      if (!email) { setPwErr("세션이 없습니다. 다시 로그인하세요."); return; }
+
+      // 1) 현재 비밀번호 검증
+      const { error: vErr } = await supabase.auth.signInWithPassword({ email, password: curPw });
+      if (vErr) {
+        const c = vErr.code || "";
+        if (c === "over_request_rate_limit" || vErr.status === 429) setPwErr("요청이 너무 많습니다. 잠시 후 다시 시도하세요.");
+        else setPwErr("현재 비밀번호가 올바르지 않습니다.");
+        return;
+      }
+
+      // 2) 변경
+      const { error: uErr } = await supabase.auth.updateUser({ password: newPw });
+      if (uErr) { setPwErr(pwErrorMessage(uErr)); return; }
+
+      setCurPw(""); setNewPw(""); setNewPw2("");
+      setPwDone(true);
+    } catch {
+      setPwErr("비밀번호 변경에 실패했습니다. 잠시 후 다시 시도하세요.");
+    } finally {
+      setPwBusy(false);
     }
   }
 
@@ -309,6 +365,66 @@ export default function AccountPage() {
               <dd className="text-gray-900 mt-0.5">{fmtDateOnly(acc.created_at)}</dd>
             </div>
           </dl>
+        </section>
+
+        {/* 카드 1.2: 비밀번호 변경 — ACCOUNT-PASSWORD-CHANGE-01 */}
+        <section className="bg-white rounded-lg shadow-sm border p-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-1">비밀번호 변경</h2>
+          <p className="text-xs text-gray-500 mb-4">
+            현재 비밀번호 확인 후 새 비밀번호로 변경합니다. 비밀번호를 잊으셨다면 로그인 화면의 비밀번호 찾기를 이용하세요.
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-gray-500 text-xs mb-1">현재 비밀번호</label>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={curPw}
+                onChange={(e) => { setCurPw(e.target.value); setPwDone(false); }}
+                className="w-full text-sm border rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-500 text-xs mb-1">새 비밀번호 <span className="text-gray-400">(최소 {PW_MIN}자)</span></label>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={newPw}
+                onChange={(e) => { setNewPw(e.target.value); setPwDone(false); }}
+                className="w-full text-sm border rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-500 text-xs mb-1">새 비밀번호 확인</label>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={newPw2}
+                onChange={(e) => { setNewPw2(e.target.value); setPwDone(false); }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !pwBusy) handleChangePassword(); }}
+                className="w-full text-sm border rounded px-3 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+
+            {pwErr && (
+              <p className="text-xs text-red-600">{pwErr}</p>
+            )}
+            {pwDone && (
+              <p className="text-xs text-emerald-600">비밀번호가 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용하세요.</p>
+            )}
+
+            <div>
+              <button
+                type="button"
+                onClick={handleChangePassword}
+                disabled={pwBusy}
+                className="text-sm px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {pwBusy ? "변경 중…" : "비밀번호 변경"}
+              </button>
+            </div>
+          </div>
         </section>
 
         {/* 카드 1.5: 지역 설정 — rep_region / sub_regions (CSV) */}
