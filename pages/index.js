@@ -10009,6 +10009,16 @@ export default function Home() {
      // [v90] 상단 🔑로그인 클릭 시 LoginCard 리마운트 → 회원가입 모드에서 로그인 모드로 복귀
   // [v7] 네비 패널 — 우측 result 영역에 표시 (페이지 이동 없음). null | plans|usage|survival|posts|account
   const [navView,      setNavView]      = useState(null);
+  // [LOGIN-ROUTE-UNIFY-01] /login(구버전) → /?login=1 진입 시 우측 인라인 로그인 패널 1회 오픈.
+  //   상단 🔑로그인 버튼과 동일 상태 전환. 실행 후 URL 쿼리 제거(새로고침 시 재오픈 방지).
+  const loginQueryHandledRef = useRef(false);
+  useEffect(() => {
+    if (!router.isReady || loginQueryHandledRef.current) return;
+    if (router.query.login !== "1") return;
+    loginQueryHandledRef.current = true;
+    setShowLogin(true); setLoginNonce((n) => n + 1); setShowHome(false); setResultTab("blog"); setNavView(null);
+    router.replace("/", undefined, { shallow: true });
+  }, [router.isReady, router.query.login]);
   // [업종센터/A] 좌측 코치창 트리 ↔ 우측 작업영역 상세 공유 선택 id. 트리 클릭 시 set → 우측 상세 갱신.
   const [industryCenterSel, setIndustryCenterSel] = useState("");
   // [업종선택 직접갱신] StoreInfoForm이 등록하는 명령형 핸들. 업종 선택 이벤트마다 우측 store 편집상태를 직접 갱신.

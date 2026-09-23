@@ -1,4 +1,5 @@
 // pages/login.js
+// LOGIN-ROUTE-UNIFY-01 — ?blocked 없으면 /?login=1 (메인 인라인 로그인)으로 replace. blocked 있으면 현행 유지.
 // 58차 수정 — suspended 계정 차단 (status 가드)
 // 변경 vs 52차:
 //   1) handleSubmit: ensureAccount 응답에 status !== 'active' → 강제 로그아웃 + 차단 메시지
@@ -81,6 +82,14 @@ export default function LoginPage() {
   const [landingPath, setLandingPath] = useState('/'); // dashboard 페이지 제거: 폴백을 resolveLanding user값(/)과 일치
   const router = useRouter();
 
+  // [LOGIN-ROUTE-UNIFY-01] 종착점 통일 — blocked 없는 진입은 메인 로그인 패널로 이동
+  const [routeChecked, setRouteChecked] = useState(false);
+  useEffect(() => {
+    const b = new URLSearchParams(window.location.search).get('blocked');
+    if (!b) { router.replace('/?login=1'); return; }
+    setRouteChecked(true);
+  }, []);
+
   // 110차 — callback.js 차단 종착점: ?blocked={status} 안내 표시
   useEffect(() => {
     if (!router.isReady) return;
@@ -91,6 +100,8 @@ export default function LoginPage() {
   // 이미 로그인된 상태인지 확인 (auth.uid 검증 + ensure 1회 + status 가드)
   useEffect(() => {
     let mounted = true;
+    // [LOGIN-ROUTE-UNIFY-01] blocked 없는 진입은 위에서 이동 처리 → 세션 자동이동 경합 방지
+    if (!new URLSearchParams(window.location.search).get('blocked')) return () => { mounted = false; };
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (mounted && session?.user) {
@@ -191,6 +202,8 @@ export default function LoginPage() {
     setCurrentUser(null);
     setMsg('로그아웃 완료.');
   }
+
+  if (!routeChecked) return null; // [LOGIN-ROUTE-UNIFY-01] 이동 전 구버전 화면 깜빡임 방지
 
   return (
     <div style={styles.wrap}>
