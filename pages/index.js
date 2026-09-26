@@ -6678,6 +6678,124 @@ function SupportHistory() {
   );
 }
 
+// ──────────────────────────────────────────────────────────
+// [ACCOUNT-PASSWORD-CHANGE-02] 마이페이지 비밀번호 변경 — 맨 하단, 기본 접힘.
+//   로직 = ACCOUNT-PASSWORD-CHANGE-01(/account)과 동일: 현재 비번 signInWithPassword 검증 → updateUser({password}).
+//   ★ 별도 컴포넌트인 이유: 마이페이지 렌더는 NavPanel 내부 분기라 훅을 쓸 수 없다(AccountLeaveButton 과 동일 사정).
+//   ★ 카카오 가입 계정(email provider 없음)은 비밀번호가 없으므로 입력 UI 대신 안내만 표시.
+//   ★ 독립 부품 — 향후 MYPAGE-HOME-ARCHITECTURE-01 「계정·보안」 방으로 그대로 이동 가능.
+//   신규 API/DB/fetch 0. 평문 비번은 state 에만 두고 저장·로그 금지.
+// ──────────────────────────────────────────────────────────
+const PWCHG_MIN = 6; // Supabase Auth Minimum password length 와 동일
+function AccountPasswordChange() {
+  const [open, setOpen] = useState(false);
+  const [hasEmailPw, setHasEmailPw] = useState(null); // null=확인중 / true / false(카카오 등)
+  const [curPw, setCurPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [newPw2, setNewPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!open || hasEmailPw !== null) return;
+    (async () => {
+      try {
+        const { data: sess } = await supabase.auth.getSession();
+        const u = sess?.session?.user;
+        const provs = [
+          ...((u?.app_metadata?.providers) || []),
+          ...((u?.identities || []).map((i) => i?.provider)),
+          ...(u?.app_metadata?.provider ? [u.app_metadata.provider] : []),
+        ].filter(Boolean);
+        setHasEmailPw(provs.length === 0 ? true : provs.includes("email"));
+      } catch { setHasEmailPw(true); }
+    })();
+  }, [open, hasEmailPw]);
+
+  const reset = () => { setCurPw(""); setNewPw(""); setNewPw2(""); };
+  const clearMsg = () => { setErr(""); setDone(false); };
+
+  const submit = async () => {
+    setErr(""); setDone(false);
+    if (!curPw) { setErr("현재 비밀번호를 입력하세요."); return; }
+    if (newPw.length < PWCHG_MIN) { setErr(`새 비밀번호는 ${PWCHG_MIN}자 이상이어야 합니다.`); return; }
+    if (newPw !== newPw2) { setErr("새 비밀번호와 확인이 일치하지 않습니다."); return; }
+    if (newPw === curPw) { setErr("새 비밀번호가 현재 비밀번호와 같습니다. 다른 비밀번호를 입력하세요."); return; }
+    setBusy(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const email = sess?.session?.user?.email;
+      if (!email) { setErr("세션이 없습니다. 다시 로그인하세요."); return; }
+      const { error: vErr } = await supabase.auth.signInWithPassword({ email, password: curPw });
+      if (vErr) {
+        if (vErr.code === "over_request_rate_limit" || vErr.status === 429) setErr("요청이 너무 많습니다. 잠시 후 다시 시도하세요.");
+        else setErr("현재 비밀번호가 올바르지 않습니다.");
+        return;
+      }
+      const { error: uErr } = await supabase.auth.updateUser({ password: newPw });
+      if (uErr) {
+        const c = uErr.code || "";
+        if (c === "same_password") setErr("새 비밀번호가 현재 비밀번호와 같습니다. 다른 비밀번호를 입력하세요.");
+        else if (c === "weak_password") setErr(`비밀번호가 너무 약합니다. ${PWCHG_MIN}자 이상으로 입력하세요.`);
+        else if (c === "over_request_rate_limit" || uErr.status === 429) setErr("요청이 너무 많습니다. 잠시 후 다시 시도하세요.");
+        else setErr("비밀번호 변경에 실패했습니다. 잠시 후 다시 시도하세요.");
+        return;
+      }
+      reset(); setDone(true);
+    } catch {
+      setErr("비밀번호 변경에 실패했습니다. 잠시 후 다시 시도하세요.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inp = { width: "100%", boxSizing: "border-box", padding: "8px 10px", fontSize: 13,
+    border: "1px solid #e0d0f0", borderRadius: 8, fontFamily: "inherit", outline: "none" };
+  const lbl = { fontSize: 11.5, color: "#8a7ba0", fontWeight: 700, margin: "8px 0 4px" };
+
+  return (
+    <div style={{ background: "#fff", borderRadius: 12, border: "1.5px solid #e8e8ed", padding: "8px 14px 9px" }}>
+      <button type="button" onClick={() => { setOpen((v) => !v); clearMsg(); }}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: 0, background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
+        <span style={{ fontSize: 11, color: "#9457b8", fontWeight: 800 }}>🔒 비밀번호 변경</span>
+        <span style={{ fontSize: 11, color: "#8a7ba0", fontWeight: 700 }}>{open ? "접기 ▲" : "▼"}</span>
+      </button>
+      {open && (
+        hasEmailPw === null ? (
+          <div style={{ fontSize: 12, color: "#999", padding: "8px 0" }}>확인 중…</div>
+        ) : hasEmailPw === false ? (
+          <div style={{ fontSize: 12, color: "#6b5a80", padding: "8px 0", lineHeight: 1.6 }}>
+            카카오로 가입한 계정은 비밀번호가 없습니다. 로그인은 「카카오로 시작하기」를 이용하세요.
+          </div>
+        ) : (
+          <div style={{ paddingTop: 2 }}>
+            <div style={lbl}>현재 비밀번호</div>
+            <input type="password" autoComplete="current-password" value={curPw} style={inp}
+              onChange={(e) => { setCurPw(e.target.value); setDone(false); }} />
+            <div style={lbl}>새 비밀번호 <span style={{ fontWeight: 400, color: "#aaa" }}>(최소 {PWCHG_MIN}자)</span></div>
+            <input type="password" autoComplete="new-password" value={newPw} style={inp}
+              onChange={(e) => { setNewPw(e.target.value); setDone(false); }} />
+            <div style={lbl}>새 비밀번호 확인</div>
+            <input type="password" autoComplete="new-password" value={newPw2} style={inp}
+              onChange={(e) => { setNewPw2(e.target.value); setDone(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !busy) submit(); }} />
+            {err ? <div style={{ fontSize: 12, color: "#c62828", marginTop: 8 }}>{err}</div> : null}
+            {done ? <div style={{ fontSize: 12, color: "#2e7d32", marginTop: 8 }}>비밀번호가 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용하세요.</div> : null}
+            <button type="button" onClick={submit} disabled={busy}
+              style={{ marginTop: 10, padding: "8px 16px", fontSize: 12.5, fontWeight: 800, color: "#fff",
+                background: busy ? "#b9a3d0" : "#6A1B9A", border: "none", borderRadius: 8,
+                cursor: busy ? "default" : "pointer", fontFamily: "inherit" }}>
+              {busy ? "변경 중…" : "비밀번호 변경"}
+            </button>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 function AccountLeaveButton({ isOwner }) {
   const [step, setStep] = useState(0);           // 0=닫힘 / 1=안내 / 2=최종확인
   const [sub, setSub] = useState(null);
@@ -7746,6 +7864,9 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               </div>
             );
           })()}
+
+          {/* [ACCOUNT-PASSWORD-CHANGE-02] 계정·보안 — 맨 하단, 기본 접힘 */}
+          <AccountPasswordChange />
 
           {/* [세션75] 하단 「계정 관리」 카드 제거.
               · 플랜 변경 → 상단 요금제 탭과 중복
