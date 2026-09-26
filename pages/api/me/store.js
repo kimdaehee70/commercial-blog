@@ -8,6 +8,8 @@
 // FREEZE: 엔진 무관. 운영 레이어 전용.
 import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { requireAccount } from "../../../lib/guards";
+// [STORE-INDUSTRY-AUTH-GATE-01] 확정 업종 사후 변경 = OWNER 전용. 판정식은 generate.js L325~343 패턴 재사용.
+import { OWNER_UID } from "../../../lib/constants";
 // [v-svcgroup] 서비스 분야 다중선택 — SoT는 industry-tree(단일 소스). 여기선 검증·정규화만 소비.
 //   그룹: 병원=진료과 / 공사=시공분야. 그룹 추가는 industry-tree SERVICE_GROUPS 에만 하면 서버 무수정.
 import { hasServiceFields, normalizeDepartments } from "../../../lib/industry-tree";
@@ -200,6 +202,51 @@ export default async function handler(req, res) {
       return res.status(404).json({ ok: false, error: "STORE_NOT_FOUND" });
     }
 
+    // [STORE-INDUSTRY-AUTH-GATE-01] #221 — 확정 업종의 사후 변경은 OWNER만.
+    //   · industry 미전송 / 기존 industry 없음(최초 확정) / 같은 값 재전송 → 기존 동작
+    //   · 값이 다르면 OWNER 판정: auth_user_id === OWNER_UID 즉시, 아니면 accounts.role 1회 조회
+    //     (requireAccount select 에 role 없음 — guards.js FREEZE, generate.js 동일 패턴)
+    //   · 비OWNER → industry 만 제거, 나머지 필드는 정상 저장. 응답 industry_denied:true
+    //   · POST(최초 등록) 무접촉.
+    let industryDenied = false;
+    if ("industry" in patch && store.industry && patch.industry !== store.industry) {
+      let isOwner = !!(account.auth_user_id && account.auth_user_id === OWNER_UID);
+      if (!isOwner) {
+        const { data: _r } = await supabaseAdmin
+          .from("accounts")
+          .select("role")
+          .eq("id", account.id)
+          .maybeSingle();
+        isOwner = _r?.role === "owner";
+      }
+      if (!isOwner) {
+        delete patch.industry;
+        industryDenied = true;
+      }
+    }
+
+    // 업종만 보냈다가 거부된 경우 — 갱신할 필드 없음. 현재값 그대로 반환(DB 무변경).
+    if (Object.keys(patch).length === 0) {
+      const { data: cur, error: curErr } = await supabaseAdmin
+        .from("store_profiles")
+        .select(STORE_SELECT)
+        .eq("id", store.id)
+        .single();
+      if (curErr || !cur) {
+        return res.status(500).json({ ok: false, error: "STORE_QUERY_FAILED", detail: curErr?.message });
+      }
+      return res.status(200).json({
+        ok: true,
+        hasStore: true,
+        storeId: cur.id,
+        industry: cur.industry,
+        storeName: cur.store_name,
+        departments: cur.departments || [],
+        store: cur,
+        industry_denied: true,
+      });
+    }
+
     // [v-dept] 대표 진료과 최종 확정 — 이번 PATCH의 industry가 없으면 DB의 기존 industry가 대표.
     //   departments[0] === industry 불변식(invariant)을 서버에서 강제. 클라 실수 방어.
     if ("departments" in patch) {
@@ -228,6 +275,7 @@ export default async function handler(req, res) {
       storeName: updated.store_name,
       departments: updated.departments || [],
       store: updated,
+      ...(industryDenied ? { industry_denied: true } : {}),
     });
   }
 
