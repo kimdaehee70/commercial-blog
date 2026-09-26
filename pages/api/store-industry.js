@@ -1,14 +1,17 @@
 // pages/api/store-industry.js
 // v124: 업종(industry) 전용 변경 API — store.js(FREEZE) 무접촉 우회 경로.
 // 정책:
-//   - owner만 변경 가능 (role==='owner' || auth_user_id===OWNER_UID). 비owner 차단.
+//   - owner만 변경 가능 (role==='owner' || user.id===OWNER_UID). 비owner 차단.
 //   - store_profiles.industry / store_name PATCH (account_id 매칭).
 //   - 변경 이력 industry_change_logs insert (from/to + changed_by).
 //   - store.js / me.js 등 엔진 FREEZE 파일 미접촉.
-// 인증·supabase 초기화 패턴은 check-quota.js와 동일.
+// [#223 STORE-INDUSTRY-AUTH-IDENTITY-01]
+//   - 인증 근거 = Bearer 토큰(requireAuth) user.id 단일. body auth_user_id·x-uid 무시.
+//   - changed_by = token user.id.
 
 import { createClient } from '@supabase/supabase-js';
 import { OWNER_UID } from '../../lib/constants';
+import { requireAuth } from '../../lib/guards';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -16,16 +19,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. 입력 추출
-    const auth_user_id =
-      req.body?.auth_user_id || req.headers['x-uid'] || null;
+    // 0. 인증 (토큰 → user.id). 실패 시 401 이미 전송됨.
+    const user = await requireAuth(req, res);
+    if (!user) return;
+    const auth_user_id = user.id;
+
+    // 1. 입력 추출 (body auth_user_id / x-uid 는 인증 근거로 사용하지 않음)
     const next_industry = (req.body?.industry || '').trim();
     const next_store_name =
       req.body?.store_name != null ? String(req.body.store_name).trim() : null;
 
-    if (!auth_user_id) {
-      return res.status(400).json({ ok: false, error: 'AUTH_USER_ID_REQUIRED' });
-    }
     if (!next_industry) {
       return res.status(400).json({ ok: false, error: 'INDUSTRY_REQUIRED' });
     }
@@ -117,7 +120,7 @@ export default async function handler(req, res) {
           to_industry: next_industry,
           from_store_name,
           to_store_name: next_store_name != null ? next_store_name : from_store_name,
-          changed_by: auth_user_id,
+          changed_by: auth_user_id, // [#223] = token user.id
         });
       if (logErr) {
         logged = false;
