@@ -6397,6 +6397,7 @@ const FOOTER_DOCS = {
 // ============================================================
 const HUB_TABS = [
   { id: "stats",    ic: "📊", label: "발행 설정" },    // [1] 메뉴 요율 선택 (전략 — menu_weights 입력)
+  { id: "area",     ic: "🏘️", label: "생활권", sub: true },   // [USER-POSTING-SERVICE-AREA-01] POSTING 생활권 방
   { id: "coach",    ic: "🧠", label: "AI 글쓰기" }, // [2] 실행 — 달력/오늘 할 일 (생성기→운영도구 전환 핵심)
   { id: "posts",    ic: "📝", label: "최근발행" },
   // [v127] 관측 탭 상단 메뉴 제외 — 렌더/API/DB 무손상. HUB_IDS 자동 파생 → ?view=survival 은 posts 폴백.
@@ -6439,6 +6440,7 @@ const HUB_GROUPS = [
     { id: "mp-sec",   tab: "account", ic: "🔐", label: "계정·보안",    anchor: ["mp-sec-leave"] } ] },
   { id: "posting", ic: "🧠", label: "POSTING", home: "po-coach", items: [
     { id: "po-stats", tab: "stats",   label: "발행 설정" },   // [USER-MENU-IA-IMPLEMENT-01] 발행비율 — POSTING 첫 메뉴 복귀
+    { id: "po-area",  tab: "area",    label: "생활권" },   // [USER-POSTING-SERVICE-AREA-01] 마이페이지와 동일 생활권 SoT
     { id: "po-coach", tab: "coach",   label: "AI 글쓰기" },
     { id: "po-posts", tab: "posts",   label: "최근발행" },
     { id: "po-surv",  tab: "survival", label: "검색관측" },
@@ -7682,6 +7684,40 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
     }
 
     // [업종센터/B] 우측 상세패널 제거. 업종 선택은 좌측 코치창 트리만. tab=industry도 우측은 업체정보(store).
+    // [USER-POSTING-SERVICE-AREA-01] POSTING 생활권 방 — 마이페이지와 동일 SoT(hubStore.sub_region)·동일 UI(StoreInfoForm section="region").
+    //   LOCKED_UNTIL_STORE 비대상(생활권 미설정에서도 진입). 신규 state/API/sync 없음. 헤더는 activeMeta(🏘️ 생활권) 자동.
+    if (tab === "area") {
+      const _areaInd = hubStore && hubStore.industry;
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {_areaInd && (
+            <div style={{ background: "#fff", borderRadius: 14, border: "1.5px solid #ede4f7", padding: "14px 18px", fontSize: 13, color: "#4a3a5a", lineHeight: 1.7 }}>
+              <div style={{ fontSize: 14, fontWeight: 900, color: "#4A148C", marginBottom: 4 }}>생활권은 왜 필요한가요?</div>
+              <div>AI-POST가 지역에 맞는 글을 만들려면 우리 업체와 실제로 관계있는 지역을 알아야 합니다.<br />업체 주소를 기준으로 생활권을 추천할 수 있지만, 실제 고객이 찾아오거나 업체와 관련 있는 지역인지는 직접 확인해주세요.</div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: "#4A148C", margin: "12px 0 4px" }}>어떻게 설정하나요?</div>
+              <div>① 실제 고객과 관계있는 지역을 확인합니다.<br />② 추천된 지역 중 맞는 지역을 선택합니다.<br />③ 필요한 지역은 추가하고 관계없는 지역은 제외합니다.<br />④ 확인한 생활권을 저장합니다.</div>
+            </div>
+          )}
+          <StoreInfoForm
+            section="region"
+            onGoSetup={onGoSetup}
+            authUserId={authUserId}
+            hubStore={hubStore}
+            setHubStore={setHubStore}
+            saveStore={saveStore}
+            createStore={createStore}
+            storeSaving={storeSaving}
+            industryLabel={(_areaInd && INDUSTRY_CONFIG[_areaInd]?.label) || (_areaInd && getCatalogItem(_areaInd)?.name) || "—"}
+            hubLoading={hubLoading}
+            isOwner={!!(quotaInfo && (quotaInfo.bypass || quotaInfo.reason === "OWNER_BYPASS"))}
+            INDUSTRY_CONFIG={INDUSTRY_CONFIG}
+            lex={lex}
+            onCoachVideo={onCoachVideo}
+          />
+        </div>
+      );
+    }
+
     if (tab === "store" || tab === "industry") {
       // [v26] 업체정보 — AI 생성용 사업장 데이터. store_profiles 1차 9컬럼 편집(PATCH).
       // [v68] 배지 라벨은 확정된 hubStore.industry 우선(없으면 prop industry fallback).
