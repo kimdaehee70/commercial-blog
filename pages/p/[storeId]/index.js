@@ -2,6 +2,7 @@
 // ─────────────────────────────────────────────────────────────
 // [PSEO-V0-CONTACT-FIRST-DESIGN-01] Gate A — 업체 공개 페이지 1장.
 // [PSEO-V1-PAID-USER-EXPANSION-01]   V1 — 유료 Gate + Intent 목록 자동 표시.
+// [PSEO-HUB-RECENT-POSTS-01]         허브 「최근 글」 블록.
 //
 // 목적: 검색 사용자가 이 페이지에서 "업체에 직접" 연락한다.
 //   AI-POST 가입 CTA 없음. 상담 동선 탈취 0. (지시서 §9)
@@ -21,6 +22,17 @@
 //   ★ 자격 있는 Intent(core_keyword cnt>=2) 목록을 자동 표시.
 //     저장물이 아니라 요청 시점 집계이므로 발행만 하면 누적되고,
 //     만료·삭제 시 별도 정리 없이 자동으로 사라진다.
+//
+// [PSEO-HUB-RECENT-POSTS-01] (LG 인테리어 Pilot TRACE 발견)
+//   결손: 허브는 발행글을 읽지 않았다. Intent(cnt>=2) 가 0개인 업체는
+//     발행글이 노출될 경로가 없었다. store 14 = published 27 / 화면 노출 0.
+//     core_keyword 는 NULL 20 + 나머지 전부 1건씩 → Intent 구조적 0.
+//   조치: 최근 발행글 목록을 허브에 표시. core_keyword 무관(NULL 도 글은 글).
+//   규칙: Intent 페이지([intentSlug].js)와 동일
+//     · published + deleted_at null 만. baseline 제외.
+//     · 블로그 홈 URL(글 번호 없음)은 링크 금지 → 제목만.
+//     · 제목·날짜·원문 링크만. content/text_markdown 미사용(본문 복제 금지).
+//   DDL 0 / 신규 cta_type 0 (post_click 은 Intent 페이지가 이미 사용 중).
 //
 // 절대 원칙 (승인분):
 //   ★ service role 은 getServerSideProps 안에서만. 브라우저 번들 유입 금지.
@@ -69,6 +81,9 @@ const VISIT_KEYS = [
 // 허브에 노출할 Intent 최대 개수.
 const MAX_INTENTS = 20;
 
+// [PSEO-HUB-RECENT-POSTS-01] 허브 최근 글 최대 개수. Intent 페이지 MAX_LIST 와 같은 값.
+const MAX_RECENT = 12;
+
 // ── service role 클라이언트 (서버 전용) ────────────────────────
 function serverClient() {
   const url =
@@ -84,6 +99,22 @@ function serverClient() {
     );
   }
   return createClient(url, key, { auth: { persistSession: false } });
+}
+
+// [PSEO-HUB-RECENT-POSTS-01] Intent 페이지와 동일 규칙.
+//   블로그 홈(글 번호 없음)은 링크로 쓰지 않는다. 실측: id=1914
+function isRealPostUrl(u) {
+  const s = String(u || "").trim();
+  if (!/^https?:\/\//i.test(s)) return false;
+  return /\/\d{6,}(\?|#|$)/.test(s);
+}
+
+function ymd(v) {
+  const d = v ? new Date(v) : null;
+  if (!d || Number.isNaN(d.getTime())) return "";
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}.${m}.${day}`;
 }
 
 // ── [PSEO-HUB-PHONE-FALLBACK-02] ─────────────────────────────
@@ -165,6 +196,31 @@ export async function getServerSideProps(ctx) {
   });
   const intents = qualified.map((q) => q.intent);
 
+  // ── [PSEO-HUB-RECENT-POSTS-01] 최근 발행글 ───────────────────
+  //   account_id 경유(store_id 불신 1/1809). core_keyword 조건 없음.
+  //   조회 오류는 삼키지 않는다 — 빈 목록으로 위장하면 원인을 모른다.
+  const { data: recentRows, error: rErr } = await sb
+    .from("publish_history")
+    .select("id, title, naver_post_url, published_at")
+    .eq("account_id", data.account_id)
+    .eq("publish_status", "published")
+    .is("deleted_at", null)
+    .order("published_at", { ascending: false })
+    .limit(MAX_RECENT);
+
+  if (rErr) {
+    throw new Error(`PSEO_HUB_RECENT_FAILED code=${rErr.code} msg=${rErr.message}`);
+  }
+
+  const recent = (recentRows || [])
+    .map((r) => ({
+      id: r.id,
+      title: String(r.title || "").trim(),
+      url: isRealPostUrl(r.naver_post_url) ? r.naver_post_url : "",
+      date: ymd(r.published_at),
+    }))
+    .filter((p) => p.title);
+
   // visit_info 도 통째로 넘기지 않는다. 키 화이트리스트 적용.
   const vi = data.visit_info && typeof data.visit_info === "object" ? data.visit_info : {};
   const visit = VISIT_KEYS
@@ -199,10 +255,10 @@ export async function getServerSideProps(ctx) {
   else if (/youtube\.|youtu\.be/i.test(ref)) source = "shorts";
   else if (ref) source = "referral";
 
-  return { props: { store, intents, source } };
+  return { props: { store, intents, recent, source } };
 }
 
-export default function StorePublicPage({ store, intents = [], source }) {
+export default function StorePublicPage({ store, intents = [], recent = [], source }) {
   const sentRef = useRef(false);
 
   // page_view 1회. StrictMode 이중 실행 방어.
@@ -323,6 +379,32 @@ export default function StorePublicPage({ store, intents = [], source }) {
                   >
                     {intent}
                   </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {/* [PSEO-HUB-RECENT-POSTS-01] 최근 글. 제목·날짜·원문 링크만. 본문 복제 없음. */}
+        {recent.length > 0 ? (
+          <section className="intents">
+            <h2 className="h2">최근 글</h2>
+            <ul className="posts">
+              {recent.map((p) => (
+                <li className="post" key={p.id}>
+                  {p.url ? (
+                    <a
+                      href={p.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => track(store.id, "post_click", source)}
+                    >
+                      {p.title}
+                    </a>
+                  ) : (
+                    <span className="noLink">{p.title}</span>
+                  )}
+                  {p.date ? <span className="date">{p.date}</span> : null}
                 </li>
               ))}
             </ul>
@@ -458,6 +540,38 @@ export default function StorePublicPage({ store, intents = [], source }) {
         }
         .intentRow:active {
           color: #1c6b3f;
+        }
+        .posts {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          border-top: 1px solid #e8e2da;
+        }
+        .post {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 0.9rem;
+          padding: 0.85rem 0;
+          border-bottom: 1px solid #f0ebe4;
+          font-size: 0.95rem;
+          line-height: 1.5;
+        }
+        .post a {
+          color: #23201d;
+          text-decoration: none;
+        }
+        .post a:hover {
+          text-decoration: underline;
+        }
+        .noLink {
+          color: #857c72;
+        }
+        .date {
+          flex: 0 0 auto;
+          font-size: 0.8rem;
+          color: #a49a8f;
+          white-space: nowrap;
         }
         .foot {
           margin-top: 2.5rem;
