@@ -105,6 +105,7 @@ import {
   IndustryPicker, IndustrySideMenu, industryStatusBadge, IndustryTree, IndustryDetail,
 } from "../lib/IndustrySelector"; // ← [IndustrySelector Spine] 업종 선택 UI 분리 모듈. index는 배선만.
 import { StoreInfoForm, makeStoreApi } from "../lib/Store"; // ← [Store Spine 2026-07-06] 업체정보 폼 + 저장/API 분리. INDUSTRY_CONFIG·lex 주입 소비.
+import { getSetupStatus } from "../lib/setupStatus"; // [ONBOARDING-GATE-01] 필수 5 FACT 단일 판정
 import { makeObservationApi } from "../lib/Observation"; // ← [Observation Spine 2026-07-06] survival/rank 로드 + saveRank 분리. setter 주입 소비.
 import { makePublishApi } from "../lib/Publish"; // ← [Publish Spine 1차 2026-07-06] publish-secure/check-quota fetch 위임. payload·state는 호출부 유지.
 import { makeAIGenerateApi } from "../lib/AIGenerate"; // ← [AI Generate Spine 2026-07-06] check-quota/generate/save-generated 순수 fetch 위임. payload·분기·state는 호출부 유지.
@@ -6406,11 +6407,55 @@ const HUB_TABS = [
   //   메뉴/URL(?view=industry) 진입 차단(HUB_IDS 자동 파생 → posts 폴백). 좌측 메뉴 개편 시 도움말/지원업종으로 흡수.
   { id: "store",    ic: "🏢", label: "업체정보", sub: true },     // [v107] 보조 — 평소 연하게
   { id: "tools",    ic: "🖼️", label: "사진편집기", ext: true, sub: true, guest: true }, // [v95] 상단 메뉴 승격 / [v107] 보조 톤 / [v129] 비로그인 노출(저장은 로그인 게이트)
+  // [USER-MENU-IA-IMPLEMENT-01] 고아 화면 진입 경로 복구 — NavPanel 렌더(tab==="usage"/"survival") 무수정.
+  //   HUB_IDS 자동 파생 → ?view=usage / ?view=survival 진입 가능. 노출은 HUB_GROUPS 하위 탭줄에서만.
+  { id: "usage",    ic: "📈", label: "이용현황", sub: true },
+  { id: "survival", ic: "🔭", label: "검색관측", sub: true },
+  // [MYPAGE-HISTORY-PAGE-01] 전체 발행내역 = 마이페이지 방의 독립 페이지(좌측 단독 렌더). 기존 이용내역 목록 재사용.
+  { id: "history",  ic: "📈", label: "이용현황", sub: true },
 ];
 // [v129] 비로그인 상단 메뉴 = guest:true 만. 나머지 5탭은 로그인 후에만 노출·클릭 가능.
 //   이유: 비로그인 진입 시 우측이 로그인 카드라 좌측 가이드만 흘러 전환 없음. 온보딩 영상이 ①~④ 흐름 대체.
 //   HUB_IDS·라우팅·컴포넌트 무변경 → ?view=stats 등 직접 URL 진입은 종전대로(로그인 카드 표시).
 const HUB_IDS = HUB_TABS.filter(t => !t.ext).map(t => t.id); // [v95] ext 탭은 nav 내부 id 아님 — 제외
+// [USER-MENU-IA-IMPLEMENT-01] 상단 5대분류 = 방 / 좌측 세로띠 = 방 목차(navigation 전용). 기존 진입점 재사용만.
+//   tab  = HUB_TABS id → 상단 탭 onClick 원문(hubTabClick)
+//   rail = 기존 좌측 세로띠 navView → 세로띠 열기 원문 패턴(railOpen). 세로띠 원본 코드는 존치(랜딩에서 표시).
+//   anchor "top"/"bottom" = 같은 화면(account) 안 위치 이동만(스크롤). 신규 화면 없음.
+//   menu:false = 좌측 목차 없음(요금제·결제 = plans 직결). disabled = 상단 자리만(pSEO, USER 기능 없음).
+//   제외(선장 판정): 나의 정보(실데이터 없음) / 채널연결·알림·공지·생성관리(기능 없음, 미표시).
+//   [USER-MYPAGE-IA-CLEANUP-01] 마이페이지 = 설정·관리(발행 설정 stats 귀속) / POSTING = 글 작업 전용(나의 업종·stats 제거).
+//   업종센터(industry)·정책 푸터: 방 배정 없음 — 현행 유지.
+const HUB_GROUPS = [
+  // [USER-MENU-IA-IMPLEMENT-01] 마이페이지 = 좌측 한 화면 흐름(①~⑦). 목차 = 같은 화면(account) 안 섹션 anchor 이동.
+  { id: "mypage",  ic: "🏠", label: "마이페이지", home: "mp-info", items: [
+    { id: "mp-info",  tab: "account", ic: "👤", label: "내 정보",     anchor: ["mp-sec-basic"] },
+    { id: "mp-basic", tab: "account", sub: true, label: "기본 정보",   anchor: ["mp-sec-basic"] },
+    { id: "mp-pw",    tab: "account", sub: true, label: "비밀번호 변경", anchor: ["mp-sec-pw"] },
+    { id: "mp-ind",   tab: "account", sub: true, label: "업종 선택",   anchor: ["store-sec-ident"] },
+    { id: "mp-visit", tab: "account", sub: true, label: "업체정보(방문정보)", anchor: ["store-sec-visit", "store-sec-ident"] },
+    { id: "mp-title", tab: "account", sub: true, label: "상호 출력",   anchor: ["store-sec-title"] },
+    { id: "mp-usage", tab: "history", ic: "📈", label: "이용현황" },   // 독립 페이지(사용량 + 전체 발행내역)
+    { id: "mp-sec",   tab: "account", ic: "🔐", label: "계정·보안",    anchor: ["mp-sec-leave"] } ] },
+  { id: "posting", ic: "🧠", label: "POSTING", home: "po-coach", items: [
+    { id: "po-stats", tab: "stats",   label: "발행 설정" },   // [USER-MENU-IA-IMPLEMENT-01] 발행비율 — POSTING 첫 메뉴 복귀
+    { id: "po-coach", tab: "coach",   label: "AI 글쓰기" },
+    { id: "po-posts", tab: "posts",   label: "최근발행" },
+    { id: "po-surv",  tab: "survival", label: "검색관측" },
+    { id: "po-tools", tab: "tools",   label: "사진편집기" },
+    { id: "po-edit",  rail: "editguide", ic: "✏️", label: "글 수정가이드" } ] },
+  { id: "pseo",    ic: "🌐", label: "pSEO", disabled: true, items: [] },
+  { id: "plans",   ic: "💳", label: "요금제·결제", home: "pl-plans", menu: false, items: [
+    { id: "pl-plans", tab: "plans", label: "요금제·결제" } ] },
+  { id: "support", ic: "💬", label: "고객지원", home: "su-hist", items: [
+    { id: "su-hist", rail: "su-history", ic: "📬", label: "접수내역" },   // SupportHistory 단독 표시(Home 우측) — 마이페이지에서 분리
+    { id: "su-up",   rail: "upjong",  ic: "❓", label: "업종문의" },
+    { id: "su-dh",   rail: "daehang", ic: "🤝", label: "운영대행" },
+    { id: "su-sj",   rail: "sujung",  ic: "🛡", label: "오류·수정" },
+    { id: "su-bt",   rail: "blogtitle", ic: "🎨", label: "블로그 타이틀" },
+    { id: "su-ng",   rail: "naverguide", ic: "📗", label: "네이버 발행가이드" } ] },
+];
+const hubItemKey = (it) => it.tab || it.rail; // 활성 판정 키(tools=resultTab / 그 외 navView)
 
 // [v67] 가입 후 최초 1회 온보딩 — 업종 미설정(hasStore=false) 사용자 가로채기.
 //   한 화면 2스텝: ①업종 선택 → ②업체명·대표지역·주소. 완료 후 운영허브 진입.
@@ -6687,8 +6732,50 @@ function SupportHistory() {
 //   신규 API/DB/fetch 0. 평문 비번은 state 에만 두고 저장·로그 금지.
 // ──────────────────────────────────────────────────────────
 const PWCHG_MIN = 6; // Supabase Auth Minimum password length 와 동일
-function AccountPasswordChange() {
-  const [open, setOpen] = useState(false);
+// [USER-MENU-IA-IMPLEMENT-01] 마이페이지 ① 기본 정보 — 표시 전용 카드. 신규 필드·API 없음.
+//   이메일 = Home authEmail / 가입방식 = auth 세션(identities·app_metadata, AccountPasswordChange 와 동일 출처) / 플랜 = check-quota.
+function MyBasicInfoCard({ authEmail, quotaInfo }) {
+  // [MYPAGE-BASIC-MERGE-01] 이메일 · 플랜 · 비밀번호 변경을 1줄로 통합. 비밀번호 폼은 같은 카드 안에서 펼친다.
+  //   로직 = AccountPasswordChange 그대로(embedded). 좌측 목차 「비밀번호 변경」 = mp-open-pw 이벤트로 펼침.
+  const [pwOpen, setPwOpen] = useState(false); // 비밀번호 폼은 기본 접힘(선장 지시)
+  useEffect(() => {
+    const on = () => setPwOpen(true);
+    window.addEventListener("mp-open-pw", on);
+    return () => window.removeEventListener("mp-open-pw", on);
+  }, []);
+  const q = quotaInfo || {};
+  const plan = (q.bypass || q.reason === "OWNER_BYPASS") ? "OWNER" : (q.plan_id ? String(q.plan_id).toUpperCase() : "FREE");
+  const item = (k, v, grow) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0, flex: grow ? "1 1 auto" : "0 0 auto" }}>
+      <span style={{ fontSize: 11.5, fontWeight: 700, color: "#8a7ba0", flexShrink: 0 }}>{k}</span>
+      <span style={{ fontSize: 13.5, fontWeight: 800, color: "#1a1a2e",
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v || "—"}</span>
+    </div>
+  );
+  return (
+    <div style={{ background: "#fff", border: "1px solid #f0eef5", borderRadius: 13, padding: "11px 16px" }}>
+      <div style={{ fontSize: 13.5, fontWeight: 900, color: "#4A148C", marginBottom: 8 }}>👤 기본 정보</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+        {item("이메일", authEmail, true)}
+        {item("플랜", plan)}
+        <button type="button" onClick={() => setPwOpen((v) => !v)}
+          style={{ marginLeft: "auto", flexShrink: 0, padding: "5px 11px", borderRadius: 8,
+            border: "1.5px solid #e0d0f0", background: pwOpen ? "#f3e9ff" : "#fff", color: "#7B1FA2",
+            fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+          🔒 비밀번호 변경{pwOpen ? " ▲" : ""}
+        </button>
+      </div>
+      {pwOpen && (
+        <div style={{ marginTop: 10, paddingTop: 4, borderTop: "1px solid #f3eff8" }}>
+          <AccountPasswordChange embedded />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountPasswordChange({ embedded = false } = {}) {
+  const [open, setOpen] = useState(!!embedded);
   const [hasEmailPw, setHasEmailPw] = useState(null); // null=확인중 / true / false(카카오 등)
   const [curPw, setCurPw] = useState("");
   const [newPw, setNewPw] = useState("");
@@ -6755,13 +6842,13 @@ function AccountPasswordChange() {
   const lbl = { fontSize: 11.5, color: "#8a7ba0", fontWeight: 700, margin: "8px 0 4px" };
 
   return (
-    <div style={{ background: "#fff", borderRadius: 12, border: "1.5px solid #e8e8ed", padding: "8px 14px 9px" }}>
-      <button type="button" onClick={() => { setOpen((v) => !v); clearMsg(); }}
+    <div style={embedded ? {} : { background: "#fff", borderRadius: 12, border: "1.5px solid #e8e8ed", padding: "8px 14px 9px" }}>
+      {!embedded && <button type="button" onClick={() => { setOpen((v) => !v); clearMsg(); }}
         style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: 0, background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
         <span style={{ fontSize: 11, color: "#9457b8", fontWeight: 800 }}>🔒 비밀번호 변경</span>
         <span style={{ fontSize: 11, color: "#8a7ba0", fontWeight: 700 }}>{open ? "접기 ▲" : "▼"}</span>
-      </button>
+      </button>}
       {open && (
         hasEmailPw === null ? (
           <div style={{ fontSize: 12, color: "#999", padding: "8px 0" }}>확인 중…</div>
@@ -6942,7 +7029,11 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   //   ★ NavPanel 내부에 조회 로직을 두지 않는다. NavPanel 은 resultTab 삼항 분기로
   //     재마운트되므로 여기서 만든 상태는 탭 전환 시 소실된다.
   //     갱신 대상(quotaInfo)의 소유자는 부모(Home)이며, 기존 check-quota 경로를 재사용한다.
-  onQuotaRefresh }) {
+  onQuotaRefresh,
+  // [ONBOARDING-GATE-01] 잠금 카드 → 마이페이지 누락 섹션 이동(Home 소유).
+  onGoSetup,
+  // [MYPAGE-BASIC-MERGE-01] 마이페이지 흐름 분할 렌더. undefined=전체(종전) / "usage"=사용량 4칸만 / "rest"=이용내역+탈퇴.
+  accountPart }) {
   // [요율/계획 상태] menuWeights·savedWeights·activePlan·calMonth 등은 부모(Home)에서 관리하고 props로 받는다.
   //   NavPanel은 resultTab 삼항 분기로 재마운트되므로, 내부 useState로 두면 글쓰기/예정클릭 시 초기화되어 저장값이 소실된다.
   //   (A 버그 수정: lift state up — 재마운트돼도 부모가 값 보존)
@@ -7006,7 +7097,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
   }, [industrySidePick]);
   // [세션96] 기본 펼침. 계정정보 4칸을 1줄로 줄여 확보한 공간을 이용내역이 쓴다.
   //   접혀 있으면 "내 글이 몇 건인지" 확인에 클릭이 한 번 더 든다 — 마이페이지의 본래 목적이 그것이다.
-  const [historyOpen, setHistoryOpen] = useState(true); // 마이페이지 하단 이용내역 펼치기
+  const [historyOpen, setHistoryOpen] = useState(true); // 마이페이지 하단 이용내역 펼치기 — [USER-MENU-IA-IMPLEMENT-01] 기본 접힘
   const [ratioHelpOpen, setRatioHelpOpen] = useState(false); // [v150] 발행비율 사용법 모달
   // [v18x] 최근발행 "글 열기" 작업패널 — 행 클릭 시 단건 fetch(me/post/[id]) → 본문복사·URL등록.
   //   openPostId: 펼친 행 id | openPost: 단건 응답(본문/메타) | openBusy: 진행 상태문구
@@ -7567,23 +7658,27 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
     //   판정 SoT = hubStore.industry. 등록 완료(POST) 시 즉시 해제.
     {
       const LOCKED_UNTIL_STORE = ["stats", "coach", "posts", "survival"];
-      const _industryReady = !!(hubStore && hubStore.industry);
-      if (isLoggedIn && !_industryReady && LOCKED_UNTIL_STORE.includes(tab)) {
-        const goStoreTab = () => { setTab("store"); onTabChange && onTabChange("store"); };
+      // [ONBOARDING-GATE-01] 업종 단독 판정 → 필수 5 FACT 단일 판정(getSetupStatus).
+      //   hubStore===null(미로딩)은 잠그지 않는다 — 로딩 중 오판 차단. OWNER bypass 는 호출부(여기) 처리.
+      const _setup = getSetupStatus(hubStore);
+      const _ownerBypass = !!(quotaInfo && (quotaInfo.bypass || quotaInfo.reason === "OWNER_BYPASS"));
+      if (isLoggedIn && hubStore !== null && !_setup.ok && !_ownerBypass && LOCKED_UNTIL_STORE.includes(tab)) {
+        const goStoreTab = () => { if (onGoSetup) onGoSetup(); else { setTab("store"); onTabChange && onTabChange("store"); } };
         return (
           <div style={{ background: "linear-gradient(135deg,#faf5ff,#f3e9ff)", borderRadius: 14,
             border: "1.5px solid #e0d0f0", padding: "34px 24px", textAlign: "center" }}>
             <div style={{ fontSize: 30, marginBottom: 12 }}>🏢</div>
             <div style={{ fontSize: 15, fontWeight: 900, color: "#4A148C", marginBottom: 10 }}>
-              업체정보를 먼저 등록해주세요.
+              먼저 업체 기본정보를 완료해 주세요.
             </div>
             <div style={{ fontSize: 12.5, color: "#7B5E96", marginBottom: 22, lineHeight: 1.7, fontWeight: 600 }}>
-              업종·지역 정보를 등록하면<br />발행계획과 글쓰기가 시작됩니다.
+              정확한 콘텐츠 생성을 위해 업종과 업체정보 설정이 필요합니다.<br />
+              입력이 필요한 항목 : <b>{_setup.missing.map(m => m.label).join(" · ")}</b>
             </div>
             <button onClick={goStoreTab}
               style={{ padding: "11px 22px", borderRadius: 10, border: "none",
                 background: "#7B1FA2", color: "#fff", fontSize: 13.5, fontWeight: 800,
-                cursor: "pointer", fontFamily: "inherit" }}>업체정보 등록하기</button>
+                cursor: "pointer", fontFamily: "inherit" }}>마이페이지에서 설정하기</button>
           </div>
         );
       }
@@ -7673,7 +7768,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 
           {/* ⓪ [v29] 관리 안내 — 제목 + 역할 한 줄(컴팩트) */}
-          <div style={{ background: "linear-gradient(135deg,#f3e9ff,#fdfbff)",
+          {!accountPart && <div style={{ background: "linear-gradient(135deg,#f3e9ff,#fdfbff)",
             border: "1.5px solid #e0d0f0", borderRadius: 12, padding: "10px 16px" }}>
             {/* [세션75] 제목 줄 = 제목 + 우측 회원탈퇴(작은 회색 텍스트).
                 하단 「계정 관리」 카드 제거에 따른 이전. 탈퇴는 접근은 되되 강조하지 않는다. */}
@@ -7684,16 +7779,16 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               </div>
               <AccountLeaveButton isOwner={isUnlimited} />
             </div>
-          </div>
+          </div>}
 
           {/* [세션96] ① 계정정보 4칸(사업장명·업종·이메일·플랜) → 1줄 축약.
               사업장명·업종·이메일은 전부 업체정보 페이지가 원본이다. 마이페이지에 복사해 두면
               두 화면이 어긋날 때 어느 쪽이 맞는지 알 수 없다 → 원본으로 보내는 링크 한 줄만 둔다.
               플랜은 쿼터 판단에 직결되므로 남긴다. */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10,
+          {!accountPart && <div style={{ display: "flex", alignItems: "center", gap: 10,
             background: "#fff", border: "1px solid #f0eef5", borderRadius: 13, padding: "11px 16px" }}>
             <button type="button"
-              onClick={() => { setTab("store"); onTabChange && onTabChange("store"); }}
+              onClick={() => { if (onTabChange) onTabChange("store"); else setTab("store"); }} /* [USER-MENU-IA-IMPLEMENT-01] 부모가 이동 결정(마이페이지 흐름=섹션 스크롤) */
               style={{ display: "flex", alignItems: "center", gap: 7, padding: 0,
                 background: "transparent", border: "none", cursor: "pointer",
                 fontFamily: "inherit", fontSize: 13.5, fontWeight: 800, color: "#4A148C" }}>
@@ -7707,11 +7802,11 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                 {isUnlimited ? "OWNER" : planLabel}
               </span>
             </div>
-          </div>
+          </div>}
 
           {/* ②③ 사용량 + 누적사용량 — 한 줄 4칸. 이번달/남은(쿼터) + URL등록/미등록(누적).
               쿼터 숫자는 마이페이지에서만 노출(가드레일). 발행 판정 = naver_post_url 유무. 신규 fetch 없음. */}
-          {(() => {
+          {(!accountPart || accountPart === "usage" || accountPart === "history") && (() => {
             const allPosts = filterRealPosts(hubPosts, _scopeInds); // [UI-SCOPE-01] 등록 분야 전체
             // [status 기준 — 추가형(INSERT) 구조 확정 반영]
             //   baseline = 생성 글(url=null) = 사용량 1건 (서버 usage.js와 동일 기준)
@@ -7757,12 +7852,9 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
           })()}
 
           {/* 하단 — 전체 이용내역 펼치기. 사용자 확인용(며칠에 뭐 했나). 보기 링크·순위·점수 없음. */}
-          {/* [세션96] 접수내역 — 내 접수와 관리자 답변. 불편사항·기능제안 접수도 여기서 받는다.
-              이용내역(펼치면 수십 줄)보다 위에 둔다: 아래에 두면 펼침 상태에서 화면 밖으로 밀려
-              "답변이 왔는데 못 봤다"가 된다. */}
-          <SupportHistory />
+          {/* [세션96] 접수내역 — [USER-MENU-IA-IMPLEMENT-01] 고객지원 › 접수내역으로 이동(여기서 제거). */}
 
-          {(() => {
+          {(!accountPart || accountPart === "history") && (() => {
             const fmtD = (v) => {
               if (!v) return "—";
               const t = new Date(v).getTime();
@@ -7821,7 +7913,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
                     color: "#7B1FA2", fontSize: 13.5, fontWeight: 800, cursor: "pointer",
                     fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                   <span style={{ fontSize: 15 }}>📋</span>
-                  {historyOpen ? "접기" : "전체 보기"}{/* [세션96] 라벨 축약 — 카드 제목이 이미 맥락을 준다 */}
+                  {historyOpen ? "전체 발행내역 접기" : "전체 발행내역"}{/* [세션96] 라벨 축약 — 카드 제목이 이미 맥락을 준다 */}
                   <span style={{ fontSize: 13, fontWeight: 700, color: "#9457b8" }}>
                     {historyOpen ? "▲" : `(${rows.length}건) ▼`}
                   </span>
@@ -7865,8 +7957,14 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             );
           })()}
 
-          {/* [ACCOUNT-PASSWORD-CHANGE-02] 계정·보안 — 맨 하단, 기본 접힘 */}
-          <AccountPasswordChange />
+          {/* [ACCOUNT-PASSWORD-CHANGE-02] 비밀번호 변경 — [USER-MENU-IA-IMPLEMENT-01] 마이페이지 흐름 ②로 이동(여기서 제거). */}
+          {accountPart === "rest" && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              background: "#fff", border: "1px solid #f0eef5", borderRadius: 13, padding: "11px 16px" }}>
+              <span style={{ fontSize: 13.5, fontWeight: 900, color: "#4A148C" }}>🔐 계정·보안</span>
+              <AccountLeaveButton isOwner={isUnlimited} />
+            </div>
+          )}
 
           {/* [세션75] 하단 「계정 관리」 카드 제거.
               · 플랜 변경 → 상단 요금제 탭과 중복
@@ -9225,7 +9323,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             })}
             {coach.posts.length > RECENT_LIMIT && (
               <div style={{ fontSize: 11.5, color: "#aaa", textAlign: "center", padding: "8px 2px 4px" }}>
-                최근 {RECENT_LIMIT}건만 표시됩니다. 전체 {coach.posts.length}건 분석은 <span style={{ color: "#7B1FA2", fontWeight: 700 }}>관측</span> 탭에서 확인하세요.
+                최근 {RECENT_LIMIT}건만 표시됩니다. 전체 {mergedPosts.length}건은 <span style={{ color: "#7B1FA2", fontWeight: 700 }}>마이페이지 › 전체 발행내역</span>에서 확인하세요.
               </div>
             )}
           </div>
@@ -9403,10 +9501,10 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
       {/* [v95] 허브 헤더·내부 탭바 모두 제거 — 상단 공통 메뉴줄(TopMenuBar)로 승격. NavPanel은 콘텐츠만. */}
 
       {/* 활성 탭 제목 */}
-      <div style={{ fontSize: 15, fontWeight: 800, color: "#4A148C", marginBottom: 8,
+      {!accountPart && <div style={{ fontSize: 15, fontWeight: 800, color: "#4A148C", marginBottom: 8,
         display: "flex", alignItems: "center", gap: 6 }}>
         <span>{activeMeta.ic}</span>{activeMeta.label}
-      </div>
+      </div>}
 
       {renderTabBody()}
     </div>
@@ -10130,6 +10228,11 @@ export default function Home() {
      // [v90] 상단 🔑로그인 클릭 시 LoginCard 리마운트 → 회원가입 모드에서 로그인 모드로 복귀
   // [v7] 네비 패널 — 우측 result 영역에 표시 (페이지 이동 없음). null | plans|usage|survival|posts|account
   const [navView,      setNavView]      = useState(null);
+  const [menuGroup,    setMenuGroup]    = useState(null); // [USER-MENU-IA-IMPLEMENT-01] 선택된 상단 대분류(HUB_GROUPS id)
+  const [roomItemId,   setRoomItemId]   = useState(null); // [USER-MENU-IA-IMPLEMENT-01] 마지막 선택 목차 항목(같은 화면 공유 항목 구분용)
+  const navScrollRef = useRef(null);                      // [USER-MENU-IA-IMPLEMENT-01] 우측 nav 스크롤 컨테이너(anchor 이동 전용)
+  const leftScrollRef = useRef(null);
+  const [mpIndustryOpen, setMpIndustryOpen] = useState(false); // [USER-MENU-IA-IMPLEMENT-01] 마이페이지 흐름 업종 선택 우측 목록 열림                     // [USER-MYPAGE-IA-CLEANUP-01] 좌측 칼럼 스크롤(마이페이지 방 anchor 이동)
   // [LOGIN-ROUTE-UNIFY-01] /login(구버전) → /?login=1 진입 시 우측 인라인 로그인 패널 1회 오픈.
   //   상단 🔑로그인 버튼과 동일 상태 전환. 실행 후 URL 쿼리 제거(새로고침 시 재오픈 방지).
   const loginQueryHandledRef = useRef(false);
@@ -10521,6 +10624,146 @@ export default function Home() {
     if (authUserId && hubPosts === null && !hubLoading) fetchHub();
   };
 
+  // [USER-MENU-IA-IMPLEMENT-01] 상단 탭 onClick 원문(v106~v129) Home 이관 — 상단·하단 방 메뉴 공용. 내용 무변경.
+  const hubTabClick = (t) => {
+    // [v129] 비로그인 = 메뉴 표시·톤 그대로. 클릭만 가로채 우측 로그인 카드, 좌측은 랜딩 영상 유지.
+    const locked = !(authChecked && authUserId) && !t.guest;
+    if (locked) {
+      // [v129] 사진편집기(전체폭) → 잠금 탭 이동 시 분할 레이아웃 복원 후 로그인 카드
+      setShowHome(false); setHelpTab(null);
+      setResultTab("nav"); setNavView(t.id);
+      setShowLogin(true);
+      return;
+    }
+    setShowHome(false);
+    setShowLogin(false);
+    // [v129] 비로그인은 좌측 가이드 대신 랜딩 영상 유지 (요금제 등 guest 탭 포함)
+    setHelpTab((t.ext || !(authChecked && authUserId)) ? null : t.id);
+    if (t.ext) {
+      // 사진편집기 — NavPanel 밖 전용 화면.
+      if (navView) setNavView(null);
+      setResultTab("tools");
+    } else {
+      // 운영허브 탭 — nav + 해당 탭. NavPanel이 view로 콘텐츠 전환.
+      // [v115] 탭 재진입 시 진행 중이던 글쓰기 흐름 초기화 — 코치/우측이 처음(달력) 화면으로 복귀.
+      setStage("welcome");
+      setShowTreatmentSelect(false);
+      setCalendarPrefill(null);
+      setPendingTreatment(null);
+      // [v126] 업체정보 최초등록(미확정) → 좌측을 업종센터 트리("나의 업종")로 열고 우측은 store 폼.
+      //   트리에서 업종 선택 → 우측 pickIndustry 반영 → 주소·생활권 순차 입력. (확정계정은 기존대로 store)
+      if (t.id === "store" && !(hubStore && hubStore.industry)) {
+        setHelpTab(null);
+        setIndustryCenterSel((hubStore && hubStore.industry) || "");
+        setNavView("industry");
+      } else {
+        setNavView(t.id);
+      }
+      setResultTab("nav");
+      if (authUserId && hubPosts === null && !hubLoading) fetchHub();
+    }
+  };
+  // [USER-MENU-IA-IMPLEMENT-01] 좌측 세로띠 열기 원문 패턴(upjong/daehang/sujung/editguide/blogtitle/naverguide 동일식) 복제.
+  const railOpen = (v) => {
+    if (navView === v) { setNavView(null); setResultTab("blog"); return; }
+    setHelpTab(null);
+    setResultTab("nav");
+    setNavView(v);
+  };
+  const scrollToSection = (ids, delay = 350) => setTimeout(() => {
+    const list = Array.isArray(ids) ? ids : [ids];
+    for (const id of list) {
+      const el = typeof document !== "undefined" ? document.getElementById(id) : null;
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+    }
+  }, delay);
+  // [ONBOARDING-GATE-01] 필수 5 FACT — Home 판정. OWNER bypass 는 호출부 처리(getSetupStatus 는 순수 판정).
+  const setupStatus = getSetupStatus(hubStore);
+  const setupNeeded = !!(authUserId && hubStore !== null && !setupStatus.ok && !_isOwnerView);
+  // 마이페이지 누락 섹션으로 이동. 업종 누락이면 우측 업종 목록(mpIndustryRight)이 자동으로 열린다.
+  //   상단 「마이페이지」 클릭과 동일 경로(enterHubGroup → hubItemClick → hubTabClick) 재사용.
+  //   개별 setter 직접 호출은 POSTING 등 다른 방에서 눌렀을 때 상태가 어긋난다(09-27 실측).
+  const goSetup = () => {
+    const g = HUB_GROUPS.find(x => x.id === "mypage");
+    const home = g && g.items.find(it => it.id === g.home);
+    if (!home) return;
+    setMenuGroup("mypage"); setNavOpen(true);
+    hubItemClick(setupStatus.firstSection ? { ...home, anchor: [setupStatus.firstSection] } : home);
+  };
+  // 로그인 후 1회 유도 — 인증 확인 + store 로드 + quota(OWNER 판정) 로드 완료 후에만 판정(초기 로딩 오판 차단).
+  //   결제 복귀·딥링크(?tab / ?view / ?login) 진입은 가로채지 않는다. 완료 사용자는 무영향.
+  const setupRedirectDone = useRef(false);
+  // 진입 딥링크 캡처 — 결제복귀(?tab=plans) effect 가 router.replace 로 쿼리를 즉시 지우므로,
+  //   store/quota 로드를 기다리는 아래 판정 시점엔 쿼리가 비어 있다. isReady 최초 시점에 1회 기록.
+  //   (이 effect 는 결제복귀 effect 보다 먼저 선언 → 같은 커밋에서 먼저 실행)
+  const setupDeepLinkRef = useRef(null);
+  useEffect(() => {
+    if (!router.isReady || setupDeepLinkRef.current !== null) return;
+    const q0 = router.query || {};
+    setupDeepLinkRef.current = !!(q0.tab || q0.view || q0.login);
+  }, [router.isReady]);
+  useEffect(() => {
+    if (setupRedirectDone.current) return;
+    if (!authChecked || !authUserId || hubStore === null || quotaInfo === null || !router.isReady) return;
+    setupRedirectDone.current = true;
+    const q = router.query || {};
+    if (setupDeepLinkRef.current || q.tab || q.view || q.login) return;
+    if (setupNeeded) goSetup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authChecked, authUserId, hubStore, quotaInfo, router.isReady]);
+  // 로그아웃(로그인→비로그인 전환) 시에만 초기화. 최초 마운트의 비로그인 상태는 딥링크 기록을 지우지 않는다.
+  const setupPrevAuthRef = useRef(null);
+  useEffect(() => {
+    if (setupPrevAuthRef.current && !authUserId) {
+      setupRedirectDone.current = false;
+      setupDeepLinkRef.current = false;
+    }
+    setupPrevAuthRef.current = authUserId || null;
+  }, [authUserId]);
+  const hubItemClick = (it) => {
+    if (it.id) setRoomItemId(it.id);
+    if (it.tab) { const ht = HUB_TABS.find(x => x.id === it.tab); if (ht) hubTabClick(ht); }
+    else if (it.rail) railOpen(it.rail);
+    // 같은 화면 안 섹션 위치 이동만. 렌더 대기 후 1회. 후보 id 중 존재하는 첫 섹션. 실패해도 화면 진입은 유지.
+    if (it.anchor) scrollToSection(it.anchor);
+    if (it.id === "mp-visit") { try { window.dispatchEvent(new Event("mp-open-visit")); } catch {} }
+    if (it.id === "mp-pw") setTimeout(() => { try { window.dispatchEvent(new Event("mp-open-pw")); } catch {} }, 360);
+  };
+  const enterHubGroup = (g) => {
+    if (g.disabled) return;
+    setMenuGroup(g.id);
+    if (g.menu !== false) setNavOpen(true); // 방 진입 = 좌측 200px (요금제·결제는 목차 없음)
+    const home = g.items.find(it => it.id === g.home);
+    if (home) hubItemClick(home);
+  };
+  // [USER-MENU-IA-IMPLEMENT-01] 현재 방 판정(상단 대분류와 동일식). 좌측 세로띠 = 방 목차(navigation 전용),
+  //   클릭 결과는 기존 우측 작업영역에 그대로 렌더. 1단계 = 마이페이지 방만 좌측 전환.
+  const hubActiveKey = resultTab === "tools" ? "tools" : (resultTab === "nav" ? navView : null);
+  const hubHas = (g, id) => g.items.some(it => hubItemKey(it) === id);
+  const hubCurGroup = HUB_GROUPS.find(g => g.id === menuGroup && hubHas(g, hubActiveKey))
+    || HUB_GROUPS.find(g => hubHas(g, hubActiveKey))
+    || HUB_GROUPS.find(g => g.id === menuGroup) || null;
+  const railRoom = (hubCurGroup && hubCurGroup.menu !== false && hubCurGroup.items.length) ? hubCurGroup : null;
+  // [USER-MYPAGE-IA-CLEANUP-01] 마이페이지 방 = 내용을 좌측 칼럼에 표시(AI 코치 대신), 우측 = 메인 이미지 대기.
+  //   대상: 홈·계정·보안(account) / 내 업체 정보(store, 업종 확정 계정) / 이용현황(usage).
+  //   제외: 발행 설정(stats) — 편집 모드가 좌(전체 메뉴)·우(나의 메뉴) 2칼럼 전제 → 현행 유지.
+  //         업종 미확정 store(navView="industry") — 좌 트리·우 폼 2칼럼 전제 → 현행 유지.
+  const mpLeft = !!(authUserId && resultTab === "nav" && hubCurGroup && hubCurGroup.id === "mypage"
+    && ["account", "store", "history"].includes(navView));
+  // 마이페이지 흐름 중 업종 선택 = 우측에 업종 목록(IndustryTree). 업종 미확정 계정은 기본 표시.
+  const mpIndustryRight = mpLeft && navView !== "history" && (mpIndustryOpen || !(hubStore && hubStore.industry));
+  // 목차 활성: 키 일치 + 같은 키를 공유하는 항목이 여럿이면 마지막 선택 항목(없으면 첫 항목).
+  const roomItemActive = (g, it) => {
+    const key = hubItemKey(it);
+    if (!key || hubActiveKey !== key) return false;
+    const same = g.items.filter(x => hubItemKey(x) === key);
+    if (same.length < 2) return true;
+    const picked = same.find(x => x.id === roomItemId);
+    return (picked || same[0]).id === it.id;
+  };
+  // Home/랜딩 복귀 = 방 해제 + 좌측 60px(기존 세로띠 복원).
+  useEffect(() => { if (showHome) { setMenuGroup(null); setRoomItemId(null); setNavOpen(false); setMpIndustryOpen(false); } }, [showHome]);
+
   // [SUBSCRIBE-POST-PAYMENT-RETURN-01] /?tab=plans&paid=<planId> 수신.
   //   ★ 쿼리 소유자는 Home 단독이다. NavPanel 이 직접 읽으면 자식 effect 가 먼저 돌아
   //     부모가 읽기 전에 URL 이 지워진다.
@@ -10538,6 +10781,26 @@ export default function Home() {
     router.replace("/", undefined, { shallow: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady, router.query]);
+
+  // [USER-MENU-IA-IMPLEMENT-01] /?view=<HUB_IDS> 딥링크 — goHubTab 재사용. 세션 체크 완료 후 1회.
+  //   비로그인 + 잠금 탭 = 상단 탭 클릭과 동일하게 로그인 카드.
+  const viewHandledRef = useRef(false);
+  useEffect(() => {
+    if (!router.isReady || !authChecked || viewHandledRef.current) return;
+    const v = String((router.query || {}).view || "");
+    if (!v || !HUB_IDS.includes(v)) return;
+    viewHandledRef.current = true;
+    const vt = HUB_TABS.find(x => x.id === v);
+    if (!authUserId && !(vt && vt.guest)) {
+      setShowHome(false); setHelpTab(null);
+      setResultTab("nav"); setNavView(v);
+      setShowLogin(true);
+      return;
+    }
+    goHubTab(v);
+    if (!authUserId) setHelpTab(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady, router.query, authChecked, authUserId]);
 
   const messagesEndRef = useRef(null);
   const isGenerating   = useRef(false);
@@ -12912,6 +13175,141 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
   const handleKeyDown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } };
   const charCount = result ? calcValidCharCount(result.text) : 0;
 
+  // [USER-MYPAGE-IA-CLEANUP-01] NavPanel JSX 원문 이관(내용 무변경) — 우측(기본)·좌측(마이페이지 방) 중 한 곳에서만 호출.
+  const renderNavPanel = (viewOverride, accountPart) => (
+    <NavPanel
+      accountPart={accountPart}
+      onGoSetup={goSetup}
+      paidNotice={paidNotice}
+      onQuotaRefresh={refreshQuotaInfo}
+      view={viewOverride || navView}
+      isLoggedIn={authChecked && authUserId}
+      authUserId={authUserId}
+      onOpenTools={() => { if (navView) setNavView(null); setHelpTab(null); setShowLogin(false); setResultTab("tools"); }}
+      toolsActive={resultTab === "tools"}
+      quotaInfo={quotaInfo}
+      storeName={storeName}
+      authEmail={authEmail}
+      industry={currentStore?.industry || CURRENT_INDUSTRY}
+      hubPosts={hubPosts}
+      hubSurvival={hubSurvival}
+      hubSurvivalItems={hubSurvivalItems}
+      hubLoading={hubLoading}
+      hubRanks={hubRanks}
+      rankDraft={rankDraft}
+      setRankDraft={setRankDraft}
+      saveRank={saveRank}
+      rankSaving={rankSaving}
+      coachOpen={coachOpen}
+      setCoachOpen={setCoachOpen}
+      hubStore={hubStore}
+      setHubStore={setHubStore}
+      industrySidePick={industrySidePick}
+      industryCenterSel={industryCenterSel}
+      setIndustryCenterSel={setIndustryCenterSel}
+      storeEditRef={storeEditRef}
+      publishApi={publishApi}
+      centerSpecialty={centerSpecialty}
+      saveStore={saveStore}
+      createStore={createStore}
+      storeSaving={storeSaving}
+      treatmentNames={menuTreatments.map(t => (t.menu || t.menuRef || t.name)).filter(Boolean)}
+      treatments={menuTreatments}
+      treatmentCats={activeCats}
+      masterMenuNames={masterMenus.map(t => (t.menu || t.menuRef || t.name)).filter(Boolean)}
+      currentIndustry={CURRENT_INDUSTRY}
+      myMenusMap={myMenusMap} setMyMenusMap={setMyMenusMap}
+      menuScopeKey={menuScopeKey} menuScopeResolving={menuScopeResolving}
+      isMultiDept={_isMultiDept}
+      myMenuFlat={myMenuFlat}
+      deptLabelOf={deptLabel}
+      onRemoveMyMenuDept={removeMyMenuDept}
+      editingMenus={editingMenus} setEditingMenus={setEditingMenus}
+      menuToast={menuToast} setMenuToast={setMenuToast}
+      calMonth={calMonth} setCalMonth={setCalMonth}
+      menuWeights={menuWeights} setMenuWeights={setMenuWeights}
+      savedWeights={savedWeights} setSavedWeights={setSavedWeights}
+      weightsDirty={weightsDirty} setWeightsDirty={setWeightsDirty}
+      activePlan={activePlan} setActivePlan={setActivePlan}
+      extraMenus={extraMenus} setExtraMenus={setExtraMenus}
+      newMenuInput={newMenuInput} setNewMenuInput={setNewMenuInput}
+      onLogin={() => { setShowLogin(true); }}
+      onWriter={() => { setNavView(null); setResultTab("blog"); }}
+      onCoachMessage={(text) => {
+        // 운영코치 진단/조언 → 좌측 채팅창에 표시(화면 전환 없음 — 달력 보면서 조언 확인).
+        //   직전 메시지와 동일하면 스킵(탭 재진입 시 중복 누적 방지).
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last && last.role === "assistant" && last.text === text) return prev;
+          return [...prev, { role: "assistant", text }];
+        });
+      }}
+      onFillInput={(text, coachText) => {
+        // 추천 주제 → 좌측 입력창 채우기 (생성기 화면으로 전환, 제출은 사용자)
+        setNavView(null); setResultTab("blog"); setInput(text);
+        if (coachText) addMsg({ role: "assistant", text: coachText });
+      }}
+      onCalendarPick={({ topic, rep, sub }) => {
+        // [v94] 달력 클릭 → 통합 시술선택 화면으로 prefill 진입(일반/달력 합류지점 일원화).
+        //   topic(시술명 문자열)을 activeTreatments에서 매칭 → 시술 객체. 못 찾으면 시술 빈 채로 진입(사용자 선택).
+        // [v135] restaurant 매칭 버그 수정: restaurant 항목은 표시명을 menu/menuRef에 담고
+        //   name에는 내부 id(rest_boonsik_tteokbokki_gongleung_01)를 둔다. topic="떡볶이"는 name과
+        //   절대 안 맞아 treatObj=null → 프리필 소실 → 순대국 기본값으로 떨어졌다. 매칭 라벨을
+        //   menu||menuRef||name으로 확장(운영레이어). 의료군은 menu/menuRef 부재 → name으로 동일 동작.
+        const _label = t => t.menu || t.menuRef || t.name;
+        // [MultiDeptMenu-fix] 달력에는 전 진료과 메뉴가 섞여 있다. activeTreatments(=CURRENT_INDUSTRY 단일과)
+        //   에서만 찾으면 타 진료과 메뉴는 매칭 실패 → treatObj=null → 프리필 소실(작성 버튼 비활성).
+        //   다중과는 hospitalMasterTreatments(전 진료과 마스터, __dept 부착) 우선으로 탐색한다.
+        const _pool = _isMultiDept
+          ? (hospitalMasterTreatments || activeTreatments || [])
+          : (activeTreatments || []);
+        const matched = _pool.find(t => _label(t) === topic)
+          || _pool.find(t => topic && topic.includes(_label(t)));
+        // [v136] treatObj.name = 표시명(menu/menuRef 우선). placeholder name("이 분식집") 노출 차단.
+        //   id는 매칭·payload용 실 id 유지. menu/menuRef도 보존(save payload 표시명 정합).
+        //   __dept 보존 → 생성 시 _genIndustry가 해당 진료과 엔진으로 자동 라우팅.
+        const treatObj = matched
+          ? { id: matched.id, name: _label(matched), menu: matched.menu, menuRef: matched.menuRef,
+              emoji: matched.emoji, cat: matched.cat, __dept: matched.__dept, _raw: matched }
+          : null;
+        setCalendarPrefill({ treatment: treatObj, rep: rep || "", sub: sub || "" });
+        setNavView(null);
+        setResultTab("blog");
+        setStage("treatment");
+        setPendingTreatment(null);
+        setShowTreatmentSelect(true);
+      }}
+      onGenerate={(text) => {
+        // 추천 주제 → 바로 생성 (1클릭). 생성기 화면 전환 후 즉시 제출.
+        setNavView(null); setResultTab("blog"); setInput(text); handleSend(text);
+      }}
+      // [USER-MYPAGE-IA-CLEANUP-01] store AI 코치 미노출 → ▶영상보기(대상=좌측 코치) 무반응 방지.
+      //   미주입 시 Store.js VideoHelpBtn 이 기존 하위호환 규칙으로 렌더 안 함. 유일 소비처 = StoreInfoForm.
+      onCoachVideo={undefined}
+      onGoIndustryCenter={() => {
+        // [A안] 업종센터 진입 — 좌측 대화창 닫고 우측 industry 트리/상세.
+        setHelpTab(null); setResultTab("nav"); setNavView("industry");
+      }}
+      onTabChange={(tabId) => {
+        // [USER-MENU-IA-IMPLEMENT-01] 마이페이지 흐름 — account 안 「업체정보 바로가기」 = 같은 화면 업체정보 섹션으로 이동.
+        if (tabId === "store" && mpLeft) { scrollToSection(["store-sec-ident"], 50); return; }
+        // [v18x] 최근발행 URL 등록 성공 → 목록 갱신 신호. 탭 전환 아님.
+        if (tabId === "__refreshHub") { fetchHub(); return; }
+        // [STORE-SWITCH-01 T3] 발행비율 탭 진입 시 현재 업체 재확인.
+        if (tabId === "stats") refreshStore();
+        // [v42] 우측 운영허브 내부 탭 전환 시 좌측 연동.
+        //   로그인: AI 코치 패널(CoachPanel)이 stats/coach/posts/survival/account/plans/store/manage 처리.
+        //   비로그인: HELP_CONTENT 있는 탭만 정적 안내.
+        // [v95] navView도 동기화 — 상단 공통 메뉴줄 active 표시가 내부 탭 변경과 일치하도록.
+        if (tabId && HUB_IDS.includes(tabId)) { setNavView(tabId); setResultTab("nav"); }
+        if (authUserId) {
+          setHelpTab(tabId || null);
+        } else {
+          setHelpTab(HELP_CONTENT[tabId] ? tabId : null);
+        }
+      }}
+    />
+  );
   return (
     <>
       <Head>
@@ -13019,6 +13417,39 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                    트리 클릭 → industryCenterSel 갱신 → 우측 상세 전환. 채택/잠금은 우측 IndustryDetail이 처리.
                    업종센터 = 전체 catalog 노출(enabled 무관). 실제 채택은 enabled+미확정 계정만(센터 내부 가드). */}
               <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column", gap: 4 }}>
+              {/* [USER-MENU-IA-IMPLEMENT-01] 방 선택 중 = 해당 방 목차만. 기존 세로띠 항목은 표시만 숨김(코드 존치).
+                  navigation 전용 — 결과는 기존 우측 작업영역 렌더. 클릭 = 상단 탭 원문(hubTabClick) 재사용. */}
+              {railRoom && (<>
+                {navOpen && (
+                  <div style={{ padding: "4px 14px 8px", fontSize: 11.5, fontWeight: 900,
+                    color: "#CE93D8", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{railRoom.ic} {railRoom.label}</div>
+                )}
+                {railRoom.items.map(it => {
+                  const key = it.id;
+                  const act = roomItemActive(railRoom, it);
+                  const ht = it.tab ? HUB_TABS.find(x => x.id === it.tab) : null;
+                  return (
+                    <button key={"room:" + key} type="button" onClick={() => hubItemClick(it)}
+                      title={it.label} aria-label={it.label}
+                      style={{ display: "flex", alignItems: "center", gap: navOpen ? 12 : 0,
+                        justifyContent: navOpen ? "flex-start" : "center",
+                        width: "100%", height: it.sub ? 34 : 42, borderRadius: 10, cursor: "pointer", flexShrink: 0,
+                        border: "none", fontFamily: "inherit",
+                        padding: navOpen ? (it.sub ? "0 14px 0 40px" : "0 14px") : "0",
+                        fontSize: it.sub ? 12.5 : 13.5, fontWeight: act ? 800 : 600,
+                        color: act ? "#fff" : "#9a9ab5",
+                        background: act ? "rgba(156,39,176,.28)" : "transparent",
+                        transition: "background .15s" }}
+                      onMouseOver={e => { if (!act) e.currentTarget.style.background = "rgba(156,39,176,.12)"; }}
+                      onMouseOut={e => { if (!act) e.currentTarget.style.background = "transparent"; }}>
+                      {it.sub ? (!navOpen && <span style={{ fontSize: 10, lineHeight: 1 }}>•</span>)
+                        : <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{it.ic || (ht && ht.ic)}</span>}
+                      {navOpen && <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.label}</span>}
+                    </button>
+                  );
+                })}
+              </>)}
+              {!railRoom && (<>
               {(() => {
                 const centerActive = (resultTab === "nav" && navView === "industry");
                 const openCenter = () => {
@@ -13317,10 +13748,12 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                   </button>
                 );
               })}
+              </>)}
               </div>
 
-              {/* ── 좌측 하단 푸터 (정책/지원) — 클릭 시 좌측 대화창에 버블 출력. 우측 변화 없음. 펼침 상태에서만 표시 ── */}
-              {navOpen && (
+              {/* ── 좌측 하단 푸터 (정책/지원) — 클릭 시 좌측 대화창에 버블 출력. 우측 변화 없음. 펼침 상태에서만 표시 ──
+                  [USER-MENU-IA-IMPLEMENT-01] 방 선택 중에는 표시만 숨김(코드 존치). */}
+              {navOpen && !railRoom && (
                 <div style={{ flexShrink: 0, paddingTop: 14, marginTop: 14, marginBottom: 18,
                   borderTop: "1px solid rgba(255,255,255,.10)",
                   display: "flex", flexDirection: "column", gap: 4 }}>
@@ -13374,8 +13807,10 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     통과하지 못하고 landing else 로 떨어져 히어로+유튜브가 드러났다.
               해결: 좌컬럼 진입 사유를 helpTab 과 stage==="result" 둘로 분리(아래 참조).
               ★ resultTab==="tools" 는 무변화. 생성 중(generating) 2컬럼도 무변화. */}
-          {resultTab !== "tools" && (
-          <div style={{ width: "50%", flexShrink: 0, display: "flex", flexDirection: "column",
+          {/* [USER-MYPAGE-IA-CLEANUP-01] 중앙 분리선 완전 고정(선장 지시) — 우측 = 화면폭 50vw 고정, 좌측 = 나머지(flex).
+              좌측 세로띠(60/200px) 변화는 좌측 칼럼만 흡수. 도구(사진편집기) 탭도 2칼럼 유지(종전 우측 100% 전환 폐기). */}
+          {(
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column",
             borderRight: "1px solid #e8e8ed", background: "#f7f7f8" }}>
             <div style={{ padding: "0 24px", borderBottom: "1px solid #e8e8ed", height: 53,
               background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
@@ -13456,14 +13891,68 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                 )
               )}
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "24px 0" }}>
+            <div ref={leftScrollRef} style={{ flex: 1, overflowY: "auto", padding: "24px 0" }}>
               {/* [세션57][AI영상코치] 좌측 최상단 — 우측 입력 카드의 「▶ 영상보기」 클릭 시에만 표시.
                   플레이어는 하나. 다른 버튼을 누르면 title/videoId만 교체된다. 자동재생 없음. */}
               {/* [세션58] 업체정보 탭 = 하단 고정 영상만 사용. 상단 공용 플레이어 미표시(화면 흔들림 차단). */}
-              {helpTab !== "store" && (
+              {helpTab !== "store" && !mpLeft && (
                 <CoachVideoCard menuId={coachVideoKey} onClose={() => setCoachVideoKey(null)} />
               )}
-              {(authUserId && resultTab === "nav" && navView === "stats" && editingMenus) ? (
+              {(mpLeft && navView === "history") ? (
+                /* [MYPAGE-HISTORY-PAGE-01] 전체 발행내역 — 독립 페이지. 마이페이지 흐름과 분리. */
+                <div style={{ padding: "0 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: "#4A148C" }}>📈 이용현황</div>
+                  {renderNavPanel("account", "history")}
+                </div>
+              ) : mpLeft ? (
+                /* [USER-MENU-IA-IMPLEMENT-01] 마이페이지 = 좌측 한 화면 흐름. 기존 부품 재사용·순서 배치만.
+                   ① 기본 정보(표시 카드) ② 비밀번호 변경 ③ 업종 선택 ④ 업체정보·방문정보 ⑤ 상호 출력
+                   (③~⑤ = StoreInfoForm 내부 순서 그대로) ⑥ 이용현황·⑦ 계정·보안 = NavPanel account(접수내역·비번 제외). */
+                <div style={{ padding: "0 22px", display: "flex", flexDirection: "column", gap: 16 }}>
+                  {setupNeeded && (
+                    <div style={{ background: "linear-gradient(135deg,#fff8e1,#fff3cd)", border: "1.5px solid #ffcc80",
+                      borderRadius: 12, padding: "12px 16px" }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 900, color: "#E65100", marginBottom: 4 }}>
+                        시작하기 전에 업체 기본정보를 완료해 주세요.
+                      </div>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, color: "#8a5a00", lineHeight: 1.6 }}>
+                        입력한 정보는 콘텐츠 작성과 업체 정보 구성에 사용됩니다.<br />
+                        입력이 필요한 항목 : <b>{setupStatus.missing.map(m => m.label).join(" · ")}</b>
+                      </div>
+                    </div>
+                  )}
+                  <div id="mp-sec-basic" style={{ scrollMarginTop: 12 }}>
+                    <div id="mp-sec-pw" />
+                    <MyBasicInfoCard authEmail={authEmail} quotaInfo={quotaInfo} />
+                  </div>
+                  <div>
+                    <StoreInfoForm
+                      authUserId={authUserId}
+                      hubStore={hubStore}
+                      setHubStore={setHubStore}
+                      saveStore={saveStore}
+                      createStore={createStore}
+                      storeSaving={storeSaving}
+                      industryLabel={(() => { const si = hubStore && hubStore.industry; return (si && INDUSTRY_CONFIG[si]?.label) || (si && getCatalogItem(si)?.name) || "—"; })()}
+                      hubLoading={hubLoading}
+                      isOwner={!!(quotaInfo && (quotaInfo.bypass || quotaInfo.reason === "OWNER_BYPASS"))}
+                      initialPick={industryCenterSel}
+                      initialSpecialty={centerSpecialty}
+                      editRef={storeEditRef}
+                      INDUSTRY_CONFIG={INDUSTRY_CONFIG}
+                      lex={lex}
+                      onGoIndustryCenter={() => {
+                        // 업종 선택 = 우측에 업종 목록. 좌측 흐름 유지.
+                        if (!industryCenterSel) { setIndustryCenterSel((hubStore && hubStore.industry) || ""); }
+                        setMpIndustryOpen(true);
+                      }}
+                    />
+                  </div>
+                  <div id="mp-sec-leave" style={{ scrollMarginTop: 12 }}>
+                    {renderNavPanel("account", "rest")}
+                  </div>
+                </div>
+              ) : (authUserId && resultTab === "nav" && navView === "stats" && editingMenus) ? (
                 /* [v150] 발행비율 편집 중 — 좌측 = 전체 메뉴 카드(컴팩트). 클릭하면 우측 "나의 메뉴"로 이동(좌에서 사라짐). 저장 시 코치로 복귀. */
                 <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 22px" }}>
                   <div style={{ fontSize: 16, fontWeight: 900, color: "#4A148C", marginBottom: 8 }}>
@@ -13797,7 +14286,8 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
               ) : ((authUserId && stage === "result") || (helpTab && (authUserId
                 // [v126] 미확정 store(최초등록)는 우측 STEP 순차입력이 단독 안내 → 좌측 코치 제외(이중안내 해소).
                 //   확정계정 store 편집은 코치 유지(생활권·방문안내 안내 유용).
-                ? ((HELP_CONTENT[helpTab] || helpTab === "manage")
+                // [USER-MYPAGE-IA-CLEANUP-01] 내 업체 정보(store) = 설정 화면 — 좌측 AI 코치 미노출. 다른 탭 코치 무변경.
+                ? ((HELP_CONTENT[helpTab] || helpTab === "manage") && helpTab !== "store"
                    && !(helpTab === "store" && !(hubStore && hubStore.industry)))
                 : HELP_CONTENT[helpTab]                            // 비로그인: 기존 정적 안내페이지
               ))) ? (
@@ -13951,74 +14441,38 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
           </div>
           )}
 
-          {/* ── 우측: 결과 패널 — 도구 탭이면 100%, 아니면 50% ── */}
-          <div style={{ width: resultTab === "tools" ? "100%" : "50%",
+          {/* ── 우측: 결과 패널 — [USER-MYPAGE-IA-CLEANUP-01] 항상 화면폭 50vw 고정(분리선 고정) ── */}
+          <div style={{ width: "50vw", flexShrink: 0,
             display: "flex", flexDirection: "column",
-            background: "#fff", overflow: "hidden",
-            transition: "width .25s ease" }}>
+            background: "#fff", overflow: "hidden" }}>
 
-            {/* ── 상단 헤더 — 좌측 헤더와 동일 높이. [v98] 모든 화면에서 무조건 공통 탭바만 노출. 제목·완료뱃지 없음. ── */}
+            {/* ── 상단 헤더 — 좌측 헤더와 동일 높이. [v98] 모든 화면에서 무조건 공통 탭바만 노출. 제목·완료뱃지 없음. ──
+                [USER-MENU-IA-IMPLEMENT-01] 상단 = 5대분류(HUB_GROUPS)만. 방 목차는 좌측 세로띠.
+                탭 이동 로직은 [v106~v129] 원문 onClick 을 Home 의 hubTabClick 으로 이관 — 문자 단위 무변경. */}
+            {(() => {
+              return (<>
             <div style={{ padding: "0 16px", borderBottom: "1px solid #e8e8ed",
               background: "#fff", flexShrink: 0,
               display: "flex", alignItems: "center", height: 53, gap: 10 }}>
               {/* ── [v106] 공통 탭바 — A안: 플랫 텍스트 + 활성 밑줄(노션/커서/Stripe 방식). 박스·테두리 제거. ── */}
               <div style={{ display: "flex", gap: 2, width: "100%", height: "100%", overflowX: "auto" }}>
-                {HUB_TABS.map(t => {
-                  // [v129] 비로그인 = 메뉴 표시·톤 그대로. 클릭만 가로채 우측 로그인 카드, 좌측은 랜딩 영상 유지.
-                  const locked = !(authChecked && authUserId) && !t.guest;
-                  // active 판정: tools 탭은 resultTab==="tools" / 그 외는 nav + navView 일치.
-                  const active = t.ext
-                    ? (resultTab === "tools")
-                    : (resultTab === "nav" && navView === t.id);
+                {HUB_GROUPS.map(g => {
+                  const active = !g.disabled && !!hubCurGroup && hubCurGroup.id === g.id;
                   return (
-                    <button key={t.id}
-                      onClick={() => {
-                        if (locked) {
-                          // [v129] 사진편집기(전체폭) → 잠금 탭 이동 시 분할 레이아웃 복원 후 로그인 카드
-                          setShowHome(false); setHelpTab(null);
-                          setResultTab("nav"); setNavView(t.id);
-                          setShowLogin(true);
-                          return;
-                        }
-                        setShowHome(false);
-                        setShowLogin(false);
-                        // [v129] 비로그인은 좌측 가이드 대신 랜딩 영상 유지 (요금제 등 guest 탭 포함)
-                        setHelpTab((t.ext || !(authChecked && authUserId)) ? null : t.id);
-                        if (t.ext) {
-                          // 사진편집기 — NavPanel 밖 전용 화면.
-                          if (navView) setNavView(null);
-                          setResultTab("tools");
-                        } else {
-                          // 운영허브 탭 — nav + 해당 탭. NavPanel이 view로 콘텐츠 전환.
-                          // [v115] 탭 재진입 시 진행 중이던 글쓰기 흐름 초기화 — 코치/우측이 처음(달력) 화면으로 복귀.
-                          setStage("welcome");
-                          setShowTreatmentSelect(false);
-                          setCalendarPrefill(null);
-                          setPendingTreatment(null);
-                          // [v126] 업체정보 최초등록(미확정) → 좌측을 업종센터 트리("나의 업종")로 열고 우측은 store 폼.
-                          //   트리에서 업종 선택 → 우측 pickIndustry 반영 → 주소·생활권 순차 입력. (확정계정은 기존대로 store)
-                          if (t.id === "store" && !(hubStore && hubStore.industry)) {
-                            setHelpTab(null);
-                            setIndustryCenterSel((hubStore && hubStore.industry) || "");
-                            setNavView("industry");
-                          } else {
-                            setNavView(t.id);
-                          }
-                          setResultTab("nav");
-                          if (authUserId && hubPosts === null && !hubLoading) fetchHub();
-                        }
-                      }}
+                    <button key={g.id} type="button"
+                      disabled={!!g.disabled}
+                      onClick={() => enterHubGroup(g)}
                       style={{ flex: "1 1 0", minWidth: 0, height: "100%",
                         display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                         border: "none", background: "none", position: "relative",
-                        color: active ? "#4A148C" : (t.sub ? "#6e6a78" : "#4a4754"),
-                        fontSize: 14.5, fontWeight: active ? 800 : (t.sub ? 550 : 600),
-                        cursor: "pointer", fontFamily: "inherit",
+                        color: g.disabled ? "#b8b4c2" : (active ? "#4A148C" : "#4a4754"),
+                        fontSize: 14.5, fontWeight: active ? 800 : 600,
+                        cursor: g.disabled ? "default" : "pointer", fontFamily: "inherit",
                         whiteSpace: "nowrap", transition: "color .12s" }}
-                      onMouseOver={e => { if (!active) e.currentTarget.style.color = "#7B1FA2"; }}
-                      onMouseOut={e => { if (!active) e.currentTarget.style.color = (t.sub ? "#6e6a78" : "#4a4754"); }}>
-                      <span style={{ fontSize: 14.5, opacity: t.sub ? .8 : 1 }}>{t.ic}</span>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{t.label}</span>
+                      onMouseOver={e => { if (!active && !g.disabled) e.currentTarget.style.color = "#7B1FA2"; }}
+                      onMouseOut={e => { if (!active && !g.disabled) e.currentTarget.style.color = "#4a4754"; }}>
+                      <span style={{ fontSize: 14.5, opacity: g.disabled ? .5 : 1 }}>{g.ic}</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{g.label}</span>
                       {active && (
                         <span style={{ position: "absolute", left: "8%", right: "8%", bottom: -1,
                           height: 3.5, borderRadius: 3, background: "#7B1FA2" }} />
@@ -14028,6 +14482,8 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                 })}
               </div>
             </div>
+              </>);
+            })()}
 
             {/* ── [Service Switch Spine · v-dept 2026-07-12] 서비스(진료과) 전환줄 ──
                 위치: 우측 패널 헤더(탭바 바로 아래). 탭·화면보다 상위 = CURRENT_INDUSTRY 결정 지점.
@@ -14133,136 +14589,40 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                    사진편집기는 비로그인도 전체 기능 테스트 허용, 저장 시점에만 로그인 게이트. */
                 <MainHero />
               ) : resultTab === "nav" ? (
-                <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px", background: "#f7f7fb" }}>
-                  {navView === "why" ? (
+                <div ref={navScrollRef} style={{ flex: 1, overflowY: "auto", padding: "16px 22px", background: "#f7f7fb" }}>
+                  {mpIndustryRight ? (
+                    // [USER-MENU-IA-IMPLEMENT-01] 마이페이지 업종 선택 — 기존 업종 트리 재사용. 선택 → 좌측 폼 반영(기존 경로).
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                        {!!(hubStore && hubStore.industry) && (
+                          <button type="button" onClick={() => setMpIndustryOpen(false)}
+                            style={{ fontSize: 12, fontWeight: 700, color: "#7a5a9a", background: "#fff",
+                              border: "1px solid #e0d0f0", borderRadius: 12, padding: "5px 12px",
+                              cursor: "pointer", fontFamily: "inherit" }}>닫기</button>
+                        )}
+                      </div>
+                      <IndustryTree
+                        selId={industryCenterSel}
+                        confirmedIndustry={(hubStore && hubStore.industry) || ""}
+                        authUserId={authUserId}
+                        counts={CATALOG_COUNT}
+                        isOwner={!!(quotaInfo && (quotaInfo.bypass || quotaInfo.reason === "OWNER_BYPASS"))}
+                        onPick={(id) => setIndustryCenterSel(id)}
+                        onSelect={(id) => {
+                          handleIndustryTreeSelect(id);
+                          setMpIndustryOpen(false);
+                          scrollToSection(["store-sec-ident"]);
+                        }}
+                      />
+                    </div>
+                  ) : (navView === "why" || mpLeft) ? (
+                    // [USER-MYPAGE-IA-CLEANUP-01] 마이페이지 방 = 내용은 좌측 → 우측은 메인 이미지 대기.
                     <MainHero />
+                  ) : navView === "su-history" ? (
+                    // [USER-MENU-IA-IMPLEMENT-01] 고객지원 › 접수내역 — 기존 SupportHistory 단독(마이페이지에서 분리).
+                    <SupportHistory />
                   ) : (
-                  <NavPanel
-                    paidNotice={paidNotice}
-                    onQuotaRefresh={refreshQuotaInfo}
-                    view={navView}
-                    isLoggedIn={authChecked && authUserId}
-                    authUserId={authUserId}
-                    onOpenTools={() => { if (navView) setNavView(null); setHelpTab(null); setShowLogin(false); setResultTab("tools"); }}
-                    toolsActive={resultTab === "tools"}
-                    quotaInfo={quotaInfo}
-                    storeName={storeName}
-                    authEmail={authEmail}
-                    industry={currentStore?.industry || CURRENT_INDUSTRY}
-                    hubPosts={hubPosts}
-                    hubSurvival={hubSurvival}
-                    hubSurvivalItems={hubSurvivalItems}
-                    hubLoading={hubLoading}
-                    hubRanks={hubRanks}
-                    rankDraft={rankDraft}
-                    setRankDraft={setRankDraft}
-                    saveRank={saveRank}
-                    rankSaving={rankSaving}
-                    coachOpen={coachOpen}
-                    setCoachOpen={setCoachOpen}
-                    hubStore={hubStore}
-                    setHubStore={setHubStore}
-                    industrySidePick={industrySidePick}
-                    industryCenterSel={industryCenterSel}
-                    setIndustryCenterSel={setIndustryCenterSel}
-                    storeEditRef={storeEditRef}
-                    publishApi={publishApi}
-                    centerSpecialty={centerSpecialty}
-                    saveStore={saveStore}
-                    createStore={createStore}
-                    storeSaving={storeSaving}
-                    treatmentNames={menuTreatments.map(t => (t.menu || t.menuRef || t.name)).filter(Boolean)}
-                    treatments={menuTreatments}
-                    treatmentCats={activeCats}
-                    masterMenuNames={masterMenus.map(t => (t.menu || t.menuRef || t.name)).filter(Boolean)}
-                    currentIndustry={CURRENT_INDUSTRY}
-                    myMenusMap={myMenusMap} setMyMenusMap={setMyMenusMap}
-                    menuScopeKey={menuScopeKey} menuScopeResolving={menuScopeResolving}
-                    isMultiDept={_isMultiDept}
-                    myMenuFlat={myMenuFlat}
-                    deptLabelOf={deptLabel}
-                    onRemoveMyMenuDept={removeMyMenuDept}
-                    editingMenus={editingMenus} setEditingMenus={setEditingMenus}
-                    menuToast={menuToast} setMenuToast={setMenuToast}
-                    calMonth={calMonth} setCalMonth={setCalMonth}
-                    menuWeights={menuWeights} setMenuWeights={setMenuWeights}
-                    savedWeights={savedWeights} setSavedWeights={setSavedWeights}
-                    weightsDirty={weightsDirty} setWeightsDirty={setWeightsDirty}
-                    activePlan={activePlan} setActivePlan={setActivePlan}
-                    extraMenus={extraMenus} setExtraMenus={setExtraMenus}
-                    newMenuInput={newMenuInput} setNewMenuInput={setNewMenuInput}
-                    onLogin={() => { setShowLogin(true); }}
-                    onWriter={() => { setNavView(null); setResultTab("blog"); }}
-                    onCoachMessage={(text) => {
-                      // 운영코치 진단/조언 → 좌측 채팅창에 표시(화면 전환 없음 — 달력 보면서 조언 확인).
-                      //   직전 메시지와 동일하면 스킵(탭 재진입 시 중복 누적 방지).
-                      setMessages(prev => {
-                        const last = prev[prev.length - 1];
-                        if (last && last.role === "assistant" && last.text === text) return prev;
-                        return [...prev, { role: "assistant", text }];
-                      });
-                    }}
-                    onFillInput={(text, coachText) => {
-                      // 추천 주제 → 좌측 입력창 채우기 (생성기 화면으로 전환, 제출은 사용자)
-                      setNavView(null); setResultTab("blog"); setInput(text);
-                      if (coachText) addMsg({ role: "assistant", text: coachText });
-                    }}
-                    onCalendarPick={({ topic, rep, sub }) => {
-                      // [v94] 달력 클릭 → 통합 시술선택 화면으로 prefill 진입(일반/달력 합류지점 일원화).
-                      //   topic(시술명 문자열)을 activeTreatments에서 매칭 → 시술 객체. 못 찾으면 시술 빈 채로 진입(사용자 선택).
-                      // [v135] restaurant 매칭 버그 수정: restaurant 항목은 표시명을 menu/menuRef에 담고
-                      //   name에는 내부 id(rest_boonsik_tteokbokki_gongleung_01)를 둔다. topic="떡볶이"는 name과
-                      //   절대 안 맞아 treatObj=null → 프리필 소실 → 순대국 기본값으로 떨어졌다. 매칭 라벨을
-                      //   menu||menuRef||name으로 확장(운영레이어). 의료군은 menu/menuRef 부재 → name으로 동일 동작.
-                      const _label = t => t.menu || t.menuRef || t.name;
-                      // [MultiDeptMenu-fix] 달력에는 전 진료과 메뉴가 섞여 있다. activeTreatments(=CURRENT_INDUSTRY 단일과)
-                      //   에서만 찾으면 타 진료과 메뉴는 매칭 실패 → treatObj=null → 프리필 소실(작성 버튼 비활성).
-                      //   다중과는 hospitalMasterTreatments(전 진료과 마스터, __dept 부착) 우선으로 탐색한다.
-                      const _pool = _isMultiDept
-                        ? (hospitalMasterTreatments || activeTreatments || [])
-                        : (activeTreatments || []);
-                      const matched = _pool.find(t => _label(t) === topic)
-                        || _pool.find(t => topic && topic.includes(_label(t)));
-                      // [v136] treatObj.name = 표시명(menu/menuRef 우선). placeholder name("이 분식집") 노출 차단.
-                      //   id는 매칭·payload용 실 id 유지. menu/menuRef도 보존(save payload 표시명 정합).
-                      //   __dept 보존 → 생성 시 _genIndustry가 해당 진료과 엔진으로 자동 라우팅.
-                      const treatObj = matched
-                        ? { id: matched.id, name: _label(matched), menu: matched.menu, menuRef: matched.menuRef,
-                            emoji: matched.emoji, cat: matched.cat, __dept: matched.__dept, _raw: matched }
-                        : null;
-                      setCalendarPrefill({ treatment: treatObj, rep: rep || "", sub: sub || "" });
-                      setNavView(null);
-                      setResultTab("blog");
-                      setStage("treatment");
-                      setPendingTreatment(null);
-                      setShowTreatmentSelect(true);
-                    }}
-                    onGenerate={(text) => {
-                      // 추천 주제 → 바로 생성 (1클릭). 생성기 화면 전환 후 즉시 제출.
-                      setNavView(null); setResultTab("blog"); setInput(text); handleSend(text);
-                    }}
-                    onCoachVideo={(key) => setCoachVideoKey(key)}
-                    onGoIndustryCenter={() => {
-                      // [A안] 업종센터 진입 — 좌측 대화창 닫고 우측 industry 트리/상세.
-                      setHelpTab(null); setResultTab("nav"); setNavView("industry");
-                    }}
-                    onTabChange={(tabId) => {
-                      // [v18x] 최근발행 URL 등록 성공 → 목록 갱신 신호. 탭 전환 아님.
-                      if (tabId === "__refreshHub") { fetchHub(); return; }
-                      // [STORE-SWITCH-01 T3] 발행비율 탭 진입 시 현재 업체 재확인.
-                      if (tabId === "stats") refreshStore();
-                      // [v42] 우측 운영허브 내부 탭 전환 시 좌측 연동.
-                      //   로그인: AI 코치 패널(CoachPanel)이 stats/coach/posts/survival/account/plans/store/manage 처리.
-                      //   비로그인: HELP_CONTENT 있는 탭만 정적 안내.
-                      // [v95] navView도 동기화 — 상단 공통 메뉴줄 active 표시가 내부 탭 변경과 일치하도록.
-                      if (tabId && HUB_IDS.includes(tabId)) { setNavView(tabId); setResultTab("nav"); }
-                      if (authUserId) {
-                        setHelpTab(tabId || null);
-                      } else {
-                        setHelpTab(HELP_CONTENT[tabId] ? tabId : null);
-                      }
-                    }}
-                  />
+                  renderNavPanel()
                   )}
                 </div>
               ) : resultTab === "tools" ? (

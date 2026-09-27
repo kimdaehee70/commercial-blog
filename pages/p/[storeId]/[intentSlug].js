@@ -108,7 +108,7 @@ const VISIT_TERMS = [
   ["phoneConsult", "전화 상담"],
   ["visitConsult", "방문 상담"],
   ["consult24", "24시간 상담"],
-  ["dispatch24", "24시간 출동"],
+  ["dispatch24", "출동 가능시간"],
   ["receive365", "365일 접수"],
   ["urgent", "긴급 대응"],
   ["reception", "접수"],
