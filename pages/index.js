@@ -6396,7 +6396,7 @@ const FOOTER_DOCS = {
 //         plans 는 종전대로 단독 카드 뷰.
 // ============================================================
 const HUB_TABS = [
-  { id: "stats",    ic: "📊", label: "발행비율설정" },    // [1] 메뉴 요율 선택 (전략 — menu_weights 입력)
+  { id: "stats",    ic: "📊", label: "발행 설정" },    // [1] 메뉴 요율 선택 (전략 — menu_weights 입력)
   { id: "coach",    ic: "🧠", label: "AI 글쓰기" }, // [2] 실행 — 달력/오늘 할 일 (생성기→운영도구 전환 핵심)
   { id: "posts",    ic: "📝", label: "최근발행" },
   // [v127] 관측 탭 상단 메뉴 제외 — 렌더/API/DB 무손상. HUB_IDS 자동 파생 → ?view=survival 은 posts 폴백.
@@ -7553,13 +7553,13 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
       lines.push(`🧭 운영자 계정 — 발행 한도 제한 없이 계획을 배치합니다 (현재 ${total}건).`);
     } else if (isLifetimeTrial && Number.isFinite(remaining) && Number.isFinite(limit)) {
       // [FREE-LIFETIME-TRIAL-3-01] 무료 체험은 월 개념이 없다. "이번 달"·"다음 달" 표현 금지.
-      lines.push(`🧭 무료 체험 · 잔여 ${remaining}건(총 ${limit}건). 계획을 ${total}건으로 맞췄습니다.`);
+      lines.push(`🧭 무료 체험 기준으로 계획을 ${total}건으로 맞췄습니다.`);
       if (remaining <= 0) lines.push(`• 무료 체험 3건을 모두 사용했습니다. 계속 이용하려면 요금제를 선택해 주세요.`);
     } else if (Number.isFinite(remaining) && Number.isFinite(limit)) {
-      lines.push(`🧭 ${planLabel} 플랜 · 이번 달 발행 가능 ${remaining}건(한도 ${limit}건). 계획을 ${total}건으로 맞췄습니다.`);
+      lines.push(`🧭 ${planLabel} 플랜 기준으로 계획을 ${total}건으로 맞췄습니다.`);
       if (remaining <= 0) lines.push(`• 이번 달 한도를 모두 사용했습니다. 다음 달 또는 상위 플랜에서 이어서 계획됩니다.`);
     } else if (Number.isFinite(limit)) {
-      lines.push(`🧭 ${planLabel} 플랜 · 월 발행 한도 ${limit}건 기준으로 계획을 맞췄습니다 (현재 ${total}건).`);
+      lines.push(`🧭 ${planLabel} 플랜 기준으로 계획을 맞췄습니다 (현재 ${total}건).`);
     }
 
     // 🔴 편중 경고
@@ -7624,9 +7624,6 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
     }
     // 이번 주/이번 달 사용 예정
     lines.push(`• 이번 달 발행 예정: ${planItems.length}건`);
-    if (Number.isFinite(limit) && limit > 0 && !isUnlimited) {
-      lines.push(`• 이번 달 사용 예정: ${Math.min(planItems.length, limit)}/${limit}건`);
-    }
     return lines.join("\n");
   };
 
@@ -8402,19 +8399,19 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               }
             }
             const DEMO_QUOTA = 60;
-            const quotaBase = Number.isFinite(limit) && limit > 0 ? limit : (isUnlimited ? DEMO_QUOTA : null);
+            const quotaBase = !(Number.isFinite(limit) && limit > 0) && isUnlimited ? DEMO_QUOTA : null; // [USER-POSTING-WORKSPACE-01] 한도≠목표 — quota 폴백 제거(OWNER DEMO만 유지)
             const planQuota = planTotal > 0 ? planTotal : quotaBase; // 실제 계획 우선
             const isPreview = !(planTotal > 0) && !(Number.isFinite(limit) && limit > 0) && isUnlimited;
-            if (planQuota == null) return null;
+            if (planQuota == null && (mainCount + subCount) === 0) return null;
             return (
               <div style={{ background: "linear-gradient(135deg,#f3e9ff,#ede1fb)", borderRadius: 14,
                 border: "1.5px solid #d8c4ed", padding: "12px 16px",
                 display: "flex", flexWrap: "wrap", gap: "6px 18px", alignItems: "center",
                 fontSize: 12.5, color: "#444", fontWeight: 700 }}>
                 <span style={{ fontSize: 13.5, fontWeight: 900, color: "#4A148C" }}>📊 이번 달 운영 계획</span>
-                <span>{planTotal > 0 ? "이번 달 예정 발행" : "월 목표 발행"} <b style={{ color: "#6A1B9A" }}>{planQuota}건</b>
+                {planQuota != null && (<span>{planTotal > 0 ? "이번 달 예정 발행" : "월 목표 발행"} <b style={{ color: "#6A1B9A" }}>{planQuota}건</b>
                   {isPreview && <span style={{ color: "#aaa", fontWeight: 600, fontSize: 11 }}> (미리보기)</span>}
-                </span>
+                </span>)}
                 <span>운영 {_ITEM_WORD} <b style={{ color: "#6A1B9A" }}>{mainCount + subCount}개</b>
                   <span style={{ color: "#999", fontWeight: 600 }}> (🔥{mainCount} · 🟡{subCount})</span>
                 </span>
@@ -8935,7 +8932,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             setOpenPost(prev => prev ? { ...prev, naver_post_url: url } : prev); // [v-urlfix] 동일 낙관적 갱신
             onTabChange && onTabChange("__refreshHub");
           } else if (j.error === "QUOTA_EXCEEDED" || j.quota) {
-            setUrlMsg({ kind: "err", text: "이번 달 발행 한도를 초과했습니다. 요금제를 확인해주세요." });
+            setUrlMsg({ kind: "err", text: `${periodLabel} 발행 한도를 초과했습니다. 요금제를 확인해주세요.` });
           } else {
             setUrlMsg({ kind: "err", text: `등록 실패: ${j.error || res.status}` });
           }
