@@ -6400,8 +6400,8 @@ const FOOTER_DOCS = {
 //         plans 는 종전대로 단독 카드 뷰.
 // ============================================================
 const HUB_TABS = [
-  { id: "stats",    ic: "📊", label: "발행 설정" },    // [1] 메뉴 요율 선택 (전략 — menu_weights 입력)
   { id: "area",     ic: "🏘️", label: "생활권", sub: true },   // [USER-POSTING-SERVICE-AREA-01] POSTING 생활권 방
+  { id: "stats",    ic: "📊", label: "발행 설정" },    // [1] 메뉴 요율 선택 (전략 — menu_weights 입력)
   { id: "coach",    ic: "🧠", label: "AI 글쓰기" }, // [2] 실행 — 달력/오늘 할 일 (생성기→운영도구 전환 핵심)
   { id: "posts",    ic: "📝", label: "최근발행" },
   // [v127] 관측 탭 상단 메뉴 제외 — 렌더/API/DB 무손상. HUB_IDS 자동 파생 → ?view=survival 은 posts 폴백.
@@ -6443,8 +6443,8 @@ const HUB_GROUPS = [
     { id: "mp-usage", tab: "history", ic: "📈", label: "이용현황" },   // 독립 페이지(사용량 + 전체 발행내역)
     { id: "mp-sec",   tab: "account", ic: "🔐", label: "계정·보안",    anchor: ["mp-sec-leave"] } ] },
   { id: "posting", ic: "🧠", label: "POSTING", home: "po-coach", items: [
-    { id: "po-stats", tab: "stats",   label: "발행 설정" },   // [USER-MENU-IA-IMPLEMENT-01] 발행비율 — POSTING 첫 메뉴 복귀
     { id: "po-area",  tab: "area",    label: "생활권" },   // [USER-POSTING-SERVICE-AREA-01] 마이페이지와 동일 생활권 SoT
+    { id: "po-stats", tab: "stats",   label: "발행 설정" },   // [USER-MENU-IA-IMPLEMENT-01] 발행비율 — POSTING 첫 메뉴 복귀
     { id: "po-coach", tab: "coach",   label: "AI 글쓰기" },
     { id: "po-posts", tab: "posts",   label: "최근발행" },
     { id: "po-surv",  tab: "survival", label: "검색관측" },
