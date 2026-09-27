@@ -257,11 +257,11 @@ const howtoFindItem = (guideId, itemId) => {
 //   맵에 없는 메뉴 = null 반환(미노출). 신규 메뉴는 COACH_VIDEOS 한 줄 추가로 끝.
 // [v-editguide5] 글 수정 가이드는 이미지(/g-guide-1~4.png)로 대체 — 텍스트 프리셋/패널 전량 삭제.
 
-function CoachVideoCard({ menuId, onClose }) {
+function CoachVideoCard({ menuId, onClose, maxW }) {
   const conf = COACH_VIDEOS[menuId];
   if (!conf) return null;
   return (
-    <div style={{ margin: "0 10px 12px", background: "#fff", borderRadius: 14,
+    <div style={{ margin: maxW ? "0 auto 12px" : "0 10px 12px", maxWidth: maxW || undefined, width: maxW ? "100%" : undefined, background: "#fff", borderRadius: 14,
       border: "1.5px solid #e0d0f0", overflow: "hidden",
       boxShadow: "0 2px 10px rgba(100,50,180,.06)" }}>
       <div style={{ padding: "9px 13px", background: "#faf5ff",
@@ -6196,7 +6196,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
       </div>
       {/* [세션58] 업체정보 — 텍스트 코치 아래 영상 고정 배치(닫기 없음). 타 탭 무영향. */}
       {tabId === "store" && (
-        <div style={{ marginTop: 34, width: "min(920px, calc(100vw - 40px))",
+        <div style={{ marginTop: 34, width: "min(720px, calc(100vw - 40px))",
           position: "relative", left: "50%", transform: "translateX(-50%)" }}>
           {/* 기본 store_ident. 우측 「▶영상보기」 클릭 시 해당 영상으로 교체(위치 고정). */}
           <CoachVideoCard menuId={(ctx && ctx.coachVideoKey) || "store_ident"} />
@@ -6205,29 +6205,29 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
       {/* [세션61] 발행비율설정(stats) — 좌측 코치 텍스트 아래 영상 고정(닫기 없음).
           기존 stats 영상은 「주력분야 새로 설정」 화면 내부에만 있어 기본 화면에서 미노출이었다. */}
       {tabId === "stats" && (
-        <div style={{ marginTop: 34, width: "min(920px, calc(100vw - 40px))",
+        <div style={{ marginTop: 34, width: "min(720px, calc(100vw - 40px))",
           position: "relative", left: "50%", transform: "translateX(-50%)" }}>
-          <CoachVideoCard menuId="stats" />
+          <CoachVideoCard menuId="stats" maxW={860} />
         </div>
       )}
       {/* [세션59] 요금제(plans) — 좌측 코치 텍스트 아래 영상 고정(닫기 없음). */}
       {tabId === "plans" && (
-        <div style={{ marginTop: 34, width: "min(920px, calc(100vw - 40px))",
+        <div style={{ marginTop: 34, width: "min(720px, calc(100vw - 40px))",
           position: "relative", left: "50%", transform: "translateX(-50%)" }}>
           <CoachVideoCard menuId="plans" />
         </div>
       )}
       {/* [세션59] 마이페이지(account) — 좌측 코치 텍스트 아래 영상 고정(닫기 없음). */}
       {tabId === "account" && (
-        <div style={{ marginTop: 34, width: "min(920px, calc(100vw - 40px))",
+        <div style={{ marginTop: 34, width: "min(720px, calc(100vw - 40px))",
           position: "relative", left: "50%", transform: "translateX(-50%)" }}>
           <CoachVideoCard menuId="account" />
         </div>
       )}
       {/* [세션59] 최근발행(posts) — 좌측 코치 텍스트 아래 영상 고정(닫기 없음). */}
       {tabId === "posts" && (
-        <div style={{ marginTop: 34, width: "min(920px, calc(100vw - 40px))",
-          position: "relative", left: "50%", transform: "translateX(-50%)" }}>
+        <div style={{ marginTop: 34, width: "min(720px, calc(100vw - 40px))", position: "relative", left: "50%", transform: "translateX(-50%)" }}>
+          {/* [POSTING-POSTS-VIDEO-FIT-01] 좌측 패널 폭에 맞춤 — 920 고정폭은 패널보다 넓어 좌우 잘림·가로스크롤 발생. */}
           <CoachVideoCard menuId="posts" />
         </div>
       )}
@@ -6236,7 +6236,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
         && (ctx && ctx.coachStage) !== "result"
         && (ctx && ctx.coachStage) !== "analysis"
         && (ctx && ctx.coachStage) !== "treatment" && (
-        <div style={{ marginTop: 34, width: "min(920px, calc(100vw - 40px))",
+        <div style={{ marginTop: 34, width: "min(720px, calc(100vw - 40px))",
           position: "relative", left: "50%", transform: "translateX(-50%)" }}>
           <CoachVideoCard menuId="coach" />
         </div>
@@ -8349,7 +8349,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             </button>
 
             {/* [세션58] 발행비율 — 저장 버튼 아래 영상 고정(닫기 없음). */}
-            <CoachVideoCard menuId="stats" />
+            <CoachVideoCard menuId="stats" maxW={860} />
 
             {/* [v-menuclean] 저장 Toast */}
             {menuToast ? (
