@@ -6441,15 +6441,23 @@ const HUB_GROUPS = [
     { id: "mp-visit", tab: "account", sub: true, label: "업체정보(방문정보)", anchor: ["store-sec-visit", "store-sec-ident"] },
     { id: "mp-title", tab: "account", sub: true, label: "상호 출력",   anchor: ["store-sec-title"] },
     { id: "mp-usage", tab: "history", ic: "📈", label: "이용현황" },   // 독립 페이지(사용량 + 전체 발행내역)
-    { id: "mp-sec",   tab: "account", ic: "🔐", label: "계정·보안",    anchor: ["mp-sec-leave"] } ] },
+    { id: "mp-sec",   tab: "account", ic: "🔐", label: "계정·보안",    anchor: ["mp-sec-leave"] },
+    // [MYPAGE-MENU-UPJONG-DAEHANG-01] 구분선 아래 업종문의·운영대행 — 기존 rail 화면 재사용.
+    { id: "mp-div1",  divider: true },
+    { id: "mp-up",    rail: "upjong",  ic: "❓", label: "내 업종은 없나요?" },
+    { id: "mp-dh",    rail: "daehang", ic: "🤝", label: "운영대행 문의" },
+    { id: "mp-ng",    rail: "naverguide", ic: "📗", label: "네이버 발행 가이드" } ] },
   { id: "posting", ic: "🧠", label: "POSTING", home: "po-coach", items: [
     { id: "po-area",  tab: "area",    label: "생활권" },   // [USER-POSTING-SERVICE-AREA-01] 마이페이지와 동일 생활권 SoT
     { id: "po-stats", tab: "stats",   label: "발행 설정" },   // [USER-MENU-IA-IMPLEMENT-01] 발행비율 — POSTING 첫 메뉴 복귀
     { id: "po-coach", tab: "coach",   label: "AI 글쓰기" },
     { id: "po-posts", tab: "posts",   label: "최근발행" },
-    { id: "po-surv",  tab: "survival", label: "검색관측" },
+    // [POSTING-OBS-MENU-REMOVE-01] 검색관측 POSTING 메뉴 노출 제거(작업실=글쓰기). 관측 화면·API·데이터·HUB_TABS 라우팅 유지.
     { id: "po-tools", tab: "tools",   label: "사진편집기" },
-    { id: "po-edit",  rail: "editguide", ic: "✏️", label: "글 수정가이드" } ] },
+    // [POSTING-MENU-GUIDE-GROUP-01] 작업 메뉴 / 가이드 메뉴 구분선. 블로그 타이틀 = 글 수정가이드 아래.
+    { id: "po-div1",  divider: true },
+    { id: "po-edit",  rail: "editguide", ic: "✏️", label: "글 수정가이드" },
+    { id: "po-bt",    rail: "blogtitle", ic: "🎨", label: "블로그 타이틀 꾸미기" } ] },
   { id: "pseo",    ic: "🌐", label: "pSEO", disabled: true, items: [] },
   { id: "plans",   ic: "💳", label: "요금제·결제", home: "pl-plans", menu: false, items: [
     { id: "pl-plans", tab: "plans", label: "요금제·결제" } ] },
@@ -6938,6 +6946,7 @@ function AccountLeaveButton({ isOwner }) {
       const map = {
         already_deactivated: "이미 탈퇴 처리된 계정입니다.",
         status_not_active: "현재 상태에서는 탈퇴할 수 없습니다. 고객센터로 문의해 주세요.",
+        billing_cancel_failed: "자동결제 중단 처리에 실패해 탈퇴를 진행하지 않았습니다. 잠시 후 다시 시도해 주세요.",
       };
       setErr(map[json?.error] || `탈퇴 실패: ${json?.error || status}`);
     } catch (e) {
@@ -6998,14 +7007,17 @@ function AccountLeaveButton({ isOwner }) {
 
       {step === 1 && modal("회원탈퇴", (
         <>
+          {/* [DEACTIVATE-UX-TRUTH-01] 서버 실제 동작(deactivate.js · charge-due.js)과 1:1.
+              탈퇴 = 데이터 삭제가 아니라 계정 이용 중지 + 데이터 보존. "모든 데이터 삭제" 류 문구 금지. */}
           탈퇴하면<br />
-          · 이용 중인 구독이 해지됩니다.<br />
-          · 계정이 비활성화되어 로그인할 수 없습니다.<br />
-          · 작성한 글과 관측 기록은 보관 기간 내 복구할 수 있습니다.
+          · 자동결제가 중단됩니다. 남은 이용기간은 환불되지 않습니다.<br />
+          · 탈퇴 즉시 계정이 비활성화되어 로그인할 수 없습니다.<br />
+          · 업체정보·작성/발행 기록·검색/관측 데이터는 삭제되지 않고 보관됩니다.<br />
+          · 같은 이메일로 30일간 재가입할 수 없습니다.<br />
+          · 30일 이후에도 재가입·복구는 고객센터를 통해 진행됩니다.
           {paid && !sub.cancel_at_period_end && (
             <div style={{ marginTop: 8, color: "#c08a2e", fontWeight: 700 }}>
               현재 {sub.plan_label} 이용 중입니다({fmt(sub.current_period_end)}까지).
-              남은 기간은 환불되지 않습니다.
             </div>
           )}
         </>
@@ -10797,6 +10809,9 @@ export default function Home() {
   //         업종 미확정 store(navView="industry") — 좌 트리·우 폼 2칼럼 전제 → 현행 유지.
   const mpLeft = !!(authUserId && resultTab === "nav" && hubCurGroup && hubCurGroup.id === "mypage"
     && ["account", "store", "history"].includes(navView));
+  // [MYPAGE-RIGHT-IMG-01] 우측 안내 이미지 대상 = 마이페이지 흐름 + 마이페이지 방 하위 안내(업종문의·운영대행·네이버 가이드).
+  const mpRightImg = mpLeft || !!(authUserId && resultTab === "nav" && hubCurGroup && hubCurGroup.id === "mypage"
+    && ["upjong", "daehang", "naverguide"].includes(navView));
   // 마이페이지 흐름 중 업종 선택 = 우측에 업종 목록(IndustryTree). 업종 미확정 계정은 기본 표시.
   const mpIndustryRight = mpLeft && navView !== "history" && (mpIndustryOpen || !(hubStore && hubStore.industry));
   // 목차 활성: 키 일치 + 같은 키를 공유하는 항목이 여럿이면 마지막 선택 항목(없으면 첫 항목).
@@ -13472,6 +13487,10 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     color: "#CE93D8", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{railRoom.ic} {railRoom.label}</div>
                 )}
                 {railRoom.items.map(it => {
+                  if (it.divider) return (
+                    <div key={"room:" + it.id} style={{ height: 1, background: "rgba(255,255,255,.10)",
+                      margin: "8px 10px", flexShrink: 0 }} />
+                  );
                   const key = it.id;
                   const act = roomItemActive(railRoom, it);
                   const ht = it.tab ? HUB_TABS.find(x => x.id === it.tab) : null;
@@ -13855,8 +13874,9 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
               해결: 좌컬럼 진입 사유를 helpTab 과 stage==="result" 둘로 분리(아래 참조).
               ★ resultTab==="tools" 는 무변화. 생성 중(generating) 2컬럼도 무변화. */}
           {/* [USER-MYPAGE-IA-CLEANUP-01] 중앙 분리선 완전 고정(선장 지시) — 우측 = 화면폭 50vw 고정, 좌측 = 나머지(flex).
-              좌측 세로띠(60/200px) 변화는 좌측 칼럼만 흡수. 도구(사진편집기) 탭도 2칼럼 유지(종전 우측 100% 전환 폐기). */}
-          {(
+              좌측 세로띠(60/200px) 변화는 좌측 칼럼만 흡수.
+              [PHOTO-EDITOR-FULLWIDTH-01] 사진편집기(tools) = 좌측 칼럼 제거, 우측 단일 통합 페이지. */}
+          {resultTab !== "tools" && (
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column",
             borderRight: "1px solid #e8e8ed", background: "#f7f7f8" }}>
             <div style={{ padding: "0 24px", borderBottom: "1px solid #e8e8ed", height: 53,
@@ -14490,7 +14510,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
           )}
 
           {/* ── 우측: 결과 패널 — [USER-MYPAGE-IA-CLEANUP-01] 항상 화면폭 50vw 고정(분리선 고정) ── */}
-          <div style={{ width: "50vw", flexShrink: 0,
+          <div style={{ ...(resultTab === "tools" ? { flex: 1, minWidth: 0 } : { width: "50vw", flexShrink: 0 }),
             display: "flex", flexDirection: "column",
             background: "#fff", overflow: "hidden" }}>
 
@@ -14663,14 +14683,24 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                         }}
                       />
                     </div>
-                  ) : (navView === "why" || mpLeft) ? (
+                  ) : mpRightImg ? (
+                    // [MYPAGE-RIGHT-IMG-01] 마이페이지 방 우측 = 안내 이미지 1장(/public/mypage-img.png). 교체는 파일만.
+                    // [MYPAGE-RIGHT-IMG-01] 계정·보안(mp-sec) 선택 시 = 탈퇴 전 확인 이미지(/public/out-img.png).
+                    <img key={roomItemId === "mp-sec" ? "out" : "mypage"}
+                      src={roomItemId === "mp-sec" ? "/out-img.png" : "/mypage-img.png"}
+                      alt={roomItemId === "mp-sec" ? "탈퇴 전 확인 안내" : "마이페이지 안내"}
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      style={{ width: "100%", height: "auto", display: "block", borderRadius: 12,
+                        border: "1px solid #ece7f6" }} />
+                  ) : (navView === "why") ? (
                     // [USER-MYPAGE-IA-CLEANUP-01] 마이페이지 방 = 내용은 좌측 → 우측은 메인 이미지 대기.
                     <MainHero />
                   ) : navView === "su-history" ? (
                     // [USER-MENU-IA-IMPLEMENT-01] 고객지원 › 접수내역 — 기존 SupportHistory 단독(마이페이지에서 분리).
                     <SupportHistory />
                   ) : (
-                  renderNavPanel()
+                  // [EDITGUIDE-RIGHT-CAL-01] 글 수정가이드 = 좌측 가이드 + 우측 AI 글쓰기 달력 고정(직전 탭 무관).
+                  renderNavPanel(navView === "editguide" ? "coach" : undefined)
                   )}
                 </div>
               ) : resultTab === "tools" ? (

@@ -18,6 +18,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { writeAudit } from '../../../lib/audit';
 import { requireAuth } from '../../../lib/guards';
+import { cancelAtPeriodEnd } from '../../../lib/billing/subscriptionWrite'; // [DEACTIVATE-BILLING-SAFETY-01]
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -85,6 +86,34 @@ export default async function handler(req, res) {
   }
 
   const previous_status = acc.status;
+
+  // 6-b) [DEACTIVATE-BILLING-SAFETY-01] 1차 방어 — 계정 비활성화 "이전"에 자동결제 중단.
+  //   기존 사용자 해지 helper(cancelAtPeriodEnd) 재사용 = cancel_at_period_end=true + next_billing_at=null.
+  //   · 활성 구독 없음(NO_ACTIVE_SUBSCRIPTION) → 정상 진행(무구독/만료 계정).
+  //   · 그 외 실패(DB 오류·throw) → 탈퇴 중단. 계정만 탈퇴되고 청구가 남는 부분 성공을 만들지 않는다.
+  //   · past_due 구독은 helper 대상(status=active)이 아니다 → charge-due 계정 상태 Gate(2차)가 막는다.
+  let billing_cancel = { ok: true, skipped: 'no_active_subscription' };
+  try {
+    const r = await cancelAtPeriodEnd(acc.id);
+    if (r && r.ok) {
+      billing_cancel = { ok: true, subscription_id: r.subscription?.id ?? null };
+    } else if (!r || r.error !== 'NO_ACTIVE_SUBSCRIPTION') {
+      console.error('[deactivate] billing cancel failed — deactivate aborted:', r && r.error);
+      return res.status(500).json({
+        ok: false,
+        error: 'billing_cancel_failed',
+        detail: (r && r.error) || null,
+      });
+    }
+  } catch (e) {
+    console.error('[deactivate] billing cancel exception — deactivate aborted:', e);
+    return res.status(500).json({
+      ok: false,
+      error: 'billing_cancel_failed',
+      detail: String(e?.message || e),
+    });
+  }
+
   const nowIso = new Date().toISOString();
 
   // 7) UPDATE — status='deactivated'
@@ -139,7 +168,7 @@ export default async function handler(req, res) {
     target_id: acc.id,
     before: { status: previous_status },
     after: { status: 'deactivated' },
-    detail: { self: true, signout_global: signout_global.ok },
+    detail: { self: true, signout_global: signout_global.ok, billing_cancel },
   });
 
   return res.status(200).json({
@@ -150,5 +179,6 @@ export default async function handler(req, res) {
     updated_at: upd.updated_at,
     deactivated_at: upd.meta?.deactivated_at || null,
     signout_global,
+    billing_cancel,
   });
 }

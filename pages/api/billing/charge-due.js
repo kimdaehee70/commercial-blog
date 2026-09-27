@@ -301,11 +301,46 @@ export default async function handler(req, res) {
     console.error('[charge-due] retry query failed', retryErr);
   }
 
-  const targets = [
+  const candidates = [
     ...(dueSubs   || []).map(s => ({ sub: s, kind: 'recurring' })),
     ...(retrySubs || []).map(s => ({ sub: s, kind: 'retry' })),
   ];
-  stats.scanned = targets.length;
+  stats.scanned = candidates.length;
+
+  // ─────────────────────────────────────────────
+  // [DEACTIVATE-BILLING-SAFETY-01] 2차 방어 — 계정 상태 Gate (최종 안전망)
+  //   정기청구(recurring)·재시도(retry) 공통. accounts.status === 'active' 인 계정만 결제 호출 허용.
+  //   suspended / deactivated / deleted / 계정 행 없음 → 청구 금지(skipped).
+  //   ★ 탈퇴 API의 구독 해지(1차 방어)와 독립이다. 과거 탈퇴자·데이터 이상·다른 경로의
+  //     status 변경이 있어도 여기서 막힌다.
+  //   ★ fail-closed: 계정 조회가 실패하면 이번 실행은 아무것도 청구하지 않는다.
+  //   ★ claim 이전에 거른다 → next_billing_at 은 전진하지 않는다. 해당 구독은 아래 만료 처리
+  //     (SUBSCRIPTION-EXPIRY-ENFORCE-01)가 current_period_end 경과 시 canceled 로 정리한다.
+  // ─────────────────────────────────────────────
+  const accIds = [...new Set(candidates.map(t => t.sub.account_id).filter(v => v != null))];
+  const activeAcc = new Set();
+  if (accIds.length) {
+    const { data: accRows, error: accErr } = await supabase
+      .from('accounts')
+      .select('id, status')
+      .in('id', accIds);
+    if (accErr) {
+      console.error('[charge-due] account status gate query failed — charge aborted', accErr);
+      stats.skipped = candidates.length;
+      stats.errors.push({ reason: 'account status gate failed: ' + (accErr.message || 'query error') });
+      return res.status(500).json({ ok: false, error: 'account status gate failed', ...stats });
+    }
+    for (const a of (accRows || [])) {
+      if (a && a.status === 'active') activeAcc.add(a.id);
+    }
+  }
+
+  const targets = [];
+  for (const t of candidates) {
+    if (activeAcc.has(t.sub.account_id)) { targets.push(t); continue; }
+    stats.skipped++;
+    stats.errors.push({ sub_id: t.sub.id, account_id: t.sub.account_id, reason: 'account not active', kind: t.kind });
+  }
 
   if (!isConfigured()) {
     console.log('[charge-due] portone not configured — noop', stats);
