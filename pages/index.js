@@ -4893,6 +4893,9 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
   // [v86] 발행코치(coach) = 매일 오는 발행 전용 페이지. 좌측 코치는 "글 쓸 준비 점검" 역할.
   //   필수 재료(업체명·주소·업종·생활권·발행비율)가 정상인지 빠르게 확인 → 정상이면 "준비 완료",
   //   누락이면 정지 + 해당 탭으로 안내(그 방 코치가 자체 안내). 우측은 달력만.
+  // [SETUP-CTA-UNIFY-01] 설정 CTA 문구 — 5 FACT(getSetupStatus) 기준. 잠금 카드와 동일 규칙.
+  const _setupSt = getSetupStatus((ctx && ctx.hubStore) || {});
+  const _setupCtaLabel = (_setupSt.missing.length === 1 && _setupSt.missing[0].key === "sub_region") ? "생활권 설정하기" : "마이페이지에서 설정하기";
   const coachCheck = (() => {
     const s = (ctx && ctx.hubStore) || {};
     const missing = [];
@@ -4900,6 +4903,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
     if (!(s.address || "").trim())    missing.push({ label: "주소", tab: "store" });
     if (!s.industry)                  missing.push({ label: "업종", tab: "store" });
     if (!(s.sub_region || "").trim()) missing.push({ label: "생활권", tab: "store" });
+    if (!(s.phone || "").trim())      missing.push({ label: "전화번호", tab: "store" }); // [SETUP-CTA-UNIFY-01] 5 FACT 정합
     const hasW = !!(a && a.hasWeights);
     if (!hasW)                        missing.push({ label: "발행비율", tab: "stats" });
     // [v87] 둘째 박스(coachStore)에서만 쓰는 값. 첫 박스 요약·softMiss 제거.
@@ -5120,7 +5124,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
         ? "🔍 확인 중…"
         : `⚠️ ${coachCheck.missLabels}이(가) 비어 있습니다.\n글에 녹여야 할 재료가 빠졌습니다 — 먼저 채워 주세요.`],
       action: coachCheck.firstTab
-        ? { tab: coachCheck.firstTab, label: coachCheck.firstTab === "stats" ? "📊 발행비율 설정하러 가기" : "🏢 업체정보 입력하러 가기" }
+        ? { tab: coachCheck.firstTab, label: coachCheck.firstTab === "stats" ? "📊 발행비율 설정하러 가기" : _setupCtaLabel }
         : undefined,
     },
     coachReady: {
@@ -5693,7 +5697,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
   //   매 단계 끝에 다음 행동 버튼을 달아 흐름이 끊기지 않게 한다(저장→계획→작성→URL→관측→루프).
   const NAV = {
     store:   { tone: "warn", emoji: "🏥", lines: ["먼저 업체정보를 입력하세요.", "생활권(동·역 이름)이 있어야 검색 노출이 시작됩니다."],
-               action: { tab: "store", label: "🏥 업체정보 입력하러 가기" } },
+               action: { tab: "store", label: _setupCtaLabel } },
     save:    { tone: "warn", emoji: "📊", lines: ["발행비율을 저장하세요.", "주력 1~2개를 🔥로 선택하고 ‘저장하고 달력 반영’을 누르면 추천 계획이 만들어집니다."],
                action: { tab: "stats", label: "📊 발행비율 설정하러 가기" } },
     plan:    { tone: "tip", emoji: "📅", lines: ["설정이 저장됐습니다.", "AI 발행코치에서 이번 달 추천 일정을 확인하세요."],
@@ -5711,7 +5715,7 @@ function CoachPanel({ tabId, ctx, onClose, onTab }) {
     // [v68] 업종 미확정이면 store 카드를 '업체 등록부터'로 바꿔 안내(생활권 이전 단계).
     if (a.navStep === "store" && !a.hasIndustry) {
       nav = { tone: "warn", emoji: "🏢", lines: ["먼저 업체를 등록하세요.", "업체명과 " + _LX.industryWord + "(업종)를 등록하면 업종에 맞춰 코치·추천이 작동합니다."],
-              action: { tab: "store", label: "🏢 업체 등록하러 가기" } };
+              action: { tab: "store", label: _setupCtaLabel } };
     }
     // [v48] stats(발행비율) 탭의 save 단계는 아래 "행동 코치"가 단계형으로 전담.
     //   여기서 네비 카드를 또 띄우면 카드가 겹쳐 "한 번에 한 행동"이 깨진다 → stats에서는 생략.
@@ -7677,7 +7681,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
             <button onClick={goStoreTab}
               style={{ padding: "11px 22px", borderRadius: 10, border: "none",
                 background: "#7B1FA2", color: "#fff", fontSize: 13.5, fontWeight: 800,
-                cursor: "pointer", fontFamily: "inherit" }}>마이페이지에서 설정하기</button>
+                cursor: "pointer", fontFamily: "inherit" }}>{(_setup.missing.length === 1 && _setup.missing[0].key === "sub_region") ? "생활권 설정하기" : "마이페이지에서 설정하기"}</button>
           </div>
         );
       }
@@ -8720,7 +8724,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
       const csParking   = (cs.parking_info || "").trim();
       const csPlace     = (cs.naver_place_url || "").trim();
       // [v77] 생활권 표시는 sub_region만 사용 — region fallback 제거(옛 데모값 노출 차단).
-      const goStore = () => { setTab("store"); onTabChange && onTabChange("store"); };
+      const goStore = () => { if (onGoSetup) onGoSetup(); else { setTab("store"); onTabChange && onTabChange("store"); } }; // [SETUP-CTA-UNIFY-01] goSetupCta 경유
 
       // 한 행 렌더 — 값 있으면 진하게, 없으면 회색 "미등록" + (nudge 있으면) 약한 유도문.
       const infoRow = (label, value, nudge) => (
@@ -10722,6 +10726,16 @@ export default function Home() {
     if (!home) return;
     setMenuGroup("mypage"); setNavOpen(true);
     hubItemClick(setupStatus.firstSection ? { ...home, anchor: [setupStatus.firstSection] } : home);
+  };
+  // [SETUP-CTA-UNIFY-01] 작업 중 설정 CTA 단일 목적지 — 5 FACT(getSetupStatus) 기준.
+  //   정확히 생활권 하나만 누락 → POSTING 생활권 방 / 그 외 → 기존 goSetup(마이페이지 누락 섹션). 로그인 자동 이동은 goSetup 유지.
+  const goSetupCta = () => {
+    if (setupStatus.missing.length === 1 && setupStatus.missing[0].key === "sub_region") {
+      const g = HUB_GROUPS.find(x => x.id === "posting");
+      const it = g && g.items.find(x => x.id === "po-area");
+      if (it) { setMenuGroup("posting"); setNavOpen(true); hubItemClick(it); return; }
+    }
+    goSetup();
   };
   // 로그인 후 1회 유도 — 인증 확인 + store 로드 + quota(OWNER 판정) 로드 완료 후에만 판정(초기 로딩 오판 차단).
   //   결제 복귀·딥링크(?tab / ?view / ?login) 진입은 가로채지 않는다. 완료 사용자는 무영향.
@@ -13212,7 +13226,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
   const renderNavPanel = (viewOverride, accountPart) => (
     <NavPanel
       accountPart={accountPart}
-      onGoSetup={goSetup}
+      onGoSetup={goSetupCta}
       paidNotice={paidNotice}
       onQuotaRefresh={refreshQuotaInfo}
       view={viewOverride || navView}
@@ -14357,6 +14371,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                              setHowtoItem("naver"); setNavView("howto-publish");
                            } }}
                     onTab={(id) => {
+                      if (id === "store") { goSetupCta(); return; } // [SETUP-CTA-UNIFY-01] coachNeed/NAV 업체정보 CTA → 5 FACT 통일 목적지(옛 store 탭 진입 제거)
                       // 좌측 코치 안내 + 우측 운영허브 화면을 함께 해당 탭으로 전환.
                       setHelpTab(id);
                       if (HUB_IDS.includes(id)) { setResultTab("nav"); setNavView(id); }
@@ -14684,7 +14699,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                   storeInfo={hubStore}
                   isGenerating={stage === "generating"}
                   onPickChange={(t) => { if (calendarPrefill) setCalendarPrefill(prev => prev ? { ...prev, treatment: t } : prev); }}
-                  onEditStore={() => { setShowTreatmentSelect(false); setNavView("store"); setResultTab("nav"); }}
+                  onEditStore={() => { setShowTreatmentSelect(false); goSetup(); }} /* [SETUP-CTA-UNIFY-01] 옛 store 탭 진입 제거 → 마이페이지 */
                   onSelect={(t) => {
                     // restaurant 등 onSelect 직접 흐름
                     setShowTreatmentSelect(false);
