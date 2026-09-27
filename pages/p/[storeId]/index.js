@@ -84,6 +84,26 @@ const MAX_INTENTS = 20;
 // [PSEO-HUB-RECENT-POSTS-01] 허브 최근 글 최대 개수. Intent 페이지 MAX_LIST 와 같은 값.
 const MAX_RECENT = 12;
 
+// ── [PSEO-LG-FOUNDATION-V1-01] 업체 검색 FACT ─────────────────────
+//   원천: store_profiles.meta.search_fact (업체 입력 · AI 생성 없음).
+//   ★ PUBLIC_FIELDS 에 meta 추가 금지 — 별도 select 후 search_fact 만 추출.
+//     meta 의 다른 키(note 등)는 props 로 나가지 않는다.
+//   ★ 서비스 지역·상담 전 확인은 visit_info SoT 에서 읽는다(복제 없음).
+//   ★ 입력 없는 블록은 렌더하지 않는다. title/description·Intent 무접촉.
+//   (pages/api/me/store.js pickSearchFact 와 같은 규칙 — 파일 3개 제한으로 로컬 정의)
+function pickSearchFact(meta) {
+  const sf = meta && typeof meta === "object" ? meta.search_fact : null;
+  if (!sf || typeof sf !== "object") return { services: [], process: [], differentiators: [] };
+  const strs = (v) =>
+    Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim()) : [];
+  const services = Array.isArray(sf.services)
+    ? sf.services
+        .filter((x) => x && typeof x === "object" && typeof x.name === "string" && x.name.trim())
+        .map((x) => ({ name: x.name.trim(), note: typeof x.note === "string" ? x.note.trim() : "" }))
+    : [];
+  return { services, process: strs(sf.process), differentiators: strs(sf.differentiators) };
+}
+
 // ── service role 클라이언트 (서버 전용) ────────────────────────
 function serverClient() {
   const url =
@@ -233,6 +253,25 @@ export async function getServerSideProps(ctx) {
   //   VISIT_KEYS 화이트리스트는 손대지 않는다(phone 키는 계속 미포함).
   const resolved = resolvePhone(data.phone, vi.phone);
 
+  // ── [PSEO-LG-FOUNDATION-V1-01] 검색 FACT ─────────────────────
+  //   자격 Gate 통과 후에만 조회. 오류는 삼키지 않는다.
+  const { data: metaRow, error: mErr } = await sb
+    .from("store_profiles")
+    .select("meta")
+    .eq("id", storeId)
+    .maybeSingle();
+  if (mErr) {
+    throw new Error(`PSEO_HUB_FACT_FAILED code=${mErr.code} msg=${mErr.message}`);
+  }
+  const sf = pickSearchFact(metaRow && metaRow.meta);
+  const fact = {
+    services: sf.services,
+    serviceArea: String(vi.serviceArea || "").trim(),
+    process: sf.process,
+    differentiators: sf.differentiators,
+    preVisit: String(vi.preVisit || "").trim(),
+  };
+
   const store = {
     id: data.id,
     storeName: data.store_name || "",
@@ -255,10 +294,10 @@ export async function getServerSideProps(ctx) {
   else if (/youtube\.|youtu\.be/i.test(ref)) source = "shorts";
   else if (ref) source = "referral";
 
-  return { props: { store, intents, recent, source } };
+  return { props: { store, fact, intents, recent, source } };
 }
 
-export default function StorePublicPage({ store, intents = [], recent = [], source }) {
+export default function StorePublicPage({ store, fact, intents = [], recent = [], source }) {
   const sentRef = useRef(false);
 
   // page_view 1회. StrictMode 이중 실행 방어.
@@ -286,6 +325,7 @@ export default function StorePublicPage({ store, intents = [], recent = [], sour
     : "";
 
   const areaLine = [store.region, store.subRegion].filter(Boolean).join(" · ");
+  const f = fact || { services: [], serviceArea: "", process: [], differentiators: [], preVisit: "" };
 
   return (
     <>
@@ -361,6 +401,60 @@ export default function StorePublicPage({ store, intents = [], recent = [], sour
                 <dd>{value}</dd>
               </div>
             ))}
+          </section>
+        ) : null}
+
+        {/* [PSEO-LG-FOUNDATION-V1-01] 업체 검색 FACT — 입력된 블록만. 문장 생성 없음. */}
+        {f.services.length > 0 ? (
+          <section className="intents">
+            <h2 className="h2">제공 서비스</h2>
+            <ul className="facts">
+              {f.services.map((s, i) => (
+                <li className="fact" key={i}>
+                  <span className="factName">{s.name}</span>
+                  {s.note ? <span className="factNote">{s.note}</span> : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {f.serviceArea ? (
+          <section className="intents">
+            <h2 className="h2">서비스 지역</h2>
+            <p className="factText">{f.serviceArea}</p>
+          </section>
+        ) : null}
+
+        {f.process.length > 0 ? (
+          <section className="intents">
+            <h2 className="h2">진행 순서</h2>
+            <ol className="steps">
+              {f.process.map((p, i) => (
+                <li className="step" key={i}>
+                  <span className="stepNo">{i + 1}</span>
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
+
+        {f.differentiators.length > 0 ? (
+          <section className="intents">
+            <h2 className="h2">이렇게 일합니다</h2>
+            <ul className="facts">
+              {f.differentiators.map((d, i) => (
+                <li className="fact" key={i}>{d}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {f.preVisit ? (
+          <section className="intents">
+            <h2 className="h2">상담 전 확인사항</h2>
+            <p className="factText">{f.preVisit}</p>
           </section>
         ) : null}
 
@@ -572,6 +666,57 @@ export default function StorePublicPage({ store, intents = [], recent = [], sour
           font-size: 0.8rem;
           color: #a49a8f;
           white-space: nowrap;
+        }
+        .facts,
+        .steps {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          border-top: 1px solid #e8e2da;
+        }
+        .fact,
+        .step {
+          padding: 0.85rem 0;
+          border-bottom: 1px solid #f0ebe4;
+          font-size: 0.95rem;
+          line-height: 1.55;
+        }
+        .fact {
+          display: flex;
+          flex-direction: column;
+          gap: 0.2rem;
+        }
+        .factName {
+          font-weight: 600;
+        }
+        .factNote {
+          font-size: 0.875rem;
+          color: #5c5550;
+        }
+        .step {
+          display: flex;
+          gap: 0.75rem;
+        }
+        .stepNo {
+          flex: 0 0 1.5rem;
+          height: 1.5rem;
+          border-radius: 50%;
+          background: #eef4ef;
+          color: #1c6b3f;
+          font-size: 0.8rem;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .factText {
+          margin: 0;
+          padding: 0.85rem 0;
+          border-top: 1px solid #e8e2da;
+          border-bottom: 1px solid #f0ebe4;
+          font-size: 0.95rem;
+          line-height: 1.6;
+          white-space: pre-line;
         }
         .foot {
           margin-top: 2.5rem;

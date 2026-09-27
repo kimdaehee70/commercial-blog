@@ -71,6 +71,92 @@ const STORE_SELECT =
   "map_guide, transit, building_desc, title_suffix_on, visit_info, specialty, " +
   "departments";
 
+// ── [PSEO-LG-FOUNDATION-V1-01] 업체 검색 FACT — store_profiles.meta.search_fact ──
+//   공통 업체 FACT 자산(pSEO 전용 아님). 저장처가 없던 3종만 담는다.
+//   serviceArea·preVisit 는 visit_info SoT 참조(복제 금지). faq 는 HOLD.
+//   ★ meta 는 응답에 절대 싣지 않는다 — search_fact 만 추출(shapeStore).
+//   ★ meta 전체 교체 금지 — 기존 키(note·baseline_type 등) 보존 merge.
+//   ★ 일반 화이트리스트(EDITABLE_COLS)에 meta 미개방 — 아래 전용 분기만.
+//   STORE_SELECT 는 무변경. meta 는 서버 내부 조회에만 덧붙인다.
+const STORE_SELECT_META = STORE_SELECT + ", meta";
+const SF_LIMITS = {
+  services: { max: 8, name: 40, note: 120 },
+  process: { max: 6, len: 80 },
+  differentiators: { max: 3, len: 120 },
+};
+
+// 입력 검증·정규화. 빈 항목 제거. 형식·개수·길이 위반 → { ok:false, error }.
+function sanitizeSearchFact(sf) {
+  if (sf == null || typeof sf !== "object" || Array.isArray(sf)) {
+    return { ok: false, error: "SEARCH_FACT_INVALID" };
+  }
+  const str = (v) => (v == null ? "" : String(v).replace(/\s+/g, " ").trim());
+  const arr = (v) => (v == null ? [] : Array.isArray(v) ? v : null);
+
+  const rawSvc = arr(sf.services);
+  const rawProc = arr(sf.process);
+  const rawDiff = arr(sf.differentiators);
+  if (!rawSvc || !rawProc || !rawDiff) return { ok: false, error: "SEARCH_FACT_INVALID" };
+
+  const services = [];
+  for (const it of rawSvc) {
+    const o = typeof it === "string" ? { name: it } : (it && typeof it === "object" ? it : null);
+    if (!o) return { ok: false, error: "SEARCH_FACT_INVALID" };
+    const name = str(o.name);
+    const note = str(o.note);
+    if (!name) continue; // 이름 없는 항목 = 빈 항목
+    if (name.length > SF_LIMITS.services.name || note.length > SF_LIMITS.services.note) {
+      return { ok: false, error: "SEARCH_FACT_TOO_LONG" };
+    }
+    services.push(note ? { name, note } : { name });
+  }
+  const lines = (list, lim) => {
+    const out = [];
+    for (const it of list) {
+      if (it != null && typeof it === "object") return null;
+      const s = str(it);
+      if (!s) continue;
+      if (s.length > lim.len) return "TOO_LONG";
+      out.push(s);
+    }
+    return out;
+  };
+  const process = lines(rawProc, SF_LIMITS.process);
+  const differentiators = lines(rawDiff, SF_LIMITS.differentiators);
+  if (process === null || differentiators === null) return { ok: false, error: "SEARCH_FACT_INVALID" };
+  if (process === "TOO_LONG" || differentiators === "TOO_LONG") return { ok: false, error: "SEARCH_FACT_TOO_LONG" };
+
+  if (services.length > SF_LIMITS.services.max ||
+      process.length > SF_LIMITS.process.max ||
+      differentiators.length > SF_LIMITS.differentiators.max) {
+    return { ok: false, error: "SEARCH_FACT_TOO_MANY" };
+  }
+  return { ok: true, value: { services, process, differentiators, saved_at: new Date().toISOString() } };
+}
+
+// 응답용 추출 — meta 에서 search_fact 만. 없으면 null.
+function pickSearchFact(meta) {
+  const sf = meta && typeof meta === "object" ? meta.search_fact : null;
+  if (!sf || typeof sf !== "object") return null;
+  const strs = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()) : []);
+  return {
+    services: Array.isArray(sf.services)
+      ? sf.services.filter((x) => x && typeof x === "object" && typeof x.name === "string" && x.name.trim())
+          .map((x) => (x.note ? { name: x.name, note: String(x.note) } : { name: x.name }))
+      : [],
+    process: strs(sf.process),
+    differentiators: strs(sf.differentiators),
+    saved_at: typeof sf.saved_at === "string" ? sf.saved_at : null,
+  };
+}
+
+// STORE_SELECT_META 로 읽은 행 → meta 제거 + search_fact 부착.
+function shapeStore(row) {
+  if (!row) return row;
+  const { meta, ...rest } = row;
+  return { ...rest, search_fact: pickSearchFact(meta) };
+}
+
 export default async function handler(req, res) {
   if (!["GET", "POST", "PATCH"].includes(req.method)) {
     return res.status(405).json({ ok: false, error: "METHOD_NOT_ALLOWED" });
@@ -185,13 +271,21 @@ export default async function handler(req, res) {
       // 배열 아니면 무시(기존값 보존)
     }
 
-    if (Object.keys(patch).length === 0) {
+    // [PSEO-LG-FOUNDATION-V1-01] search_fact 전용 분기 — 검증만 여기서. merge 는 기존 meta 조회 후.
+    let searchFact = null;
+    if ("search_fact" in body) {
+      const sf = sanitizeSearchFact(body.search_fact);
+      if (!sf.ok) return res.status(400).json({ ok: false, error: sf.error });
+      searchFact = sf.value;
+    }
+
+    if (Object.keys(patch).length === 0 && !searchFact) {
       return res.status(400).json({ ok: false, error: "NO_FIELDS" });
     }
 
     const { data: store, error: stErr } = await supabaseAdmin
       .from("store_profiles")
-      .select("id, industry")
+      .select("id, industry, meta")
       .eq("account_id", account.id)
       .maybeSingle();
 
@@ -225,24 +319,32 @@ export default async function handler(req, res) {
       }
     }
 
+    // [PSEO-LG-FOUNDATION-V1-01] meta 보존 merge — search_fact 키만 교체. 다른 키 삭제 금지.
+    //   jsonb 가 객체가 아니면(null 등) 빈 객체에서 시작.
+    if (searchFact) {
+      const baseMeta = store.meta && typeof store.meta === "object" && !Array.isArray(store.meta) ? store.meta : {};
+      patch.meta = { ...baseMeta, search_fact: searchFact };
+    }
+
     // 업종만 보냈다가 거부된 경우 — 갱신할 필드 없음. 현재값 그대로 반환(DB 무변경).
     if (Object.keys(patch).length === 0) {
       const { data: cur, error: curErr } = await supabaseAdmin
         .from("store_profiles")
-        .select(STORE_SELECT)
+        .select(STORE_SELECT_META)
         .eq("id", store.id)
         .single();
       if (curErr || !cur) {
         return res.status(500).json({ ok: false, error: "STORE_QUERY_FAILED", detail: curErr?.message });
       }
+      const curOut = shapeStore(cur);
       return res.status(200).json({
         ok: true,
         hasStore: true,
-        storeId: cur.id,
-        industry: cur.industry,
-        storeName: cur.store_name,
-        departments: cur.departments || [],
-        store: cur,
+        storeId: curOut.id,
+        industry: curOut.industry,
+        storeName: curOut.store_name,
+        departments: curOut.departments || [],
+        store: curOut,
         industry_denied: true,
       });
     }
@@ -260,30 +362,31 @@ export default async function handler(req, res) {
       .from("store_profiles")
       .update(patch)
       .eq("id", store.id)
-      .select(STORE_SELECT)
+      .select(STORE_SELECT_META)
       .single();
 
     if (updErr || !updated) {
       return res.status(500).json({ ok: false, error: "UPDATE_FAILED", detail: updErr?.message });
     }
 
+    const updOut = shapeStore(updated);
     return res.status(200).json({
       ok: true,
       hasStore: true,
-      storeId: updated.id,
-      industry: updated.industry,
-      storeName: updated.store_name,
-      departments: updated.departments || [],
-      store: updated,
+      storeId: updOut.id,
+      industry: updOut.industry,
+      storeName: updOut.store_name,
+      departments: updOut.departments || [],
+      store: updOut,
       ...(industryDenied ? { industry_denied: true } : {}),
     });
   }
 
   // ── GET: store_profiles 존재 여부 + 전체 업체정보 ──
   try {
-    const { data: store, error: stErr } = await supabaseAdmin
+    const { data: row, error: stErr } = await supabaseAdmin
       .from("store_profiles")
-      .select(STORE_SELECT)
+      .select(STORE_SELECT_META)
       .eq("account_id", account.id)
       .maybeSingle();
 
@@ -291,12 +394,13 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: "STORE_QUERY_FAILED", detail: stErr.message });
     }
 
-    if (!store) {
+    if (!row) {
       return res.status(200).json({
         ok: true, hasStore: false, storeId: null, industry: null, storeName: null, store: null,
       });
     }
 
+    const store = shapeStore(row); // [PSEO-LG-FOUNDATION-V1-01] meta 제거 · search_fact 만
     return res.status(200).json({
       ok: true,
       hasStore: true,
