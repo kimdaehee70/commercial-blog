@@ -8743,7 +8743,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
 
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {soldOutBanner}
+          {/* [POSTING-CAL-FIT-01] 소진 배너 제거 — 좌측 AI 코치 메시지와 중복. 생성 차단은 코치·생성 모달이 유지. */}
           {/* [세션59] 월 이동 + 범례 1줄 통합 — 달력 세로 여백 확보(하루 5건 셀 수용). */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
             flexWrap: "wrap", gap: 8 }}>
@@ -8826,7 +8826,7 @@ function NavPanel({ view, isLoggedIn, onLogin, onWriter, quotaInfo, storeName, a
               return (
                 <div key={d}
                   style={{
-                    minHeight: 132, borderRadius: 9, padding: "4px 6px",
+                    minHeight: 108, borderRadius: 9, padding: "4px 6px",
                     border: isToday ? "2.5px solid #9C27B0" : "1px solid #ece4f5",
                     boxShadow: isToday ? "0 0 0 3px rgba(156,39,176,.12)" : "none",
                     background: isToday
