@@ -10,6 +10,8 @@ import { supabaseAdmin } from "../../../lib/supabaseAdmin";
 import { requireAccount } from "../../../lib/guards";
 // [STORE-INDUSTRY-AUTH-GATE-01] 확정 업종 사후 변경 = OWNER 전용. 판정식은 generate.js L325~343 패턴 재사용.
 import { OWNER_UID } from "../../../lib/constants";
+// [PSEO-INTERNAL-WORK-MODE-FIX-01] search_fact 입력 잠금 — 테스트 allowlist 정본.
+import { canManagePseoFact } from "../../../lib/pseoTestStores";
 // [v-svcgroup] 서비스 분야 다중선택 — SoT는 industry-tree(단일 소스). 여기선 검증·정규화만 소비.
 //   그룹: 병원=진료과 / 공사=시공분야. 그룹 추가는 industry-tree SERVICE_GROUPS 에만 하면 서버 무수정.
 import { hasServiceFields, normalizeDepartments } from "../../../lib/industry-tree";
@@ -272,8 +274,24 @@ export default async function handler(req, res) {
     }
 
     // [PSEO-LG-FOUNDATION-V1-01] search_fact 전용 분기 — 검증만 여기서. merge 는 기존 meta 조회 후.
+    // [PSEO-INTERNAL-WORK-MODE-FIX-01] 내부공사 기간 잠금 — OWNER 또는 테스트 업체 외 403(다른 필드 저장도 하지 않음).
     let searchFact = null;
     if ("search_fact" in body) {
+      {
+        let _own = !!(account.auth_user_id && account.auth_user_id === OWNER_UID);
+        if (!_own) {
+          const { data: _r } = await supabaseAdmin.from("accounts").select("role").eq("id", account.id).maybeSingle();
+          _own = _r?.role === "owner";
+        }
+        let _sid = null;
+        if (!_own) {
+          const { data: _st } = await supabaseAdmin.from("store_profiles").select("id").eq("account_id", account.id).maybeSingle();
+          _sid = _st?.id ?? null;
+        }
+        if (!canManagePseoFact(_sid, _own)) {
+          return res.status(403).json({ ok: false, error: "PSEO_FACT_LOCKED" });
+        }
+      }
       const sf = sanitizeSearchFact(body.search_fact);
       if (!sf.ok) return res.status(400).json({ ok: false, error: sf.error });
       searchFact = sf.value;
