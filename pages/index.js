@@ -10834,6 +10834,9 @@ export default function Home() {
   // [MYPAGE-RIGHT-IMG-01] 우측 안내 이미지 대상 = 마이페이지 흐름 + 마이페이지 방 하위 안내(업종문의·운영대행·네이버 가이드).
   const mpRightImg = mpLeft || !!(authUserId && resultTab === "nav" && hubCurGroup && hubCurGroup.id === "mypage"
     && ["upjong", "daehang", "naverguide"].includes(navView));
+  // [P-PAGE-ONE-SCREEN-01] P페이지 › 기본 설정 = 좌측 편집 한 화면(StoreInfoForm section="pseo"), 우측 = PseoRoom 미리보기 자리.
+  //   입장 판정은 기존 서버 pseo_access.can_enter 그대로(미충족 시 좌측 기존 코치 · 우측 🔒).
+  const pseoLeft = !!(authUserId && resultTab === "nav" && navView === "pseo-basic" && pseoAccess && pseoAccess.can_enter);
   // 마이페이지 흐름 중 업종 선택 = 우측에 업종 목록(IndustryTree). 업종 미확정 계정은 기본 표시.
   const mpIndustryRight = mpLeft && navView !== "history" && (mpIndustryOpen || !(hubStore && hubStore.industry));
   // 목차 활성: 키 일치 + 같은 키를 공유하는 항목이 여럿이면 마지막 선택 항목(없으면 첫 항목).
@@ -13993,6 +13996,26 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                 <div style={{ padding: "0 22px", display: "flex", flexDirection: "column", gap: 12 }}>
                   <div style={{ fontSize: 16, fontWeight: 900, color: "#4A148C" }}>📈 이용현황</div>
                   {renderNavPanel("account", "history")}
+                </div>
+              ) : pseoLeft ? (
+                /* [P-PAGE-ONE-SCREEN-01] P페이지 기본 설정 — 마이페이지와 동일 SoT·동일 저장(saveStore). 불러오기 버튼 없음(hubStore 자동 채움). */
+                <div style={{ padding: "0 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: "#4A148C" }}>🌐 P페이지 기본 설정</div>
+                  <StoreInfoForm
+                    section="pseo"
+                    onGoSetup={goMypageVisit}
+                    authUserId={authUserId}
+                    hubStore={hubStore}
+                    setHubStore={setHubStore}
+                    saveStore={saveStore}
+                    createStore={createStore}
+                    storeSaving={storeSaving}
+                    industryLabel={(() => { const si = hubStore && hubStore.industry; return (si && INDUSTRY_CONFIG[si]?.label) || (si && getCatalogItem(si)?.name) || "—"; })()}
+                    hubLoading={hubLoading}
+                    isOwner={!!(quotaInfo && (quotaInfo.bypass || quotaInfo.reason === "OWNER_BYPASS"))}
+                    INDUSTRY_CONFIG={INDUSTRY_CONFIG}
+                    lex={lex}
+                  />
                 </div>
               ) : mpLeft ? (
                 /* [USER-MENU-IA-IMPLEMENT-01] 마이페이지 = 좌측 한 화면 흐름. 기존 부품 재사용·순서 배치만.
