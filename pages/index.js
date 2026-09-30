@@ -104,6 +104,7 @@ import {
 import {
   IndustryPicker, IndustrySideMenu, industryStatusBadge, IndustryTree, IndustryDetail,
 } from "../lib/IndustrySelector"; // ← [IndustrySelector Spine] 업종 선택 UI 분리 모듈. index는 배선만.
+import PseoRoom from "../lib/PseoRoom"; // [PSEO-MINIHOME-UI-01] P페이지 방 1차(껍데기+상태표현)
 import { StoreInfoForm, makeStoreApi } from "../lib/Store"; // ← [Store Spine 2026-07-06] 업체정보 폼 + 저장/API 분리. INDUSTRY_CONFIG·lex 주입 소비.
 import { getSetupStatus } from "../lib/setupStatus"; // [ONBOARDING-GATE-01] 필수 5 FACT 단일 판정
 import { makeObservationApi } from "../lib/Observation"; // ← [Observation Spine 2026-07-06] survival/rank 로드 + saveRank 분리. setter 주입 소비.
@@ -6458,7 +6459,12 @@ const HUB_GROUPS = [
     { id: "po-div1",  divider: true },
     { id: "po-edit",  rail: "editguide", ic: "✏️", label: "글 수정가이드" },
     { id: "po-bt",    rail: "blogtitle", ic: "🎨", label: "블로그 타이틀 꾸미기" } ] },
-  { id: "pseo",    ic: "🌐", label: "pSEO", disabled: true, items: [] },
+  // [PSEO-MINIHOME-UI-01] P페이지 방 1차. gate:"pseo" = 서버 pseo_access.can_enter 미충족 시 🔒 표시(클릭은 허용).
+  { id: "pseo",    ic: "🌐", label: "P페이지", home: "ps-intro", items: [
+    { id: "ps-intro", rail: "pseo-intro", ic: "🌐", label: "P페이지란?" },
+    { id: "ps-basic", rail: "pseo-basic", ic: "⚙️", label: "기본 설정", gate: "pseo" },
+    { id: "ps-home",  rail: "pseo-home",  ic: "🏠", label: "내 미니홈피", gate: "pseo" },
+    { id: "ps-asset", rail: "pseo-asset", ic: "🗂", label: "검색자산 관리", gate: "pseo" } ] },
   { id: "plans",   ic: "💳", label: "요금제·결제", home: "pl-plans", menu: false, items: [
     { id: "pl-plans", tab: "plans", label: "요금제·결제" } ] },
   { id: "support", ic: "💬", label: "고객지원", home: "su-hist", items: [
@@ -9615,6 +9621,7 @@ export default function Home() {
   // [전문점 2단 트리] hubStore를 restaurant 메뉴 필터보다 먼저 선언(TDZ 방지). 원위치(아래)에서 이동.
   //   [v26] 업체정보 — store_profiles. AI 생성용 사업장 데이터. GET/PATCH(me/store).
   const [hubStore,    setHubStore]    = useState(null);   // null=미로딩 | {industry,store_name,address,specialty,...}
+  const [pseoAccess,  setPseoAccess]  = useState(null);   // [PSEO-MINIHOME-UI-01] 서버 판정 결과 {state,can_enter,live,published_count} | null
   // [OWNER 검수 게이트] restaurant 멀티카테고리 검수용 임시 우회.
   //   일반 사용자: 기존대로 RESTAURANT_LIVE_CAT(분식)만 노출 — 운영 무영향.
   //   OWNER: 전 카테고리(한식·분식·…) 노출 → FREEZE 검수 가능. PATCH-08 OWNER 완화 철학 동일.
@@ -10078,6 +10085,7 @@ export default function Home() {
             industry: stj.industry, store_name: stj.storeName || stj.store_name,
           };
           setHubStore(s || {});
+          setPseoAccess(stj.pseo_access || null);
         }
       }
       if (pRes.status === "fulfilled" && pRes.value.ok) {
@@ -10113,6 +10121,7 @@ export default function Home() {
       if (!j?.ok) return;
       const next = j.store || { id: j.storeId, industry: j.industry, store_name: j.storeName };
       setHubStore(next || {});
+      setPseoAccess(j.pseo_access || null);
     } catch (e) {
       console.warn("[store] 재확인 실패:", e?.message);
     } finally {
@@ -10188,7 +10197,7 @@ export default function Home() {
         setQuotaInfo(null); setStoreName(null);
         setMenuWeights({}); setSavedWeights(null); setWeightsDirty(false);
         setActivePlan(null); setExtraMenus([]); setMyMenusMap({});
-        setHubStore(null); setHubPosts(null);
+        setHubStore(null); setHubPosts(null); setPseoAccess(null);
         try {
           window.localStorage.removeItem("aipost_plan_state_v1");
           window.localStorage.removeItem("aipost_mymenus_v1");
@@ -10741,6 +10750,17 @@ export default function Home() {
   };
   // [SETUP-CTA-UNIFY-01] 작업 중 설정 CTA 단일 목적지 — 5 FACT(getSetupStatus) 기준.
   //   정확히 생활권 하나만 누락 → POSTING 생활권 방 / 그 외 → 기존 goSetup(마이페이지 누락 섹션). 로그인 자동 이동은 goSetup 유지.
+  // [PSEO-MINIHOME-UI-01] P방 → 마이페이지 업체정보 / POSTING 글쓰기 이동. goSetup 과 동일 경로(hubItemClick) 재사용.
+  const goMypageVisit = () => {
+    const g = HUB_GROUPS.find(x => x.id === "mypage");
+    const it = g && g.items.find(x => x.id === "mp-visit");
+    if (it) { setMenuGroup("mypage"); setNavOpen(true); hubItemClick(it); }
+  };
+  const goPosting = () => {
+    const g = HUB_GROUPS.find(x => x.id === "posting");
+    const it = g && g.items.find(x => x.id === g.home);
+    if (it) { setMenuGroup("posting"); setNavOpen(true); hubItemClick(it); }
+  };
   const goSetupCta = () => {
     if (setupStatus.missing.length === 1 && setupStatus.missing[0].key === "sub_region") {
       const g = HUB_GROUPS.find(x => x.id === "posting");
@@ -10781,6 +10801,8 @@ export default function Home() {
   }, [authUserId]);
   const hubItemClick = (it) => {
     if (it.id) setRoomItemId(it.id);
+    // [PSEO-MINIHOME-UI-01] P방 항목은 rail 이라 랜딩(showHome)을 해제하지 않는다 → 여기서 해제(P방 한정).
+    if (it.id && String(it.id).startsWith("ps-")) { setShowHome(false); setShowLogin(false); setHelpTab(null); }
     if (it.tab) { const ht = HUB_TABS.find(x => x.id === it.tab); if (ht) hubTabClick(ht); }
     else if (it.rail) railOpen(it.rail);
     // 같은 화면 안 섹션 위치 이동만. 렌더 대기 후 1회. 후보 id 중 존재하는 첫 섹션. 실패해도 화면 진입은 유지.
@@ -13494,6 +13516,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                   const key = it.id;
                   const act = roomItemActive(railRoom, it);
                   const ht = it.tab ? HUB_TABS.find(x => x.id === it.tab) : null;
+                  const pseoLocked = it.gate === "pseo" && !(pseoAccess && pseoAccess.can_enter); // [PSEO-MINIHOME-UI-01] 표시만
                   return (
                     <button key={"room:" + key} type="button" onClick={() => hubItemClick(it)}
                       title={it.label} aria-label={it.label}
@@ -13510,7 +13533,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                       onMouseOut={e => { if (!act) e.currentTarget.style.background = "transparent"; }}>
                       {it.sub ? (!navOpen && <span style={{ fontSize: 10, lineHeight: 1 }}>•</span>)
                         : <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{it.ic || (ht && ht.ic)}</span>}
-                      {navOpen && <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.label}</span>}
+                      {navOpen && <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{it.label}{pseoLocked ? " 🔒" : ""}</span>}
                     </button>
                   );
                 })}
@@ -14695,6 +14718,11 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                   ) : (navView === "why") ? (
                     // [USER-MYPAGE-IA-CLEANUP-01] 마이페이지 방 = 내용은 좌측 → 우측은 메인 이미지 대기.
                     <MainHero />
+                  ) : (typeof navView === "string" && navView.startsWith("pseo-")) ? (
+                    // [PSEO-MINIHOME-UI-01] P페이지 방 — 판정은 서버(pseoAccess), UI는 표시만.
+                    <PseoRoom view={navView} authed={!!authUserId} store={hubStore} access={pseoAccess}
+                      industryLabel={(hubStore?.industry && INDUSTRY_CONFIG[hubStore.industry]?.label) || (hubStore?.industry && getCatalogItem(hubStore.industry)?.name) || "—"}
+                      onGoMypage={goMypageVisit} onGoPosting={goPosting} />
                   ) : navView === "su-history" ? (
                     // [USER-MENU-IA-IMPLEMENT-01] 고객지원 › 접수내역 — 기존 SupportHistory 단독(마이페이지에서 분리).
                     <SupportHistory />

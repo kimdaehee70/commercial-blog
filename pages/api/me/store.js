@@ -12,6 +12,8 @@ import { requireAccount } from "../../../lib/guards";
 import { OWNER_UID } from "../../../lib/constants";
 // [PSEO-INTERNAL-WORK-MODE-FIX-01] search_fact 입력 잠금 — 테스트 allowlist 정본.
 import { canManagePseoFact } from "../../../lib/pseoTestStores";
+// [PSEO-MINIHOME-UI-01] P방 입장 판정(조회 전용). GET 응답 최상위 pseo_access 로만 노출.
+import { getPseoAccess } from "../../../lib/pseo/access";
 // [v-svcgroup] 서비스 분야 다중선택 — SoT는 industry-tree(단일 소스). 여기선 검증·정규화만 소비.
 //   그룹: 병원=진료과 / 공사=시공분야. 그룹 추가는 industry-tree SERVICE_GROUPS 에만 하면 서버 무수정.
 import { hasServiceFields, normalizeDepartments } from "../../../lib/industry-tree";
@@ -415,10 +417,12 @@ export default async function handler(req, res) {
     if (!row) {
       return res.status(200).json({
         ok: true, hasStore: false, storeId: null, industry: null, storeName: null, store: null,
+        pseo_access: null,
       });
     }
 
     const store = shapeStore(row); // [PSEO-LG-FOUNDATION-V1-01] meta 제거 · search_fact 만
+    const pseo_access = await getPseoAccess({ account, storeId: store.id }); // [PSEO-MINIHOME-UI-01]
     return res.status(200).json({
       ok: true,
       hasStore: true,
@@ -427,6 +431,7 @@ export default async function handler(req, res) {
       storeName: store.store_name,
       departments: store.departments || [], // [v-dept] 병원 다중 진료과. 비병원=[]
       store, // [v26] 전체 업체정보 — 업체정보 탭이 읽음
+      pseo_access, // [PSEO-MINIHOME-UI-01] {state,can_enter,live,published_count} — UI는 표시만
     });
   } catch (e) {
     return res.status(500).json({ ok: false, error: "INTERNAL" });
