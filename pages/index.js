@@ -6463,7 +6463,6 @@ const HUB_GROUPS = [
   { id: "pseo",    ic: "🌐", label: "P페이지", home: "ps-intro", items: [
     { id: "ps-intro", rail: "pseo-intro", ic: "🌐", label: "P페이지란?" },
     { id: "ps-basic", rail: "pseo-basic", ic: "⚙️", label: "기본 설정", gate: "pseo" },
-    { id: "ps-home",  rail: "pseo-home",  ic: "🏠", label: "내 미니홈피", gate: "pseo" },
     { id: "ps-asset", rail: "pseo-asset", ic: "🗂", label: "검색자산 관리", gate: "pseo" } ] },
   { id: "plans",   ic: "💳", label: "요금제·결제", home: "pl-plans", menu: false, items: [
     { id: "pl-plans", tab: "plans", label: "요금제·결제" } ] },
