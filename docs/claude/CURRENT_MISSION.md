@@ -2,7 +2,8 @@
 
 **기준일:** 2026-10-02  
 **현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-C CLOSE. **다음 = ⑦-D 업체사진 UI — 선장 지시 후 먼저 TRACE(연결 위치·방식)부터, 자율 착수 금지** — §7·§11 참조
+**현재 상태:** ①~⑦-D CLOSE. **다음 = ⑦-E 우측 「내 P페이지 수정 확인」 사진 연결 TRACE(구현 금지) — 선장 지시 후 착수** — §7·§11 참조  
+**⚠ store 14 테스트 사진 1장(`14/7cbf7a81-6fe4-43d5-a7c7-389818f10210.jpg`) 의도적 유지 — ⑦-E 검증 전 삭제·원복 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
 > 세션 인수인계는 이 문서로 한다. 새 세션은 이 문서만으로 현재 위치를 복원할 수 있어야 한다.
@@ -69,6 +70,8 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+c5e0dce  STEP 7-D  feat: add P-page store photo editor (lib/Store.js · lib/pseo/StorePhotoCard.js)
+2b19dbd  MISSION-UPDATE-7C (문서)
 eca3b49  STEP 7-C  feat: add store photo_pool read/manage endpoint (pages/api/me/store-photo.js 단독)
 cc27f66  MISSION-HANDOVER-2026-10-02 (문서)
 ace7f3b  STEP 7-B  feat: add signed store photo upload endpoint (pages/api/me/store-photo-upload.js 단독)
@@ -114,8 +117,9 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 ⑦-A PHOTO-STORAGE-FOUNDATION-01 PASS / CLOSE (bucket 생성 · 코드 변경 0)
 ⑦-B PHOTO-UPLOAD-API-01        PASS / CLOSE (ace7f3b)
 ⑦-C PHOTO-POOL-API-01          PASS / CLOSE (eca3b49 · 실제 Supabase E2E)
-⑦-D 업체사진 UI                미OPEN — 선장 지시 대기(TRACE 먼저)   ← 지금 여기
-→ ⑦-E 오른쪽 수정확인 → ⑦-F 실제 /p 공개사진 E2E  (예정 · 한 칸씩)
+⑦-D 업체사진 UI                PASS / CLOSE (c5e0dce · 사장님 Chrome PNG 첨부 PASS)
+⑦-E 오른쪽 수정확인 사진        미OPEN — TRACE 먼저(구현 금지)   ← 지금 여기
+→ ⑦-F 실제 /p 공개사진 E2E  (예정 · 아직 금지 · 한 칸씩)
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -153,7 +157,7 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 
 ---
 
-# 7. 업체사진 (⑤~⑦-C CLOSE, ⑦-D 대기)
+# 7. 업체사진 (⑤~⑦-D CLOSE, ⑦-E 대기)
 
 ## 확정 계약 (선장 승인)
 - SoT = `store_profiles.photo_pool`(jsonb 배열, 기존 컬럼). 신규 DB 컬럼 없음. ⑦-B 시점 21행 전부 `[]`.
@@ -164,7 +168,13 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 - Storage: bucket `store-photos` · public=true · 5MB · `image/jpeg` only · 신규 RLS 정책 없음(클라이언트 직접 쓰기 불가).
 - 업로드 = signed upload. `POST /api/me/store-photo-upload`(본문 없음) → `requireAccount` → `store_profiles.account_id` 로 서버가 store.id 결정 → `{store.id}/{uuid}.jpg` 에만 발급 → `{ ok, path, token, signedUrl }`. 클라이언트의 store/path/bucket 입력은 읽지 않음. `photo_pool` 6장 이상이면 409 `PHOTO_LIMIT`(읽기만, 선장 유지 승인).
 - /p 표시 위치 확정: 전화 → 문자/길찾기 → **업체사진** → 영업정보 → 제공 서비스 (`nav.row` 와 `section.info` 사이).
-- 입력 진입점 = 기존 `lib/Store.js` 「📷 업체 사진」 카드(`#pseo-sec-photo`, 현재 disabled).
+- 입력 UI = `lib/pseo/StorePhotoCard.js`(⑦-D) — `lib/Store.js` `section==="pseo"` 의 「📷 업체 사진」 카드(`#pseo-sec-photo`) 자리. 마이페이지 분기 무변경.
+  - 사진 state 는 `hubStore` 와 분리(카드 내부). `/api/me/store` 응답에 `photo_pool` 이 없어 `saveStore → setHubStore(j.store)` 전체 교체 시 지워지기 때문.
+  - 입력 = JPG·PNG(`accept="image/jpeg,image/png"`). HEIC/HEIF/WebP/GIF 거절(HEIC 는 별도 축 후보). 원본 30MB · 5,000만 화소 초과 거절.
+  - JPG·PNG 모두 브라우저 canvas 로 JPEG 재인코딩: 긴 변 최대 1600px(확대 없음) · 품질 0.82 · 결과 5MB 초과 시 0.70 1회 재처리 → 그래도 초과면 거절. PNG 투명영역 = 흰 배경. EXIF/GPS 제거.
+  - 흐름 = 변환 → 발급(`store-photo-upload`) → 브라우저 → Supabase signedUrl 직접 PUT → `store-photo add/replace`. 이미지 바이너리 앱 서버 미경유.
+  - 최대 6장 · [0] 「대표」 배지 · [대표로] · [◀▶] · [교체] · [삭제(확인창)] · 여러 장은 남은 칸까지 한 장씩 순차 · 조작 중 잠금 · 「사진 처리 중 n/m」.
+  - 카드 안내 「사진 공개 페이지 반영은 준비 중입니다.」 — ⑦-F 완료 시 제거.
 - 조회·조작 = `pages/api/me/store-photo.js`(⑦-C). `requireAccount` → `account_id` 로 서버가 store 결정, 본문 `storeId` 무시.
   - `GET` → `{ ok, photos:[{path,url}] }`(url = 서버 `getPublicUrl`).
   - `POST {op}`: `add{path}` · `set_main{path}` · `move{path,to}` · `replace{oldPath,path}` · `delete{path}`. 사진은 path 로 지정(index 아님).
@@ -179,10 +189,13 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 - ⑦-B: LG(store 14) 로그인 → 본문 `storeId:99, path:"99/evil.jpg"` 무시 → `14/{uuid}.jpg` 발급 → 브라우저 PUT 200 → 공개 200 → 삭제 → bucket `[]` · `photo_pool` `[]`. 비로그인 401 · 잘못된 토큰 401 · GET 405 · text/plain 400.
 - ⑦-C (2026-10-02, LG store 14, 실제 Supabase): 8×8 JPEG(≈760B) 실업로드 → add(본문 `storeId:99` 무시) · set_main · move · replace(이전 객체 삭제) · delete(대표 삭제 시 다음이 대표) 전부 200 + DB·bucket 재조회 일치. 거부: 타 업체 경로 400 · 없는 객체 400 · pool 밖 path 404. 6장 제한: 5장에서 2건 발급(경합 재현) → 6번째 add 200 → 업로드 API 7번째 발급 409 → 나머지 add 409 + 해당 객체 삭제 확인. 타 업체 `photo_pool` 수정 0 · store 14 사진 외 컬럼 변경 0. 종료 후 `photo_pool []` · bucket 비움 원복.
 - 기록만: 사진 조작도 store row update 이므로 `store_profiles.updated_at` 이 갱신된다(조사 안 함 · ⑦-C 차단 사유 아님).
-- 미검증: authenticated 사용자의 Storage 직접 업로드 차단(실 로그인 E2E 단계에서 확인 예정).
+- ⑦-D (2026-10-02): 패널 실측 — PNG 3000×2000 → JPEG 1600×1067(투명영역 흰색) · 13.4MB JPG(EXIF+GPS 삽입) → 1600×1200 688KB EXIF 없음 · 800×600 확대 없음 · 5,180만 화소/30MB 초과/WebP/HEIC 거절 · 교체(PNG) 정상. DB·bucket·화면 일치 후 원복.
+  사장님 Chrome: 로컬 PNG(`인테리어시공_시공사진_08.png`) 첨부 → 1/6 · 썸네일 · 「대표」 배지 · 「1장 등록했습니다.」 PASS. 결과 = `14/7cbf7a81-6fe4-43d5-a7c7-389818f10210.jpg` (JPEG 1200×800 · 135KB · EXIF 없음).
+- **현재 store 14 `photo_pool` = `[{ path: "14/7cbf7a81-6fe4-43d5-a7c7-389818f10210.jpg" }]` 1장 — ⑦-E 실증용으로 의도적 유지. ⑦-E 검증 전 삭제·원복 금지.** 다른 업체 21행 중 나머지 전부 `[]`.
+- 미검증: authenticated 사용자의 Storage 직접 업로드 차단(실 로그인 E2E 단계에서 확인 예정). 저사양 휴대폰 대형 사진 메모리. 결과 5MB 초과 → 0.70 재처리 분기(재현 입력 없음, 코드 확인만).
 
 ## 금지 (계속)
-- ⑦-D~F 한꺼번에 구현 금지. 선장이 한 칸씩 지시.
+- ⑦-E~F 한꺼번에 구현 금지. ⑦-F(`/p` 공개 연결)는 ⑦-E CLOSE 전 금지. 선장이 한 칸씩 지시.
 - `/api/me/store` 사진 필드 개방 · `HubCheck` · `/p` · `PUBLIC_FIELDS` 수정은 해당 STEP 지시 전 금지.
 - AI 생성 이미지(`/api/image`)를 실제 업체사진으로 사용 금지.
 - `lib/commonPhotoBox.js` 의 `photoPool`(alt 키 객체) 은 DB `photo_pool` 과 무관 — 연결 금지(H-005).
@@ -226,6 +239,6 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — HEAD 가 이 문서 커밋인지(그 아래 `eca3b49`), 156 dirty 외 변경 없는지, staged 0.
+1. git 기준선 확인(헌법 §8) — HEAD 가 이 문서 커밋인지(그 아래 `c5e0dce`), 156 dirty 외 변경 없는지, staged 0. store 14 `photo_pool` 1장은 의도된 상태(§7) — 원복하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. ⑦-D 는 선장이 범위를 잘라 지시한 뒤에만 착수한다. 첫 작업은 원스크린에서 사진 UI 연결 위치·방식 TRACE(구현 아님). /p 사진 위치(전화 → 문자/길찾기 → 업체사진 → 영업정보 → 제공 서비스)는 변경 금지. §7 확정 계약을 따른다. 자율 확장·한꺼번에 구현·push/merge 금지.
+3. ⑦-E 는 선장이 지시한 뒤에만 착수한다. 첫 작업 = 우측 `내 P페이지 수정 확인`(`lib/PseoRoom.js` `HubCheck`) 사진 연결 TRACE(구현 금지): 렌더 위치 · 읽는 state · `StorePhotoCard` 변경의 즉시 반영 최소 연결 · `photo_pool` 을 `hubStore` 에 넣지 않는 독립 유지 · 대표/복수 표시 최소안. 확정 위치 = 전화 → 문자/길찾기 → **업체사진** → 영업시간/휴무 → 제공 서비스(문자·길찾기 바로 아래, 영업시간 바로 위). `/p` 공개(⑦-F) 금지. §7 확정 계약을 따른다. 자율 확장·한꺼번에 구현·push/merge 금지.
