@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-02  
 **현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-B CLOSE. **다음 = ⑦-C `photo_pool` 저장·조작 연결 — 선장이 범위를 잘라 지시한 뒤 착수(자율 착수 금지)** — §7·§11 참조
+**현재 상태:** ①~⑦-C CLOSE. **다음 = ⑦-D 업체사진 UI — 선장 지시 후 먼저 TRACE(연결 위치·방식)부터, 자율 착수 금지** — §7·§11 참조
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
 > 세션 인수인계는 이 문서로 한다. 새 세션은 이 문서만으로 현재 위치를 복원할 수 있어야 한다.
@@ -69,6 +69,8 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+eca3b49  STEP 7-C  feat: add store photo_pool read/manage endpoint (pages/api/me/store-photo.js 단독)
+cc27f66  MISSION-HANDOVER-2026-10-02 (문서)
 ace7f3b  STEP 7-B  feat: add signed store photo upload endpoint (pages/api/me/store-photo-upload.js 단독)
 83670f1  MISSION-HANDOVER-2026-10-01c (문서)
 77e98b0  MISSION-HANDOVER-2026-10-01b (문서)
@@ -111,8 +113,9 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 ⑥ PHOTO-SOT-CONTRACT-01        PASS / CLOSE (설계만 · base64 기각 → signed upload)
 ⑦-A PHOTO-STORAGE-FOUNDATION-01 PASS / CLOSE (bucket 생성 · 코드 변경 0)
 ⑦-B PHOTO-UPLOAD-API-01        PASS / CLOSE (ace7f3b)
-⑦-C photo_pool 저장·조작 연결   미OPEN — 선장 지시 대기   ← 지금 여기
-⑦-D 업체사진 UI → ⑦-E 오른쪽 수정확인 → ⑦-F 실제 /p 공개사진 E2E  (예정 · 한 칸씩)
+⑦-C PHOTO-POOL-API-01          PASS / CLOSE (eca3b49 · 실제 Supabase E2E)
+⑦-D 업체사진 UI                미OPEN — 선장 지시 대기(TRACE 먼저)   ← 지금 여기
+→ ⑦-E 오른쪽 수정확인 → ⑦-F 실제 /p 공개사진 E2E  (예정 · 한 칸씩)
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -150,7 +153,7 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 
 ---
 
-# 7. 업체사진 (⑤~⑦-B CLOSE, ⑦-C 대기)
+# 7. 업체사진 (⑤~⑦-C CLOSE, ⑦-D 대기)
 
 ## 확정 계약 (선장 승인)
 - SoT = `store_profiles.photo_pool`(jsonb 배열, 기존 컬럼). 신규 DB 컬럼 없음. ⑦-B 시점 21행 전부 `[]`.
@@ -162,15 +165,24 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 - 업로드 = signed upload. `POST /api/me/store-photo-upload`(본문 없음) → `requireAccount` → `store_profiles.account_id` 로 서버가 store.id 결정 → `{store.id}/{uuid}.jpg` 에만 발급 → `{ ok, path, token, signedUrl }`. 클라이언트의 store/path/bucket 입력은 읽지 않음. `photo_pool` 6장 이상이면 409 `PHOTO_LIMIT`(읽기만, 선장 유지 승인).
 - /p 표시 위치 확정: 전화 → 문자/길찾기 → **업체사진** → 영업정보 → 제공 서비스 (`nav.row` 와 `section.info` 사이).
 - 입력 진입점 = 기존 `lib/Store.js` 「📷 업체 사진」 카드(`#pseo-sec-photo`, 현재 disabled).
+- 조회·조작 = `pages/api/me/store-photo.js`(⑦-C). `requireAccount` → `account_id` 로 서버가 store 결정, 본문 `storeId` 무시.
+  - `GET` → `{ ok, photos:[{path,url}] }`(url = 서버 `getPublicUrl`).
+  - `POST {op}`: `add{path}` · `set_main{path}` · `move{path,to}` · `replace{oldPath,path}` · `delete{path}`. 사진은 path 로 지정(index 아님).
+  - path 는 `{내 store.id}/{uuid}.jpg` 형식 + `exists` 확인. 6장 서버 재검증 — 초과 add = 409 `PHOTO_LIMIT` + 검증된 신규 객체 cleanup.
+  - replace/delete = DB 반영 후 Storage remove. remove 실패해도 DB 결과 유지(`storage_cleanup:false`).
+  - `/api/me/store` GET/PATCH 에는 `photo_pool` 없음(무변경). 이미지 바이너리 서버 중계·가공 없음.
+  - 동기화 지점: `MAX_PHOTOS = 6` 이 `store-photo-upload.js` 와 `store-photo.js` 두 곳(리팩터링 보류 판정).
 
 ## 실측 기록
 - ⑦-A: anon 직접 업로드 RLS 거부 · token 다른 경로 사용 거부 · 같은 경로 재사용 거부 · 비JPEG 거부 · anon list/delete 불가.
 - 삭제 후 공개 URL: 원본은 즉시 삭제(origin 400), CDN 캐시(`max-age=3600`, cf HIT)로 +31초까지 200 → +92초부터 400. 1회 측정, 잔존 약 1~1.5분. 새 UUID 교체 계약으로 /p 는 영향 없음 — 운영 특성으로 기록. 없는 객체의 공개 URL 응답은 404 가 아니라 400.
 - ⑦-B: LG(store 14) 로그인 → 본문 `storeId:99, path:"99/evil.jpg"` 무시 → `14/{uuid}.jpg` 발급 → 브라우저 PUT 200 → 공개 200 → 삭제 → bucket `[]` · `photo_pool` `[]`. 비로그인 401 · 잘못된 토큰 401 · GET 405 · text/plain 400.
+- ⑦-C (2026-10-02, LG store 14, 실제 Supabase): 8×8 JPEG(≈760B) 실업로드 → add(본문 `storeId:99` 무시) · set_main · move · replace(이전 객체 삭제) · delete(대표 삭제 시 다음이 대표) 전부 200 + DB·bucket 재조회 일치. 거부: 타 업체 경로 400 · 없는 객체 400 · pool 밖 path 404. 6장 제한: 5장에서 2건 발급(경합 재현) → 6번째 add 200 → 업로드 API 7번째 발급 409 → 나머지 add 409 + 해당 객체 삭제 확인. 타 업체 `photo_pool` 수정 0 · store 14 사진 외 컬럼 변경 0. 종료 후 `photo_pool []` · bucket 비움 원복.
+- 기록만: 사진 조작도 store row update 이므로 `store_profiles.updated_at` 이 갱신된다(조사 안 함 · ⑦-C 차단 사유 아님).
 - 미검증: authenticated 사용자의 Storage 직접 업로드 차단(실 로그인 E2E 단계에서 확인 예정).
 
 ## 금지 (계속)
-- ⑦-C~F 한꺼번에 구현 금지. 선장이 한 칸씩 지시.
+- ⑦-D~F 한꺼번에 구현 금지. 선장이 한 칸씩 지시.
 - `/api/me/store` 사진 필드 개방 · `HubCheck` · `/p` · `PUBLIC_FIELDS` 수정은 해당 STEP 지시 전 금지.
 - AI 생성 이미지(`/api/image`)를 실제 업체사진으로 사용 금지.
 - `lib/commonPhotoBox.js` 의 `photoPool`(alt 키 객체) 은 DB `photo_pool` 과 무관 — 연결 금지(H-005).
@@ -214,6 +226,6 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — HEAD 가 이 문서 커밋인지(그 아래 `ace7f3b`), 156 dirty 외 변경 없는지, staged 0.
+1. git 기준선 확인(헌법 §8) — HEAD 가 이 문서 커밋인지(그 아래 `eca3b49`), 156 dirty 외 변경 없는지, staged 0.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. ⑦-C 는 선장이 범위를 잘라 지시한 뒤에만 착수한다. §7 확정 계약을 따른다. 자율 확장·한꺼번에 구현·push/merge 금지.
+3. ⑦-D 는 선장이 범위를 잘라 지시한 뒤에만 착수한다. 첫 작업은 원스크린에서 사진 UI 연결 위치·방식 TRACE(구현 아님). /p 사진 위치(전화 → 문자/길찾기 → 업체사진 → 영업정보 → 제공 서비스)는 변경 금지. §7 확정 계약을 따른다. 자율 확장·한꺼번에 구현·push/merge 금지.
