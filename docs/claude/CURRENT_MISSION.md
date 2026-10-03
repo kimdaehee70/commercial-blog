@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-03  
 **현재 대형 목표:** P페이지 1F 완성 → **최종 CLOSE / Production 정상 사용 승인 (2026-10-03)**  
-**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. 이후 TRACE 2축(`P-PAGE-SEARCH-INDEX-TRACE` · `P-PAGE-SEARCH-FACT-INPUT-TRACE`) CLOSE — §19. **다음 One Axis = 미정 / 선장 지시 대기** (2F·Pilot 착수 금지 · HOLD 후보 2건 개발 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18  
+**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. 이후 TRACE 2축(`P-PAGE-SEARCH-INDEX-TRACE` · `P-PAGE-SEARCH-FACT-INPUT-TRACE`) CLOSE — §19. 지역×서비스 검색 Pilot 0/8 → 대표서비스안 기각·원복 → 다중업무 SoT TRACE CLOSE — §20. **다음 One Axis = `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01` (DESIGN ONLY · 구현 금지 · 미착수)** — §20 (2F·Pilot 착수 금지 · HOLD 후보 2건 개발 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -148,7 +148,11 @@ P-PAGE-1F-PRODUCTION-GATE-01    CLOSE (main 1d1b32f 배포 · Production E2E PAS
 P페이지 1층                      최종 CLOSE / Production 정상 사용 승인 (2026-10-03)
 P-PAGE-SEARCH-INDEX-TRACE       CLOSE (TRACE · 코드 변경 0) — §19
 P-PAGE-SEARCH-FACT-INPUT-TRACE  PASS / CLOSE (TRACE · 코드 변경 0) — §19
-다음 One Axis                    미정 ← 지금 여기 (선장 지정 대기 · 2F/Pilot 금지)
+P-PAGE-REGION-SERVICE-SEARCH-PILOT-01  STEP1 FAIL 0/8 · STEP2 신호 TRACE · STEP3 설계 · STEP4 NO PATCH / CLOSE — §20
+P-PAGE-PRIMARY-SERVICE-DESIGN-01      구현 후 제품 채택 기각 · 2파일 원복 완료(커밋 없음) — §20
+ONBOARDING-PRIMARY-WORK-TRACE-01      TRACE 완료(코드 변경 0) — §20
+P-PAGE 다중업무 SoT TRACE             CLOSE — §20
+다음 One Axis                    P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01 (DESIGN ONLY) ← 지금 여기 · 미착수
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -293,7 +297,7 @@ P-PAGE-SEARCH-FACT-INPUT-TRACE  PASS / CLOSE (TRACE · 코드 변경 0) — §19
 
 1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 최종 HANDOVER 커밋(main = origin/main = Production `1d1b32f` · 그 위 로컬 문서 커밋만 존재) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. P페이지 1층 최종 CLOSE(§18). 다음 One Axis = **미정 / 선장 TRACE 지시 대기**. 다음 방향(블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성)은 기록만 — 지시 전 개발 금지. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. **다음 One Axis = `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01` — DESIGN ONLY, 구현 금지. 지시 원문 요약·제약은 §20 끝.** 사용자가 이 축 착수를 지시하면 설계안(구조 비교)만 제출하고 STOP. (이하 기존 기록) P페이지 1층 최종 CLOSE(§18). 다음 방향(블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성)은 기록만 — 지시 전 개발 금지. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -462,3 +466,40 @@ P-PAGE-SEARCH-FACT-INPUT-TRACE  PASS / CLOSE (TRACE · 코드 변경 0) — §19
 
 ## 기록 (선장 방향 메모 · 축 아님)
 - 다음 검색 Pilot 핵심 질문: 상호명 없는 「지역 + 하는 일」 검색(예: 남양주 주방 리모델링 / 욕실 리모델링 / 아파트 인테리어)에서 /p 가 잡히는가. 지시 전 착수 금지.
+- → §20 에서 실측 완료(0/8).
+
+---
+
+# 20. 지역×서비스 검색 Pilot → 다중업무 SoT 정리 (2026-10-03 · 코드 커밋 0)
+
+## P-PAGE-REGION-SERVICE-SEARCH-PILOT-01 (STEP 4 NO PATCH / CLOSE)
+- STEP 1 Google 실검색(브라우저 패널 · Google 로그아웃 · 한국 IP · 시크릿 아님): store 14 실제 services 기준 8개 검색어 — 남양주/덕소 × 아파트 인테리어·주방 리모델링·욕실 리모델링·도배 장판 → **/p/14 노출 0/8** · ai-post.ai 다른 페이지 0. (상호명 검색 「LG 인테리어 남양주」 = 3위 · §19)
+- STEP 2 신호 TRACE(/p/14 Production HTML): title·H1 = 상호명만 · desc 서비스어 0 · H2 5개 지역어 0 · 서비스명 = `li > span`(heading 아님) 각 1회 · **업체 FACT 영역 지역×서비스 결합 0**(결합 문구는 「최근 글」 블로그 제목 3건뿐) · 「덕소」 = 주소 「덕소리」 1회 · 내부링크로 /p/14 진입 0(sitemap 만) · JSON-LD 0.
+  비교(구조 차이만): ggid.co.kr/cases/namyangju(남양주 아파트 인테리어 1위) · sudong-interior.co.kr(남양주 도배 장판 1위) = title·H1 자체가 「남양주 + 서비스」 · 본문 heading 에 지역/서비스 구조.
+  원인 후보(증거순): ①FACT 영역 지역×서비스 결합 부재 ②title·H1·desc 서비스어 0 ③내부링크 0 ④서비스명 heading 아님 ⑤권위·JSON-LD(미측정).
+- STEP 3 설계: title `{region} {services[0].name} | {store_name}` 안 → **선장 기각**(services[0] = 대표 FACT 아님).
+- STEP 4: 파일럿 범위 제한 기존 경로 TRACE → 없음(`PSEO_TEST_STORE_IDS` 는 입력·입장 권한 전용 — 머리 주석 「공개 /p/* 와 무관」 · env/DB 플래그 0) → **NO PATCH / CLOSE**. store14 전용 상수·새 env·DB 플래그·allowlist 의미 확장 모두 금지 판정.
+- 덕소는 성공판정 대상 아님(서비스지역 FACT 에 없음 · 주소 확대해석 금지).
+
+## P-PAGE-PRIMARY-SERVICE-DESIGN-01 (구현 → 채택 기각 → 원복)
+- `search_fact.services[i].primary:true`(0~1개) 를 store.js·Store.js 에 구현 · 로직 Gate 11/11 PASS 했으나 **선장 방향 정정으로 채택 기각**. `git checkout` 으로 2파일 정확 원복(diff 0 · 커밋 이력 없음).
+- **선장 결정: 대표 서비스 개념 도입 안 함.** 업체가 실제 수행하는 모든 서비스가 동등한 검색 대상.
+
+## ONBOARDING-PRIMARY-WORK-TRACE-01 (코드 변경 0)
+- 온보딩 = 업종 1개(`industry`, 인테리어는 업종센터에서 선택) + 업체명·주소·전화·생활권. 「하는 일/서비스」 선택 단계 없음. POST 시 `departments=[industry]` 서버 자동.
+- 「내 메뉴」(myMenusMap) = localStorage 전용(DB 없음). 엔진 TREATMENTS = 코드 카탈로그. 온보딩 FACT 로 대표 「업종」은 가능, 대표/개별 「서비스」 결정 불가.
+
+## P-PAGE 다중업무 SoT TRACE (CLOSE)
+- 다중선택 UI = 마이페이지 「🔧 시공·서비스 분야」(secGuide 「함께 하는 분야를 모두 고르면 분야별 메뉴로 글을 쓸 수 있습니다. ★ 표시가 대표 분야입니다.」) → `store_profiles.departments`(jsonb, [0]=industry 불변, 서버 normalizeDepartments).
+- 그룹: hospital(진료과 17) · construction(시공 17 + 생활 14) · silvercare(4). 그룹 없음 = 단일(dental·oriental·clinic — 주석 「독립 개원이 압도적」 · 음식점 · 전문직 · funeral · nursinghome · bedding 등 → 항상 []).
+- 생성 소비 = 분야별 메뉴 섹션 → 메뉴→분야 역인덱스 → payload.industry(엔진 라우팅). generator/prompt 는 departments 값 직접 미참조.
+- store 14 = `industry interior` · `departments ["interior"]`(사용자 추가 0) vs services 8개. 「주방 리모델링」 대응 분야 키 없음 · 도배·장판 = dobae+flooring 2키.
+- **선장 판정(CLOSE):** ① departments = 엔진 분야/겸업 분류 SoT 유지 ② P페이지 실제 서비스 FACT 로 승격 금지(헌법 §5.4 · H-005 유지) ③ `search_fact.services` = P페이지 고객 관점 실제 서비스 FACT ④ 대표 서비스 개념 도입 안 함 ⑤ primary 원복 유지 ⑥ FREEZE 엔진·departments 계약 변경 금지.
+
+## NEXT ONE AXIS — `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01` (DESIGN ONLY · 구현 금지 · 미착수)
+- 목표: 한 업체의 `search_fact.services` N개를 각각 「지역 × 서비스」 검색기회로 만드는 검색자산 구조 설계.
+- 비교 최소 3안: (a) 현재 `/p/{storeId}` 한 페이지 안에서 N개 서비스를 지역과 각각 결합 (b) 업체 아래 서비스별 검색 URL/자산 (c) 기존 Intent/pSEO 구조(`[intentSlug].js` · core_keyword 기반) 재사용 가능성.
+- 제약: Blog 본문 복제 금지 · departments 를 서비스 FACT 로 사용 금지 · publish_history 를 서비스 FACT 로 사용 금지 · 서비스 SoT = `search_fact.services` 만 · 없는 지역×서비스 조합 생성 금지 · 업체 미입력 서비스 생성 금지 · 대량 페이지부터 만들지 말 것 · 기존 P페이지 전환 기능 유지 · DDL 0 우선.
+- 예제 필수: store 14 실제 8개 서비스 — 남양주 × 아파트 인테리어 / 주방 리모델링 / 욕실 리모델링 / 도배·장판 … 각각 어떻게 검색 의미를 갖는지.
+- 산출: 구조안 비교 후 STOP(코드 수정 0).
+- 참고 실측 자산: §19(색인·스니펫) · §20 STEP 2(신호·경쟁 구조) · store 14 search_fact 는 실제 업체 확인 미검증(실험 표본).
