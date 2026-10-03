@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-03  
 **현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **`P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE**(`9dfa546`). **`P-PAGE-F1-PHOTO-INPUT-ORDER-01` CLOSE**(`6f3d541`). **다음 축 = 미정 / 선장 결정 대기** — §15·§14·§13·§12·§11 참조  
+**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **`P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE**(`9dfa546`). **`P-PAGE-F1-PHOTO-INPUT-ORDER-01` CLOSE**(`6f3d541`). **`P-PAGE-1F-IDENTITY-01` CLOSE / PRODUCT PASS**(`6f4638f`). **다음 One Axis = `PSEO-FACT-INPUT-OPEN-01` — TRACE FIRST** — §16 참조  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -73,6 +73,7 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+6f4638f  P-PAGE-1F-IDENTITY-01  fix(p-page): show store industry label (pages/p/[storeId]/index.js · lib/PseoRoom.js)
 6f3d541  F1-PHOTO-INPUT-ORDER-01  fix(p-page): align photo input order (lib/Store.js)
 9dfa546  F2-SERVICE-AREA-POSITION-01  fix(p-page): align field service area (pages/p/[storeId]/index.js · lib/PseoRoom.js)
 e876b08  F3-TRAVEL-INFO-CONSISTENCY-01  fix(p-page): expose field visit info (pages/p/[storeId]/index.js · lib/PseoRoom.js)
@@ -138,7 +139,8 @@ FIRST-USER-EDIT-FLOW-01 STEP 2  PRODUCT PASS / CLOSE (827bbf6 · 사장님 Chrom
 F3-TRAVEL-INFO-CONSISTENCY-01   PRODUCT PASS / CLOSE (e876b08 · 사장님 Chrome PC/모바일 폭) — §13
 F2-SERVICE-AREA-POSITION-01     PRODUCT PASS / CLOSE (9dfa546 · 사장님 Chrome) — §14
 F1-PHOTO-INPUT-ORDER-01         PRODUCT PASS / CLOSE (6f3d541 · 사장님 Chrome) — §15
-다음 축                         미정 — 선장 결정 대기   ← 지금 여기
+P-PAGE-1F-IDENTITY-01           PRODUCT PASS / CLOSE (6f4638f · 사장님 Chrome) — §16
+PSEO-FACT-INPUT-OPEN-01         TRACE FIRST   ← 지금 여기 (구현 금지)
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -281,7 +283,7 @@ F1-PHOTO-INPUT-ORDER-01         PRODUCT PASS / CLOSE (6f3d541 · 사장님 Chrom
 
 1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `6f3d541` · `6ca2ef3`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. 다음 STEP/축 = **미정**. 선장 지시 전에는 어떤 축도 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. 다음 축 = **`PSEO-FACT-INPUT-OPEN-01` TRACE ONLY**(§16). 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -367,3 +369,13 @@ F1-PHOTO-INPUT-ORDER-01         PRODUCT PASS / CLOSE (6f3d541 · 사장님 Chrom
 - F-1 · F-2 · F-3 모두 CLOSE / FREEZE.
 - 미해결 별도 후보(F-1 미포함): 공개 /p 두 번째 썸네일 회색 빈칸(Claude 패널에서만 관찰 · 사장님 Chrome 정상 · 썸네일 `loading="lazy"`) — 미조사.
 - 남은 1층 후보: F-4(제공 서비스 표시) · F-5(진행 순서·실제 방식 순서/라벨) · F-6(우측 role=button 접근 이름). 다음 F축 착수 금지 · 선장 결정 대기.
+
+---
+
+# 16. P-PAGE-1F-IDENTITY-01 (CLOSE / PRODUCT PASS · `6f4638f`)
+
+- 공개 /p 와 우측 수정 확인에 업체명 아래 업종 표시명(`industry` → `getCatalogItem().name`, 카탈로그에 없으면 미표시). title/description · DB · API 무변경. 동기화 지점 = 두 파일의 같은 규칙.
+- 사장님 Chrome PRODUCT PASS(store 14). 업체명에 업종 없는 실제 공개업체 미검증 — CLOSE 차단 아님(선장 판정).
+- 다음 One Axis: `PSEO-FACT-INPUT-OPEN-01` — TRACE FIRST(구현 금지). 일반 P페이지 자격 회원에게 어떤 FACT 를 어떤 권한으로 열지 실측.
+- Production merge/deploy: HOLD (C3 별도 Gate).
+- flooring/bedding 라벨 차이(좌측 엔진 라벨 ↔ 카탈로그 name): BACKLOG / HOLD.
