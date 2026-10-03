@@ -9620,6 +9620,8 @@ export default function Home() {
   // [전문점 2단 트리] hubStore를 restaurant 메뉴 필터보다 먼저 선언(TDZ 방지). 원위치(아래)에서 이동.
   //   [v26] 업체정보 — store_profiles. AI 생성용 사업장 데이터. GET/PATCH(me/store).
   const [hubStore,    setHubStore]    = useState(null);   // null=미로딩 | {industry,store_name,address,specialty,...}
+  // [P-PAGE-ONE-SCREEN-01 ⑦-E] 업체사진 목록 [{path,url}] — StorePhotoCard 가 조작, 우측 HubCheck 가 읽기만. hubStore 와 분리(사진 state 는 이것 하나).
+  const [storePhotos, setStorePhotos] = useState([]);
   const [pseoAccess,  setPseoAccess]  = useState(null);   // [PSEO-MINIHOME-UI-01] 서버 판정 결과 {state,can_enter,live,published_count} | null
   // [OWNER 검수 게이트] restaurant 멀티카테고리 검수용 임시 우회.
   //   일반 사용자: 기존대로 RESTAURANT_LIVE_CAT(분식)만 노출 — 운영 무영향.
@@ -14014,6 +14016,8 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     isOwner={!!(quotaInfo && (quotaInfo.bypass || quotaInfo.reason === "OWNER_BYPASS"))}
                     INDUSTRY_CONFIG={INDUSTRY_CONFIG}
                     lex={lex}
+                    photos={storePhotos}
+                    setPhotos={setStorePhotos}
                   />
                 </div>
               ) : mpLeft ? (
@@ -14742,7 +14746,7 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     <MainHero />
                   ) : (typeof navView === "string" && navView.startsWith("pseo-")) ? (
                     // [PSEO-MINIHOME-UI-01] P페이지 방 — 판정은 서버(pseoAccess), UI는 표시만.
-                    <PseoRoom view={navView} authed={!!authUserId} store={hubStore} access={pseoAccess}
+                    <PseoRoom view={navView} authed={!!authUserId} store={hubStore} access={pseoAccess} photos={storePhotos}
                       industryLabel={(hubStore?.industry && INDUSTRY_CONFIG[hubStore.industry]?.label) || (hubStore?.industry && getCatalogItem(hubStore.industry)?.name) || "—"}
                       onGoMypage={goMypageVisit} onGoPosting={goPosting} />
                   ) : navView === "su-history" ? (
