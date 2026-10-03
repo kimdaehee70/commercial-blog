@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-03  
 **현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **`P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE**(`9dfa546`). **`P-PAGE-F1-PHOTO-INPUT-ORDER-01` CLOSE**(`6f3d541`). **`P-PAGE-1F-IDENTITY-01` CLOSE / PRODUCT PASS**(`6f4638f`). **다음 One Axis = `PSEO-FACT-INPUT-OPEN-01` — TRACE FIRST** — §16 참조  
+**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **`P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE**(`9dfa546`). **`P-PAGE-F1-PHOTO-INPUT-ORDER-01` CLOSE**(`6f3d541`). **`P-PAGE-1F-IDENTITY-01` CLOSE / PRODUCT PASS**(`6f4638f`). **`PSEO-FACT-INPUT-OPEN-01` CLOSE / PRODUCT PASS**(`c6f720e`). **다음 One Axis = `P-PAGE-1F-PRODUCTION-GATE-01`(C3)** — push·merge·deploy 아직 없음 — §17 참조  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -73,6 +73,7 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+c6f720e  PSEO-FACT-INPUT-OPEN-01  feat(p-page): open search fact services and process to eligible members (pages/api/me/store.js · lib/Store.js)
 6f4638f  P-PAGE-1F-IDENTITY-01  fix(p-page): show store industry label (pages/p/[storeId]/index.js · lib/PseoRoom.js)
 6f3d541  F1-PHOTO-INPUT-ORDER-01  fix(p-page): align photo input order (lib/Store.js)
 9dfa546  F2-SERVICE-AREA-POSITION-01  fix(p-page): align field service area (pages/p/[storeId]/index.js · lib/PseoRoom.js)
@@ -140,7 +141,8 @@ F3-TRAVEL-INFO-CONSISTENCY-01   PRODUCT PASS / CLOSE (e876b08 · 사장님 Chrom
 F2-SERVICE-AREA-POSITION-01     PRODUCT PASS / CLOSE (9dfa546 · 사장님 Chrome) — §14
 F1-PHOTO-INPUT-ORDER-01         PRODUCT PASS / CLOSE (6f3d541 · 사장님 Chrome) — §15
 P-PAGE-1F-IDENTITY-01           PRODUCT PASS / CLOSE (6f4638f · 사장님 Chrome) — §16
-PSEO-FACT-INPUT-OPEN-01         TRACE FIRST   ← 지금 여기 (구현 금지)
+PSEO-FACT-INPUT-OPEN-01         PRODUCT PASS / CLOSE (c6f720e · 고패킹 account 23 실제 E2E · 원복 완료) — §17
+P-PAGE-1F-PRODUCTION-GATE-01    다음 축   ← 지금 여기 (C3 · 2F/Pilot 금지)
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -283,7 +285,7 @@ PSEO-FACT-INPUT-OPEN-01         TRACE FIRST   ← 지금 여기 (구현 금지)
 
 1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `6f3d541` · `6ca2ef3`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. 다음 축 = **`PSEO-FACT-INPUT-OPEN-01` TRACE ONLY**(§16). 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. 다음 축 = **`P-PAGE-1F-PRODUCTION-GATE-01`(C3)**(§17). 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -379,3 +381,12 @@ PSEO-FACT-INPUT-OPEN-01         TRACE FIRST   ← 지금 여기 (구현 금지)
 - 다음 One Axis: `PSEO-FACT-INPUT-OPEN-01` — TRACE FIRST(구현 금지). 일반 P페이지 자격 회원에게 어떤 FACT 를 어떤 권한으로 열지 실측.
 - Production merge/deploy: HOLD (C3 별도 Gate).
 - flooring/bedding 라벨 차이(좌측 엔진 라벨 ↔ 카탈로그 name): BACKLOG / HOLD.
+
+---
+
+# 17. PSEO-FACT-INPUT-OPEN-01 (CLOSE / PRODUCT PASS · `c6f720e`)
+
+- 일반 P페이지 자격회원(`getPseoAccess.can_enter`)에게 `search_fact` services·process 입력·저장 개방. differentiators 는 일반회원 HOLD(화면 미노출 · 서버 403 `PSEO_FACT_FIELD_LOCKED` · 기존값 보존). `canManagePseoFact`(OWNER·store 14) 무변경.
+- PRODUCT E2E: 고패킹 account 23 / store 20(관리자 지급 basic) 실제 저장·새로고침 유지·우측 반영 PASS. 원복 완료: account 23·20 free(admin 구독 이력은 canceled 로 보존), store 20 = 빈 search_fact 이력만 잔존(선장 인정). C1 업종 표시 미검증도 「하나2 → 바닥시공」으로 해소.
+- 다음 One Axis: `P-PAGE-1F-PRODUCTION-GATE-01` — 1층 누적 커밋/배포 대상 확인 → 회귀 Gate → 선장 승인 → merge/deploy → Production E2E → 1층 최종 CLOSE.
+- push · merge · deploy: 아직 없음. 기록만: account 19(store 18) test 표식 계정 · 실빌링키 자동결제 예정 2026-10-07.
