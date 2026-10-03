@@ -51,7 +51,7 @@ import { isPseoEligible, listQualifiedIntents, MIN_HUB_POSTS, countPublishedPost
 //   검색노출 보드와 같은 함수를 쓰므로 두 값이 갈릴 수 없다.
 import { hubUrl } from "../../../lib/pseo/url";
 import { resolvePhone } from "../../../lib/pseo/phone";
-import { hasPhysicalStore } from "../../../lib/industry-catalog";
+import { hasPhysicalStore, getCatalogItem } from "../../../lib/industry-catalog";
 
 // ── 브라우저로 내보낼 컬럼 화이트리스트 ────────────────────────
 //   여기 없는 컬럼은 HTML 에 절대 나가지 않는다.
@@ -301,10 +301,16 @@ export async function getServerSideProps(ctx) {
     .map((p) => sb.storage.from(PHOTO_BUCKET).getPublicUrl(p).data.publicUrl)
     .filter(Boolean);
 
+  // [P-PAGE-1F-IDENTITY-01] 업종 표시명 = industry SoT → 업종 카탈로그 name. 카탈로그에 없으면 미표시(키 원문·추론 없음).
+  //   서버에서 이름만 만들어 넘긴다 — 카탈로그 전체가 브라우저 번들에 들어가지 않게.
+  //   (lib/PseoRoom.js HubCheck 와 같은 규칙 — 동기화 지점)
+  const catItem = getCatalogItem(ind);
+
   const store = {
     id: data.id,
     storeName: data.store_name || "",
     industry: data.industry || "",
+    industryName: (catItem && catItem.name) || "",
     region: data.region || "",
     subRegion: data.sub_region || "",
     address: data.address || "",
@@ -379,6 +385,7 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
         <header className="head">
           {areaLine ? <p className="area">{areaLine}</p> : null}
           <h1 className="name">{store.storeName}</h1>
+          {store.industryName ? <p className="kind">{store.industryName}</p> : null}
           {hasAddress ? <p className="addr">{store.address}</p> : null}
         </header>
 
@@ -591,6 +598,12 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
           font-weight: 700;
           line-height: 1.25;
           letter-spacing: -0.02em;
+        }
+        .kind {
+          margin: 0.45rem 0 0;
+          font-size: 0.95rem;
+          font-weight: 600;
+          color: #1c6b3f;
         }
         .addr {
           margin: 0.6rem 0 0;
