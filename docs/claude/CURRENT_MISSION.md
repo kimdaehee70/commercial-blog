@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-03  
 **현재 대형 목표:** P페이지 1F 완성 → **최종 CLOSE / Production 정상 사용 승인 (2026-10-03)**  
-**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. **다음 One Axis = 미정 / 선장 지정 대기** (2F·Pilot 착수 금지)  
+**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. **다음 One Axis = 미정 / 선장 TRACE 지시 대기** (2F·Pilot 착수 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -287,9 +287,9 @@ P페이지 1층                      최종 CLOSE / Production 정상 사용 승
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `1d1b32f` = origin/main) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
+1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 최종 HANDOVER 커밋(main = origin/main = Production `1d1b32f` · 그 위 로컬 문서 커밋만 존재) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. P페이지 1층 최종 CLOSE(§18). 다음 One Axis = **미정 / 선장 지정 대기**. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. P페이지 1층 최종 CLOSE(§18). 다음 One Axis = **미정 / 선장 TRACE 지시 대기**. 다음 방향(블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성)은 기록만 — 지시 전 개발 금지. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -418,5 +418,17 @@ P페이지 1층                      최종 CLOSE / Production 정상 사용 승
 - 기록만: 확인 열람으로 /p/14 page_view 수 건 발생(승인된 정상 동작).
 
 ## 정리
-- 임시 빌드 worktree `D:\cb-gate-wt`: git worktree 등록 해제 완료 · 남은 node_modules junction·폴더 정리(§18 STOP 보고 참조).
-- 다음 One Axis = 미정 / 선장 지정 대기. 2F · Pilot · a472ebe 축 임의 착수 금지.
+- 임시 빌드 worktree `D:\cb-gate-wt`: worktree 등록 해제 → node_modules junction 링크만 제거(/s 미사용 · 원본 node_modules 정상) → 빈 폴더 삭제. **정리 완료.**
+- 미커밋 156건(HOLD 3 포함): 기존 작업으로 그대로 보존 · stage·수정·삭제 등 접촉 금지.
+- `a472ebe`: 제외 유지(별도 축 · 선장 결정 전 병합 금지).
+
+## 최종 인수인계 (P페이지 1층)
+- `P-PAGE-1F-PRODUCTION-GATE-01` CLOSE · **P페이지 1층 Production 정상 사용 / 최종 CLOSE**.
+- Production = `1d1b32f`(main = origin/main). 이후 HANDOVER 문서 커밋은 작업 브랜치 로컬에만 있음 — push 금지(main push = Vercel 재배포).
+- 사진 Production E2E PASS · 테스트 사진 삭제 · store 14 `photo_pool` 원래 2장·순서 원복 완료.
+
+## 다음 방향 (기록만 · 개발 금지)
+- **블로그 본문 의존 제거 → 업체 FACT 기반의 독립적인 P페이지 생성 기능.**
+- 현재는 방향 기록일 뿐 OPEN 된 축이 아니다. 축 이름·범위·순서는 선장이 정한다.
+- 다음 방에서 **선장 TRACE 지시 대기**. 그 전에 코드 수정·설계·구현 착수 금지.
+- 2F · Pilot 착수 금지.
