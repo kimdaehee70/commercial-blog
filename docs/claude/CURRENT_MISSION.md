@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-03  
 **현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-F CLOSE. **⑦-F 업체사진 = CLOSE**(`e2d87f8`) · Architecture 정본 등록(`af78f92`). **다음 개발축 = 미정 / 선장 결정 대기** — §7·§11 참조  
+**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **다음 STEP/축 = 미정 / 선장 결정 대기** — §12·§11 참조  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -73,6 +73,8 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+827bbf6  FIRST-USER-EDIT-FLOW-01 STEP 2  feat(p-page): connect editor and preview focus (pages/index.js · lib/Store.js · lib/PseoRoom.js)
+a789692  HANDOVER (문서) docs(handover): close p-page photo axis
 af78f92  DOC-ARCHITECTURE-REGISTER-01  docs(p-page): register search conversion architecture (CLAUDE.md §0-6 · Architecture 문서)
 e2d87f8  STEP 7-F  feat(p-page): publish interactive store photos (pages/p/[storeId]/index.js · lib/pseo/StorePhotoCard.js)
 fbf8609  HANDOVER-MISSION-UPDATE (문서)
@@ -128,7 +130,9 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 ⑦-D 업체사진 UI                PASS / CLOSE (c5e0dce · 사장님 Chrome PNG 첨부 PASS)
 ⑦-E 오른쪽 수정확인 사진        PASS / CLOSE (344a313 · 사장님 Chrome PRODUCT PASS)
 ⑦-F 공개 /p 사진               PASS / CLOSE (e2d87f8 · F-1 공개 연결 TRACE · F-2 최소 구현 · F-4 썸네일 상호작용 · F-5 크기·배열 · 사장님 Chrome PC/Mobile PRODUCT PASS)
-다음 개발축                     미정 — 선장 결정 대기   ← 지금 여기
+FIRST-USER-EDIT-FLOW-01 STEP 1  TRACE PASS (코드 변경 0)
+FIRST-USER-EDIT-FLOW-01 STEP 2  PRODUCT PASS / CLOSE (827bbf6 · 사장님 Chrome 「정상 반영」)
+다음 STEP / 축                  미정 — 선장 결정 대기   ← 지금 여기
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -269,7 +273,37 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `af78f92` · `e2d87f8`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
+1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `827bbf6` · `a789692`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. 다음 개발축 = **미정**. 선장 지시 전에는 어떤 축도 OPEN 하지 않는다. §5 후보(`P-PAGE-PHOTO-VIEWER` · 제공 서비스 정보구조 · 6장 실데이터 검증)와 `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. 다음 STEP/축 = **미정**. 선장 지시 전에는 어떤 축도 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-1~F-6 · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
+
+---
+
+# 12. P-PAGE-FIRST-USER-EDIT-FLOW-01 (STEP 1 PASS · STEP 2 CLOSE)
+
+목적: P페이지를 처음 쓰는 일반회원이 `기본 설정`에서 길을 잃지 않게 한다.
+
+## STEP 1 TRACE (코드 변경 0) — 확인된 원인
+- 좌 순서 = 기본정보 → 생활권 → 운영정보 → 검색정보 → 사진 / 우(HubCheck)·/p 순서 = 생활권(상단 지역줄) → 업체명·주소·전화 → 사진 → 운영 4키 → 제공서비스 → 서비스지역(serviceArea) → 진행순서 → 이렇게 일합니다 → 상담 전 확인사항(preVisit).
+- 저장 버튼 4개(기본정보 · 생활권 · 운영정보 · 검색정보) + 사진 즉시 반영. 상자 간 미저장 경고 없음.
+- 운영정보 중 `HUB_VISIT_KEYS` 4키 · serviceArea · preVisit 외 항목은 우측·/p 대표 페이지 미노출(Intent 페이지 `[intentSlug].js` 에는 다수 노출 — 정정사항: 출동 가능시간 `dispatch24` · 출장 안내 `etc`(라벨 「안내」) 는 Intent 페이지에만 나옴).
+- 안내 UI(무엇부터/지금/다음) 없음. P페이지에서는 `onCoachVideo` 미주입 → 「▶ 영상보기」 숨김.
+
+## STEP 2 편집 ↔ 미리보기 양방향 연결 (`827bbf6`)
+- 대표 target 1:1 고정: `ident`(업체명·주소·전화·칩) · `region`(상단 지역줄) · `visit`(운영 4키 블록) · `sf`(제공 서비스 블록만) · `photo`(사진).
+- 좌→우: `lib/Store.js` pseo 분기 5영역 wrapper(`data-zone`, flex column gap 10) `onFocusCapture`/`onPointerDownCapture` → `Home.pseoFocus`. **영역이 바뀔 때만** 우측 `navScrollRef` 상자만 scrollTo(이미 보이면 이동 없음) + outline 약 1.6초. 타이핑(onChange) 미연결.
+- 우→좌: `lib/PseoRoom.js` HubCheck `data-pv` 5곳 = role=button(클릭·Enter, cursor pointer, title 「왼쪽에서 수정」) → `Home.pseoPick {k,n}` → 좌측 스크롤 부모 scrollTo + 좌측 영역 outline 약 1.6초.
+- 빈 데이터 = 편집 미리보기 전용 점선 placeholder 5종(「…가 여기에 표시됩니다」). 공개 /p 미적용 · DB 저장 없음.
+- `pseoLeft` false 시 두 state 초기화. 마이페이지 분기는 props 미주입 → 무동작.
+- 무변경: `pages/p/**` · `lib/pseo/**`(StorePhotoCard) · `/api/**` · DB · Storage · `HUB_VISIT_KEYS` · 저장 핸들러.
+- 검증: Claude 패널 4문항(우 사진→좌 사진 / 우 업체정보→좌 기본정보 / 좌 서비스→우 제공서비스만 / 빈 상태 placeholder 양방향) PASS · 같은 영역 입력 시 이동 0 · console error 0 · 마이페이지 표식 0. 빈 상태는 브라우저 메모리 state 임시 교체 + store 쓰기 요청 차단(발생 0)으로 실증 후 원복. 사장님 Chrome 「정상 반영」 = PRODUCT PASS.
+- 미검증: 저장 버튼 실제 payload 비교(저장 코드 diff 0) · 좌측 상자 간격 픽셀 비교.
+
+## 후속 후보 (기록만 · 선장 판정 전 착수 금지)
+- F-1 좌측 사진 입력란을 생활권과 운영정보 사이로 이동(우·/p 순서 일치) — 사장님 제안.
+- F-2 출동 가능지역(serviceArea)을 상단 표시(우측+/p 동시 · 생활권과 합치지 않음 · 라벨 구분) — 사장님 제안, 기술 의견 = 표시만 이동(A안).
+- F-3 출장형 운영정보 노출·라벨 정리: 출장 안내(etc)·출동 가능시간(dispatch24) 대표 페이지 미노출 · preVisit 「방문 전 확인사항」↔「상담 전 확인사항」 · 대표 페이지와 Intent 페이지 목록 불일치.
+- F-4 제공 서비스 표시 방식(A 이름·설명 한 줄 / B 이름만 나열 / C 펼치기 / D 유지) — 기술 의견 A.
+- F-5 진행 순서·실제 방식 순서 이동 기능 없음(끝에만 추가) · 라벨 불일치(「우리 업체의 실제 방식」↔「이렇게 일합니다」).
+- F-6 접근성: 우측 role=button 의 접근 이름이 title(「왼쪽에서 수정」)로 읽힐 수 있음.
