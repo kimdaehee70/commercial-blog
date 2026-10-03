@@ -1,9 +1,9 @@
 # AI-POST · CURRENT MISSION
 
-**기준일:** 2026-10-02  
+**기준일:** 2026-10-03  
 **현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-D CLOSE. **다음 = ⑦-E 우측 「내 P페이지 수정 확인」 사진 연결 TRACE(구현 금지) — 선장 지시 후 착수** — §7·§11 참조  
-**⚠ store 14 테스트 사진 1장(`14/7cbf7a81-6fe4-43d5-a7c7-389818f10210.jpg`) 의도적 유지 — ⑦-E 검증 전 삭제·원복 금지**
+**현재 상태:** ①~⑦-E CLOSE. ⑦-F-1 TRACE PASS · ⑦-F-2 공개 /p 사진 구현 기술 PASS · **미커밋**(`pages/p/[storeId]/index.js` 1개). **다음 = ⑦-F-3 PRODUCT E2E(사장님 Chrome `/p/14`)** — §7·§11 참조  
+**⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
 > 세션 인수인계는 이 문서로 한다. 새 세션은 이 문서만으로 현재 위치를 복원할 수 있어야 한다.
@@ -70,6 +70,8 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+344a313  STEP 7-E  feat: show store photos in P-page edit preview (pages/index.js · lib/Store.js · lib/pseo/StorePhotoCard.js · lib/PseoRoom.js)
+b628b65  HANDOVER-MISSION-UPDATE (문서)
 c5e0dce  STEP 7-D  feat: add P-page store photo editor (lib/Store.js · lib/pseo/StorePhotoCard.js)
 2b19dbd  MISSION-UPDATE-7C (문서)
 eca3b49  STEP 7-C  feat: add store photo_pool read/manage endpoint (pages/api/me/store-photo.js 단독)
@@ -118,8 +120,8 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 ⑦-B PHOTO-UPLOAD-API-01        PASS / CLOSE (ace7f3b)
 ⑦-C PHOTO-POOL-API-01          PASS / CLOSE (eca3b49 · 실제 Supabase E2E)
 ⑦-D 업체사진 UI                PASS / CLOSE (c5e0dce · 사장님 Chrome PNG 첨부 PASS)
-⑦-E 오른쪽 수정확인 사진        미OPEN — TRACE 먼저(구현 금지)   ← 지금 여기
-→ ⑦-F 실제 /p 공개사진 E2E  (예정 · 아직 금지 · 한 칸씩)
+⑦-E 오른쪽 수정확인 사진        PASS / CLOSE (344a313 · 사장님 Chrome PRODUCT PASS)
+⑦-F 공개 /p 사진               F-1 TRACE PASS · F-2 구현 기술 PASS(미커밋) · F-3 PRODUCT E2E 대기   ← 지금 여기
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -157,7 +159,7 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 
 ---
 
-# 7. 업체사진 (⑤~⑦-D CLOSE, ⑦-E 대기)
+# 7. 업체사진 (⑤~⑦-E CLOSE, ⑦-F 진행 중)
 
 ## 확정 계약 (선장 승인)
 - SoT = `store_profiles.photo_pool`(jsonb 배열, 기존 컬럼). 신규 DB 컬럼 없음. ⑦-B 시점 21행 전부 `[]`.
@@ -174,7 +176,7 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
   - JPG·PNG 모두 브라우저 canvas 로 JPEG 재인코딩: 긴 변 최대 1600px(확대 없음) · 품질 0.82 · 결과 5MB 초과 시 0.70 1회 재처리 → 그래도 초과면 거절. PNG 투명영역 = 흰 배경. EXIF/GPS 제거.
   - 흐름 = 변환 → 발급(`store-photo-upload`) → 브라우저 → Supabase signedUrl 직접 PUT → `store-photo add/replace`. 이미지 바이너리 앱 서버 미경유.
   - 최대 6장 · [0] 「대표」 배지 · [대표로] · [◀▶] · [교체] · [삭제(확인창)] · 여러 장은 남은 칸까지 한 장씩 순차 · 조작 중 잠금 · 「사진 처리 중 n/m」.
-  - 카드 안내 「사진 공개 페이지 반영은 준비 중입니다.」 — ⑦-F 완료 시 제거.
+  - 카드 안내 「사진 공개 페이지 반영은 준비 중입니다.」 — ⑦-F PRODUCT PASS 후 별도 CLOSE STEP 에서 제거(아직 제거 금지).
 - 조회·조작 = `pages/api/me/store-photo.js`(⑦-C). `requireAccount` → `account_id` 로 서버가 store 결정, 본문 `storeId` 무시.
   - `GET` → `{ ok, photos:[{path,url}] }`(url = 서버 `getPublicUrl`).
   - `POST {op}`: `add{path}` · `set_main{path}` · `move{path,to}` · `replace{oldPath,path}` · `delete{path}`. 사진은 path 로 지정(index 아님).
@@ -191,12 +193,20 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 - 기록만: 사진 조작도 store row update 이므로 `store_profiles.updated_at` 이 갱신된다(조사 안 함 · ⑦-C 차단 사유 아님).
 - ⑦-D (2026-10-02): 패널 실측 — PNG 3000×2000 → JPEG 1600×1067(투명영역 흰색) · 13.4MB JPG(EXIF+GPS 삽입) → 1600×1200 688KB EXIF 없음 · 800×600 확대 없음 · 5,180만 화소/30MB 초과/WebP/HEIC 거절 · 교체(PNG) 정상. DB·bucket·화면 일치 후 원복.
   사장님 Chrome: 로컬 PNG(`인테리어시공_시공사진_08.png`) 첨부 → 1/6 · 썸네일 · 「대표」 배지 · 「1장 등록했습니다.」 PASS. 결과 = `14/7cbf7a81-6fe4-43d5-a7c7-389818f10210.jpg` (JPEG 1200×800 · 135KB · EXIF 없음).
-- **현재 store 14 `photo_pool` = `[{ path: "14/7cbf7a81-6fe4-43d5-a7c7-389818f10210.jpg" }]` 1장 — ⑦-E 실증용으로 의도적 유지. ⑦-E 검증 전 삭제·원복 금지.** 다른 업체 21행 중 나머지 전부 `[]`.
+- ⑦-E (344a313): 사진 state 를 `Home` `storePhotos` 로 lift-up(앱 전체 1개) → 좌 `StoreInfoForm` → `StorePhotoCard`(photos/setPhotos props) · 우 `PseoRoom` → `HubCheck`(읽기 전용). `hubStore` 병합 없음 · API/DB/Storage 무변경. 위치 = 문자/길찾기 아래 · 영업시간 위. [0] 대표 크게(4:3) · 나머지 72×54 썸네일 · 0장 미표시.
+  실증: Claude 패널 7항목(최초·추가·대표·순서·교체·삭제·새로고침) PASS + 사장님 Chrome 사진 추가 → 우측 즉시 썸네일 PRODUCT PASS(2026-10-03).
+- ⑦-F-1 TRACE: `/p/[storeId]/index.js` 단일 SSR(service role). photo_pool 은 기존 `PUBLIC_FIELDS` 「제외 확정」이었음(A: 조회 안 됨). photo_pool 쓰기 경로 = `store-photo.js` 단 1곳(`/api/me/store` EDITABLE_COLS 미포함). 공용 렌더러 재사용 불가(③ 판정 유지). 선장 승인: photo_pool SSR 원천 사용 · 공개 직전 path 재검증 + 최대 6장 · exists 조회 금지 · 별도 API/fetch/helper 금지.
+- ⑦-F-2 (미커밋, `pages/p/[storeId]/index.js` 단 1개 · +57/−4): `PUBLIC_FIELDS` + `photo_pool`(SSR 원천 전용, 주석 갱신) → `{현재 storeId}/{UUID}.jpg` 정규식 필터 → `.slice(0, 6)` → `sb.storage.from("store-photos").getPublicUrl()` → `store.photos = [url…]`(raw path·photo_pool props 미포함). `</nav>` 와 `section.info` 사이 `section.photos` — 대표 `.photoMain`(100% · 4:3 · cover · eager) + `.thumbs/.thumb`(4.5×3.375rem · lazy). alt = 「{업체명} 대표사진」/「{업체명} 사진 n」. 클릭·링크·추적 없음.
+  동기화 지점: `MAX_PHOTOS = 6` · UUID.jpg 규칙이 `store-photo.js` 와 `/p` 두 곳.
+  정적 검증: SSR `GET /p/14` 200 · img 2(대표 7cbf7a81 · 썸네일 2dc52872) · props 에 `photo_pool`/`path` 0 · 거부 실측(타 store · `../` · 대문자 · 비UUID · 비객체 · `140/`) · 7장 이상 → 6 · 0/1/6장 렌더 · compile 0.
+  금지범위 diff 0: `/api/me/**` · StorePhotoCard · PseoRoom · `[intentSlug].js` · JSON-LD · og:image · tracking · DB · Storage.
+- **현재 store 14 `photo_pool` = 2장 — `[0] 14/7cbf7a81-6fe4-43d5-a7c7-389818f10210.jpg`(대표) · `[1] 14/2dc52872-23d8-4f49-b6bd-3a7841209311.jpg`(사장님 추가). ⑦-F 실증 자산 — 삭제·변경 금지.** 다른 업체 21행 중 나머지 전부 `[]`.
+- 기록만: 공개 렌더 시 Storage 존재 확인 없음 → pool 에 객체 없는 path 가 남으면 깨진 이미지(정상 경로로는 발생 안 함, 관리 Preview 동일).
 - 미검증: authenticated 사용자의 Storage 직접 업로드 차단(실 로그인 E2E 단계에서 확인 예정). 저사양 휴대폰 대형 사진 메모리. 결과 5MB 초과 → 0.70 재처리 분기(재현 입력 없음, 코드 확인만).
 
 ## 금지 (계속)
-- ⑦-E~F 한꺼번에 구현 금지. ⑦-F(`/p` 공개 연결)는 ⑦-E CLOSE 전 금지. 선장이 한 칸씩 지시.
-- `/api/me/store` 사진 필드 개방 · `HubCheck` · `/p` · `PUBLIC_FIELDS` 수정은 해당 STEP 지시 전 금지.
+- ⑦-F 범위 확장 금지: Intent 페이지(`[intentSlug].js`) 사진 연결 · JSON-LD/og:image 확장 · 사진 최적화/CDN 추가 개발 금지.
+- `/api/me/store` 사진 필드 개방 금지. ⑦-F PRODUCT PASS 전 커밋 금지.
 - AI 생성 이미지(`/api/image`)를 실제 업체사진으로 사용 금지.
 - `lib/commonPhotoBox.js` 의 `photoPool`(alt 키 객체) 은 DB `photo_pool` 과 무관 — 연결 금지(H-005).
 
@@ -239,6 +249,7 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — HEAD 가 이 문서 커밋인지(그 아래 `c5e0dce`), 156 dirty 외 변경 없는지, staged 0. store 14 `photo_pool` 1장은 의도된 상태(§7) — 원복하지 않는다.
+1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · ⑦-E CLOSE `344a313` 이후 커밋이 문서 전용인지 · dirty = 기존 156 + ⑦-F-2 미커밋 `pages/p/[storeId]/index.js` 1개(+57/−4) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. ⑦-E 는 선장이 지시한 뒤에만 착수한다. 첫 작업 = 우측 `내 P페이지 수정 확인`(`lib/PseoRoom.js` `HubCheck`) 사진 연결 TRACE(구현 금지): 렌더 위치 · 읽는 state · `StorePhotoCard` 변경의 즉시 반영 최소 연결 · `photo_pool` 을 `hubStore` 에 넣지 않는 독립 유지 · 대표/복수 표시 최소안. 확정 위치 = 전화 → 문자/길찾기 → **업체사진** → 영업시간/휴무 → 제공 서비스(문자·길찾기 바로 아래, 영업시간 바로 위). `/p` 공개(⑦-F) 금지. §7 확정 계약을 따른다. 자율 확장·한꺼번에 구현·push/merge 금지.
+3. 첫 STEP = ⑦-F-3 PRODUCT E2E(선장 지시 후). 사장님 Chrome 에서 실제 `/p/14`: ① 정상 진입 ② 사진 2장 ③ 첫 사진 = 큰 대표 ④ 두 번째 = 썸네일 ⑤ 위치 = 문자/길찾기 → 사진 → 영업시간/휴무 ⑥ 이미지 깨짐 없음 ⑦ 전화/문자/길찾기 회귀 없음 ⑧ 모바일/좁은 폭 치명적 깨짐 여부. 코드 수정·커밋 금지. (사장님이 /p 를 열면 page_view 가 기록됨 — 기존 동작)
+4. PRODUCT PASS 후 별도 CLOSE STEP(선장 지시): `StorePhotoCard` 「사진 공개 페이지 반영은 준비 중입니다.」 문구 제거 → 최종 diff 재확인 → ⑦-F 변경만 커밋 → CURRENT_MISSION 갱신 여부 선장 결정. push/merge 금지.
