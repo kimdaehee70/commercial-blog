@@ -44,7 +44,7 @@
 
 import Head from "next/head";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { isPseoEligible, listQualifiedIntents, MIN_HUB_POSTS, countPublishedPosts } from "../../../lib/pseo/eligibility";
 // [PSEO-CANONICAL-FOUNDATION-01] self-canonical 은 URL 단일 파생 지점에서 조립한다.
@@ -55,8 +55,9 @@ import { resolvePhone } from "../../../lib/pseo/phone";
 // ── 브라우저로 내보낼 컬럼 화이트리스트 ────────────────────────
 //   여기 없는 컬럼은 HTML 에 절대 나가지 않는다.
 //   account_id 는 조회는 하되 props 로는 나가지 않는다(서버 판정 전용).
+//   photo_pool 도 SSR 원천 전용 — 검증된 path 를 public URL 로 바꾼 store.photos 만 나간다(⑦-F).
 //   제외 확정: notes / meta / blog_account / treatments / real_menu /
-//             photo_pool / faq / homepage_url / blog_url
+//             faq / homepage_url / blog_url
 const PUBLIC_FIELDS = [
   "id",
   "account_id", // [V1] 유료 판정·Intent 집계용. props 미포함.
@@ -68,7 +69,15 @@ const PUBLIC_FIELDS = [
   "phone",
   "naver_place_url",
   "visit_info",
+  "photo_pool", // [P-PAGE-ONE-SCREEN-01 ⑦-F] SSR 원천 전용. raw path 는 props 미포함.
 ];
+
+// [P-PAGE-ONE-SCREEN-01 ⑦-F] 업체사진 — SoT store_profiles.photo_pool([{path}], [0]=대표).
+//   공개 직전 재검증: "{현재 storeId}/{UUID}.jpg" 형식만 · 최대 6장. Storage 추가 조회 없음.
+//   (pages/api/me/store-photo.js isOwnPath · MAX_PHOTOS 와 같은 규칙 — 동기화 지점)
+const PHOTO_BUCKET = "store-photos";
+const MAX_PHOTOS = 6;
+const PHOTO_FILE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/;
 
 // visit_info(jsonb) 중 공개 대상 키. Store.js 실측 키만.
 const VISIT_KEYS = [
@@ -272,6 +281,16 @@ export async function getServerSideProps(ctx) {
     preVisit: String(vi.preVisit || "").trim(),
   };
 
+  // [⑦-F] photo_pool → 검증 → public URL(getPublicUrl = 네트워크 호출 없음). path 는 여기서 버린다.
+  const pool = Array.isArray(data.photo_pool) ? data.photo_pool : [];
+  const prefix = `${data.id}/`;
+  const photos = pool
+    .map((el) => (el && typeof el === "object" ? el.path : null))
+    .filter((p) => typeof p === "string" && p.startsWith(prefix) && PHOTO_FILE.test(p.slice(prefix.length)))
+    .slice(0, MAX_PHOTOS)
+    .map((p) => sb.storage.from(PHOTO_BUCKET).getPublicUrl(p).data.publicUrl)
+    .filter(Boolean);
+
   const store = {
     id: data.id,
     storeName: data.store_name || "",
@@ -284,6 +303,7 @@ export async function getServerSideProps(ctx) {
     smsTel: resolved.smsTel,
     placeUrl: data.naver_place_url || "",
     visit,
+    photos,
   };
 
   // source 라벨: 유입 출처. 개인정보 아님. referer 호스트만 본다.
@@ -299,6 +319,8 @@ export async function getServerSideProps(ctx) {
 
 export default function StorePublicPage({ store, fact, intents = [], recent = [], source }) {
   const sentRef = useRef(false);
+  // [⑦-F-4] 큰 사진에 표시 중인 index. 화면 표시만 — DB 대표사진·순서와 무관. 초기 0 = SSR 출력 동일.
+  const [photoSel, setPhotoSel] = useState(0);
 
   // page_view 1회. StrictMode 이중 실행 방어.
   useEffect(() => {
@@ -326,6 +348,8 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
 
   const areaLine = [store.region, store.subRegion].filter(Boolean).join(" · ");
   const f = fact || { services: [], serviceArea: "", process: [], differentiators: [], preVisit: "" };
+  const photos = Array.isArray(store.photos) ? store.photos : [];
+  const cur = photoSel < photos.length ? photoSel : 0;
 
   return (
     <>
@@ -392,6 +416,38 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
             </a>
           ) : null}
         </nav>
+
+        {/* [P-PAGE-ONE-SCREEN-01 ⑦-F] 업체사진 — 처음엔 [0] 대표 크게 · 썸네일 = 대표 포함 전체. 0장이면 없음. 링크·추적 없음.
+            [⑦-F-4] 썸네일 클릭 = 큰 사진 표시만 변경(페이지 이동·DB 변경 없음). */}
+        {photos.length > 0 ? (
+          <section className="photos">
+            <img
+              className="photoMain"
+              src={photos[cur]}
+              alt={cur === 0 ? `${store.storeName} 대표사진` : `${store.storeName} 사진 ${cur + 1}`}
+            />
+            {photos.length > 1 ? (
+              <div className="thumbs">
+                {photos.map((u, i) => (
+                  <button
+                    type="button"
+                    className={i === cur ? "thumbBtn on" : "thumbBtn"}
+                    key={u}
+                    aria-pressed={i === cur}
+                    onClick={() => setPhotoSel(i)}
+                  >
+                    <img
+                      className="thumb"
+                      src={u}
+                      alt={i === 0 ? `${store.storeName} 대표사진` : `${store.storeName} 사진 ${i + 1}`}
+                      loading="lazy"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {store.visit.length > 0 ? (
           <section className="info">
@@ -583,6 +639,59 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
         }
         .chip:active {
           background: #f4f0eb;
+        }
+        .photos {
+          margin: 1.5rem 0 0;
+        }
+        .photoMain {
+          display: block;
+          width: 100%;
+          aspect-ratio: 3 / 2;
+          object-fit: cover;
+          border-radius: 0.6rem;
+          background: #f0ebe4;
+        }
+        /* [⑦-F-5] 한 줄 고정 — 폭이 모자라면(모바일 5~6장) 줄바꿈 대신 좌우 스크롤.
+           padding 4px = 선택 테두리·포커스 외곽선이 스크롤 영역에 잘리지 않게, 음수 margin 으로 위치 보정. */
+        .thumbs {
+          display: flex;
+          flex-wrap: nowrap;
+          gap: 0.4rem;
+          overflow-x: auto;
+          padding: 4px;
+          margin: calc(0.4rem - 4px) -4px 0;
+          scrollbar-width: thin;
+        }
+        .thumbs::-webkit-scrollbar {
+          height: 4px;
+        }
+        .thumbs::-webkit-scrollbar-thumb {
+          background: #d8d0c6;
+          border-radius: 2px;
+        }
+        .thumbBtn {
+          flex: 0 0 auto;
+          display: block;
+          padding: 0;
+          border: 0;
+          background: none;
+          border-radius: 0.4rem;
+          cursor: pointer;
+        }
+        .thumbBtn.on .thumb {
+          box-shadow: 0 0 0 2px #1c6b3f;
+        }
+        .thumbBtn:focus-visible {
+          outline: 2px solid #1c6b3f;
+          outline-offset: 2px;
+        }
+        .thumb {
+          display: block;
+          width: 4.5rem;
+          height: 3.375rem;
+          object-fit: cover;
+          border-radius: 0.4rem;
+          background: #f0ebe4;
         }
         .info {
           margin: 2.25rem 0 0;
