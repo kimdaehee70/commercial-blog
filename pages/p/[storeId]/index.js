@@ -51,6 +51,7 @@ import { isPseoEligible, listQualifiedIntents, MIN_HUB_POSTS, countPublishedPost
 //   검색노출 보드와 같은 함수를 쓰므로 두 값이 갈릴 수 없다.
 import { hubUrl } from "../../../lib/pseo/url";
 import { resolvePhone } from "../../../lib/pseo/phone";
+import { hasPhysicalStore } from "../../../lib/industry-catalog";
 
 // ── 브라우저로 내보낼 컬럼 화이트리스트 ────────────────────────
 //   여기 없는 컬럼은 HTML 에 절대 나가지 않는다.
@@ -85,6 +86,13 @@ const VISIT_KEYS = [
   ["closedDays", "휴무"],
   ["parkingOps", "주차"],
   ["reservation", "예약"],
+];
+// [P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01] 출장형 전용 — VISIT_KEYS 뒤에 붙인다. 라벨 = 입력 화면 라벨.
+//   출장형 판정 = lib/Store.js isField 와 같은 규칙. 다른 업종의 etc/dispatch24 는 표시하지 않는다.
+//   (lib/PseoRoom.js FIELD_VISIT_KEYS 와 같은 값 — 동기화 지점)
+const FIELD_VISIT_KEYS = [
+  ["dispatch24", "출동 가능시간"],
+  ["etc", "출장 안내"],
 ];
 
 // 허브에 노출할 Intent 최대 개수.
@@ -252,7 +260,9 @@ export async function getServerSideProps(ctx) {
 
   // visit_info 도 통째로 넘기지 않는다. 키 화이트리스트 적용.
   const vi = data.visit_info && typeof data.visit_info === "object" ? data.visit_info : {};
-  const visit = VISIT_KEYS
+  const ind = String(data.industry || "");
+  const isField = !hasPhysicalStore(ind) && ind !== "funeral";
+  const visit = (isField ? [...VISIT_KEYS, ...FIELD_VISIT_KEYS] : VISIT_KEYS)
     .map(([k, label]) => [label, String(vi[k] || "").trim()])
     .filter(([, v]) => v.length > 0);
 
