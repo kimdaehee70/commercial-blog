@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-03  
 **현재 대형 목표:** P페이지 1F 완성 → **최종 CLOSE / Production 정상 사용 승인 (2026-10-03)**  
-**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. **다음 One Axis = 미정 / 선장 TRACE 지시 대기** (2F·Pilot 착수 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18  
+**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. 이후 TRACE 2축(`P-PAGE-SEARCH-INDEX-TRACE` · `P-PAGE-SEARCH-FACT-INPUT-TRACE`) CLOSE — §19. **다음 One Axis = 미정 / 선장 지시 대기** (2F·Pilot 착수 금지 · HOLD 후보 2건 개발 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -146,6 +146,8 @@ P-PAGE-1F-IDENTITY-01           PRODUCT PASS / CLOSE (6f4638f · 사장님 Chrom
 PSEO-FACT-INPUT-OPEN-01         PRODUCT PASS / CLOSE (c6f720e · 고패킹 account 23 실제 E2E · 원복 완료) — §17
 P-PAGE-1F-PRODUCTION-GATE-01    CLOSE (main 1d1b32f 배포 · Production E2E PASS) — §18
 P페이지 1층                      최종 CLOSE / Production 정상 사용 승인 (2026-10-03)
+P-PAGE-SEARCH-INDEX-TRACE       CLOSE (TRACE · 코드 변경 0) — §19
+P-PAGE-SEARCH-FACT-INPUT-TRACE  PASS / CLOSE (TRACE · 코드 변경 0) — §19
 다음 One Axis                    미정 ← 지금 여기 (선장 지정 대기 · 2F/Pilot 금지)
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
@@ -178,6 +180,8 @@ P페이지 1층                      최종 CLOSE / Production 정상 사용 승
 - (⑦-F 이후 · 후보만, 다음 축 아님) `P-PAGE-PHOTO-VIEWER` — 사진 클릭 확대/라이트박스. ⑦-F 에서 범위 밖 판정
 - (⑦-F 이후 · 후보만) /p 「제공 서비스」가 첫 화면 맨 아래 제목만 보임 — 사진축 아님, P페이지 전체 정보구조 후보
 - (⑦-F 이후 · 미검증) 실제 6장 데이터 /p 렌더 — DB 변경 없이 브라우저 DOM 임시 복제로만 배열 확인(복제 썸네일은 클릭 동작 없음)
+- **HOLD** `P-PAGE-PUBLISH-INDEPENDENCE-01` — P페이지 공개(/p · sitemap)가 블로그 발행 1건(`MIN_HUB_POSTS`)에 종속되어야 하는지 (§19). 개발 금지.
+- **HOLD** `P-PAGE-FACT-SCOPE-01` — 일반회원에게 실제 업무방식/차이 FACT(`differentiators`)를 어디까지 입력받을지 (§19). 개발 금지.
 
 ---
 
@@ -432,3 +436,29 @@ P페이지 1층                      최종 CLOSE / Production 정상 사용 승
 - 현재는 방향 기록일 뿐 OPEN 된 축이 아니다. 축 이름·범위·순서는 선장이 정한다.
 - 다음 방에서 **선장 TRACE 지시 대기**. 그 전에 코드 수정·설계·구현 착수 금지.
 - 2F · Pilot 착수 금지.
+
+---
+
+# 19. P페이지 검색기초 TRACE (2026-10-03 · 코드 변경 0)
+
+## P-PAGE-SEARCH-INDEX-TRACE (CLOSE)
+- STEP 1 Production 실측 `/p/14`: 200 · title 「LG 인테리어」(업체명만) · description 「{지역줄} LG 인테리어 연락처와 방문 안내」 · meta robots / X-Robots-Tag 없음 · self canonical · robots.txt `/p/` 차단 없음 · sitemap 포함. JSON-LD·og 0. SSR 본문 전체 HTML.
+- 원천: 업체 FACT = `store_profiles`(store_name·industry·region·sub_region·address·phone·visit_info·photo_pool) · 하는 일 = `meta.search_fact` · 블로그 의존 = 「최근 글」(publish_history 제목·날짜·링크 12) · 「이런 내용을 다룹니다」(core_keyword, store 14 = 0) · 공개 Gate(발행 ≥1).
+- 최근 글 제거 가정 검색의미 4문항(업체·지역·하는 일·이용/연락) 모두 YES — 하는 일은 store 14 search_fact 한정. 블로그 제목에는 search_fact 밖 작업명(샷시·현관문필름·배관·방충망·누수·줄눈) 노출.
+- STEP 2 Google 실검색: `site:ai-post.ai/p/14` · `site:ai-post.ai "LG 인테리어"` · `"https://ai-post.ai/p/14"` 모두 발견(스니펫에 search_fact 「제공 서비스」 문구 사용) · 「LG 인테리어 남양주」 3위 · 「LG 인테리어 덕소」 미발견. (상호명+지역 검색만 확인 — 비상호 「지역+하는 일」 검색은 미시험)
+- Naver 실검색 · GSC URL 검사 · Naver Search Advisor 콘솔 = **미검증**(패널 차단·로그인 필요). 소유확인 흔적: DNS TXT google-site-verification · `public/naver8ddb….html`(200).
+- sitemap P페이지 1건 = 조건(active · account · store 1 제외 · 유효 유료 구독행 · 발행 ≥1)을 DB 21행에 대입 시 store 14 만 통과(admin 지급 basic/canceled ~2099-12-31 · 발행 27). store 18 = 유료·발행 0.
+
+## P-PAGE-SEARCH-FACT-INPUT-TRACE (PASS / CLOSE)
+- 정식 경로 존재: P페이지 › ⚙️ 기본 설정 좌측 「🔎 검색 정보」 → `PATCH /api/me/store` → `sanitizeSearchFact`(saved_at 부여) → `meta.search_fact` merge → /p · 우측 HubCheck 소비. 마이페이지 입력란 없음.
+- AI 자동생성 · 발행키워드(core_keyword·treatment_name·departments) 혼입 0. 쓰기 경로 = store.js 단 1곳.
+- 일반 유료회원(`can_enter`) = services·process 입력 가능 · differentiators 제한(OWNER·store 14 전용). 무료 = 「준비 중」 카드 + 서버 403.
+- DB: search_fact 보유 = store 14(8/6/3, saved_at 2026-09-29 20:26 KST — 입력 잠금 `695b9b3` 3분 전) · store 20(빈 값, §17 흔적). 나머지 19 없음.
+- **store 14 search_fact 는 실제 업체 확인 여부 미검증** — 검색 노출 실험 표본으로만 사용. 「LG 인테리어가 실제 제공한다고 검증된 FACT」로 확정 금지.
+
+## HOLD 후보 (개발 금지 · 선장 판정 대기)
+- `P-PAGE-PUBLISH-INDEPENDENCE-01` — P페이지 공개가 블로그 발행 1건에 종속되어야 하는지(P페이지 독립 임대 상품 관점).
+- `P-PAGE-FACT-SCOPE-01` — 일반회원에게 실제 업무방식/차이 FACT 를 어디까지 입력받을지.
+
+## 기록 (선장 방향 메모 · 축 아님)
+- 다음 검색 Pilot 핵심 질문: 상호명 없는 「지역 + 하는 일」 검색(예: 남양주 주방 리모델링 / 욕실 리모델링 / 아파트 인테리어)에서 /p 가 잡히는가. 지시 전 착수 금지.
