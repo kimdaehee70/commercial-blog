@@ -1,8 +1,8 @@
 # AI-POST · CURRENT MISSION
 
 **기준일:** 2026-10-03  
-**현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **`P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE**(`9dfa546`). **`P-PAGE-F1-PHOTO-INPUT-ORDER-01` CLOSE**(`6f3d541`). **`P-PAGE-1F-IDENTITY-01` CLOSE / PRODUCT PASS**(`6f4638f`). **`PSEO-FACT-INPUT-OPEN-01` CLOSE / PRODUCT PASS**(`c6f720e`). **다음 One Axis = `P-PAGE-1F-PRODUCTION-GATE-01`(C3)** — push·merge·deploy 아직 없음 — §17 참조  
+**현재 대형 목표:** P페이지 1F 완성 → **최종 CLOSE / Production 정상 사용 승인 (2026-10-03)**  
+**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. **다음 One Axis = 미정 / 선장 지정 대기** (2F·Pilot 착수 금지)  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -104,7 +104,9 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 695b9b3  (main 기준선)
 ```
 
-- push / main merge 없음.
+- **2026-10-03 main 반영 완료**: `695b9b3..1d1b32f` 34커밋 fast-forward(순서 무변경) → `git push origin main`(사장님 cmd 실행) → Vercel Production 자동배포 Ready. origin/main = 로컬 main = `1d1b32f`.
+- 이후 HANDOVER 문서 커밋은 작업 브랜치 로컬에만 있음(push 금지 · main 미반영 — main push 시 Vercel 재배포 발생, 시점은 선장 판정).
+- ⚠ main 에 push = Vercel Production 자동 배포. main 반영 승인 = 배포 승인.
 
 별도 브랜치 보존:
 - `fix/pseo-eligibility-enterprise-gap` — commit `a472ebe` (eligibility `PAID_PLANS` 에 enterprise 추가). 현재 브랜치에 임의 병합·cherry-pick 금지.
@@ -142,7 +144,9 @@ F2-SERVICE-AREA-POSITION-01     PRODUCT PASS / CLOSE (9dfa546 · 사장님 Chrom
 F1-PHOTO-INPUT-ORDER-01         PRODUCT PASS / CLOSE (6f3d541 · 사장님 Chrome) — §15
 P-PAGE-1F-IDENTITY-01           PRODUCT PASS / CLOSE (6f4638f · 사장님 Chrome) — §16
 PSEO-FACT-INPUT-OPEN-01         PRODUCT PASS / CLOSE (c6f720e · 고패킹 account 23 실제 E2E · 원복 완료) — §17
-P-PAGE-1F-PRODUCTION-GATE-01    다음 축   ← 지금 여기 (C3 · 2F/Pilot 금지)
+P-PAGE-1F-PRODUCTION-GATE-01    CLOSE (main 1d1b32f 배포 · Production E2E PASS) — §18
+P페이지 1층                      최종 CLOSE / Production 정상 사용 승인 (2026-10-03)
+다음 One Axis                    미정 ← 지금 여기 (선장 지정 대기 · 2F/Pilot 금지)
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -283,9 +287,9 @@ P-PAGE-1F-PRODUCTION-GATE-01    다음 축   ← 지금 여기 (C3 · 2F/Pilot �
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `6f3d541` · `6ca2ef3`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
+1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `1d1b32f` = origin/main) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. 다음 축 = **`P-PAGE-1F-PRODUCTION-GATE-01`(C3)**(§17). 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. P페이지 1층 최종 CLOSE(§18). 다음 One Axis = **미정 / 선장 지정 대기**. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -388,5 +392,31 @@ P-PAGE-1F-PRODUCTION-GATE-01    다음 축   ← 지금 여기 (C3 · 2F/Pilot �
 
 - 일반 P페이지 자격회원(`getPseoAccess.can_enter`)에게 `search_fact` services·process 입력·저장 개방. differentiators 는 일반회원 HOLD(화면 미노출 · 서버 403 `PSEO_FACT_FIELD_LOCKED` · 기존값 보존). `canManagePseoFact`(OWNER·store 14) 무변경.
 - PRODUCT E2E: 고패킹 account 23 / store 20(관리자 지급 basic) 실제 저장·새로고침 유지·우측 반영 PASS. 원복 완료: account 23·20 free(admin 구독 이력은 canceled 로 보존), store 20 = 빈 search_fact 이력만 잔존(선장 인정). C1 업종 표시 미검증도 「하나2 → 바닥시공」으로 해소.
-- 다음 One Axis: `P-PAGE-1F-PRODUCTION-GATE-01` — 1층 누적 커밋/배포 대상 확인 → 회귀 Gate → 선장 승인 → merge/deploy → Production E2E → 1층 최종 CLOSE.
-- push · merge · deploy: 아직 없음. 기록만: account 19(store 18) test 표식 계정 · 실빌링키 자동결제 예정 2026-10-07.
+- 다음 One Axis: `P-PAGE-1F-PRODUCTION-GATE-01` → CLOSE(§18).
+- 기록만: account 19(store 18) test 표식 계정 · 실빌링키 자동결제 예정 2026-10-07.
+
+---
+
+# 18. P-PAGE-1F-PRODUCTION-GATE-01 (CLOSE · 2026-10-03) — P페이지 1층 최종 CLOSE
+
+## C3 TRACE (배포 전 Gate PASS)
+- 기준선: origin/main = main = `695b9b3` · HEAD..main 0 → fast-forward 가능.
+- 34커밋 감사(코드 21 · 문서 13) · 변경 14파일(코드 9 · 문서 5). FREEZE 경로 변경 0 · `[intentSlug].js`·eligibility·billing·vercel.json·package.json 변경 0 · 신규 env 0 · DDL 0. 저장계약 변경 = `pages/api/me/store.js` 2곳(8ff75f9 `pseo_access` GET · c6f720e search_fact 개방) 모두 승인 축.
+- 미커밋 156건 격리: 대상 14파일과 겹침 0 · HEAD 단독 clean worktree `next build` PASS.
+- Production Supabase = 로컬과 동일 프로젝트 `vuuqtrzcfjbywlxqskoi`(사장님 Vercel 환경변수 확인) · bucket `store-photos` 존재.
+- `a472ebe`(enterprise eligibility): enterprise 구독·accounts 0건 · 34커밋과 독립 → **제외 확정**(별도 축). `fix/pseo-eligibility-enterprise-gap` 에만 존재.
+
+## 배포
+- 사장님 cmd: `git fetch . feat/p-page-one-screen-01:main` → `git push origin main` (Claude 실행은 자동모드 안전장치 차단).
+- Vercel `1d1b32f` · main · Production · Ready 57s. 운영 `https://ai-post.ai/p/14` SSR 에 photo_pool 사진 URL 출력 = 새 코드 서비스 확인.
+
+## Production E2E
+- ① `/p/14` 사장님 Chrome: 대표 + 썸네일 · 썸네일 클릭 큰 사진 전환 PASS.
+- ② 기본 설정 저장: **SKIP**(선장 판정) — 배포 전 store 20 실제 E2E PASS + 배포 코드 동일성으로 승계. store 20 은 현재 free · 구독 기간 종료 · 발행 0 · `/p/20` 404 → 자격 재지급(A안) 기각.
+- ③ store 14 사진(선장이 이번 E2E 한정 쓰기 허용): 업로드 → 3/6 · 공개 SSR 3장(`[2] 14/072b6b2b-4023-442a-ad30-330f1bf7865f.jpg`) · Storage 200 → 공개 /p 3번째 썸네일 표시·클릭 → 테스트 1장 삭제 → 2/6 · 공개 SSR `[0] 7cbf7a81…` `[1] 2dc52872…`(업로드 전과 동일) · 테스트 객체 Storage 400. SERVICE_ROLE_KEY 운영 경로 실증.
+- 미검증 기록: 운영 DB photo_pool 직접 조회 안 함(안전장치 차단) — 공개 SSR(photo_pool 직접 판독)으로 대체 근거.
+- 기록만: 확인 열람으로 /p/14 page_view 수 건 발생(승인된 정상 동작).
+
+## 정리
+- 임시 빌드 worktree `D:\cb-gate-wt`: git worktree 등록 해제 완료 · 남은 node_modules junction·폴더 정리(§18 STOP 보고 참조).
+- 다음 One Axis = 미정 / 선장 지정 대기. 2F · Pilot · a472ebe 축 임의 착수 금지.
