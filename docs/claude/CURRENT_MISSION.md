@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-03  
 **현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **`P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE**(`9dfa546`). **다음 축 = 미정 / 선장 결정 대기** — §14·§13·§12·§11 참조  
+**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **`P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE**(`9dfa546`). **`P-PAGE-F1-PHOTO-INPUT-ORDER-01` CLOSE**(`6f3d541`). **다음 축 = 미정 / 선장 결정 대기** — §15·§14·§13·§12·§11 참조  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -47,7 +47,7 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 [공개 P페이지 보기] = 실제 /p/{store.id} 새 탭 — 최종 확인
 ```
 
-- 왼쪽 (`StoreInfoForm section="pseo"`, `lib/Store.js`)
+- 왼쪽 (`StoreInfoForm section="pseo"`, `lib/Store.js`) — 순서(F-1 `6f3d541` 이후): 업체 기본정보 → 생활권 → 업체 사진 → 운영정보 → 검색정보
   - 🏥 업체 기본정보 = `identSection`(마이페이지와 공용 JSX) — 업체명·주소·전화 편집, 업종 🔒 읽기 전용(업종센터 버튼 미노출)
   - 📍 생활권 = `regionSection` 공용
   - 운영·상담·출장정보 = `visitSection` 공용
@@ -73,6 +73,7 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+6f3d541  F1-PHOTO-INPUT-ORDER-01  fix(p-page): align photo input order (lib/Store.js)
 9dfa546  F2-SERVICE-AREA-POSITION-01  fix(p-page): align field service area (pages/p/[storeId]/index.js · lib/PseoRoom.js)
 e876b08  F3-TRAVEL-INFO-CONSISTENCY-01  fix(p-page): expose field visit info (pages/p/[storeId]/index.js · lib/PseoRoom.js)
 827bbf6  FIRST-USER-EDIT-FLOW-01 STEP 2  feat(p-page): connect editor and preview focus (pages/index.js · lib/Store.js · lib/PseoRoom.js)
@@ -136,6 +137,7 @@ FIRST-USER-EDIT-FLOW-01 STEP 1  TRACE PASS (코드 변경 0)
 FIRST-USER-EDIT-FLOW-01 STEP 2  PRODUCT PASS / CLOSE (827bbf6 · 사장님 Chrome 「정상 반영」)
 F3-TRAVEL-INFO-CONSISTENCY-01   PRODUCT PASS / CLOSE (e876b08 · 사장님 Chrome PC/모바일 폭) — §13
 F2-SERVICE-AREA-POSITION-01     PRODUCT PASS / CLOSE (9dfa546 · 사장님 Chrome) — §14
+F1-PHOTO-INPUT-ORDER-01         PRODUCT PASS / CLOSE (6f3d541 · 사장님 Chrome) — §15
 다음 축                         미정 — 선장 결정 대기   ← 지금 여기
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
@@ -277,9 +279,9 @@ F2-SERVICE-AREA-POSITION-01     PRODUCT PASS / CLOSE (9dfa546 · 사장님 Chrom
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `9dfa546` · `3432b06`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
+1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `6f3d541` · `6ca2ef3`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. 다음 STEP/축 = **미정**. 선장 지시 전에는 어떤 축도 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-1·F-4~F-6(F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. 다음 STEP/축 = **미정**. 선장 지시 전에는 어떤 축도 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -305,7 +307,7 @@ F2-SERVICE-AREA-POSITION-01     PRODUCT PASS / CLOSE (9dfa546 · 사장님 Chrom
 - 미검증: 저장 버튼 실제 payload 비교(저장 코드 diff 0) · 좌측 상자 간격 픽셀 비교.
 
 ## 후속 후보 (기록만 · 선장 판정 전 착수 금지)
-- F-1 좌측 사진 입력란을 생활권과 운영정보 사이로 이동(우·/p 순서 일치) — 사장님 제안.
+- ~~F-1~~ → `P-PAGE-F1-PHOTO-INPUT-ORDER-01` CLOSE(§15). 원래 기록: 좌측 사진 입력란을 생활권과 운영정보 사이로 이동(우·/p 순서 일치) — 사장님 제안.
 - ~~F-2~~ → `P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE(§14). 원래 기록: 출동 가능지역(serviceArea)을 상단 표시(우측+/p 동시 · 생활권과 합치지 않음 · 라벨 구분) — 사장님 제안, 기술 의견 = 표시만 이동(A안).
 - ~~F-3~~ → `P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE(§13). 원래 기록: 출장형 운영정보 노출·라벨 정리: 출장 안내(etc)·출동 가능시간(dispatch24) 대표 페이지 미노출 · preVisit 「방문 전 확인사항」↔「상담 전 확인사항」 · 대표 페이지와 Intent 페이지 목록 불일치.
 - F-4 제공 서비스 표시 방식(A 이름·설명 한 줄 / B 이름만 나열 / C 펼치기 / D 유지) — 기술 의견 A.
@@ -348,3 +350,20 @@ F2-SERVICE-AREA-POSITION-01     PRODUCT PASS / CLOSE (9dfa546 · 사장님 Chrom
 - 변경 없음: Intent(`[intentSlug].js` 의 「서비스 지역」 라벨 유지) · DB · API · Store.js · CSS.
 - 기록만: 비출장형 업체가 `serviceArea` 값을 가져도 대표 /p·우측에 표시되지 않음(현재 해당 값 0건 · 비출장형 입력 양식에 입력란 없음).
 - 다음 축 = 미정 / 선장 결정 대기.
+
+---
+
+# 15. P-PAGE-F1-PHOTO-INPUT-ORDER-01 (CLOSE / FREEZE · `6f3d541`)
+
+목적: 좌측 입력 순서를 우측 수정 확인·공개 /p 의 「업체정보 → 사진 → 운영정보 → 제공 서비스」 흐름에 맞춘다.
+
+- STEP 1 TRACE: 좌측만 사진이 맨 끝(`27f6201` UI Shell 의 ④ 자리 → ⑦-D `c5e0dce` 가 그 자리에 카드 삽입). 우측·/p 는 업체정보 바로 뒤. 우측 사진 클릭 시 좌측 2316px 이동. 사진 기능 자체 이상 없음.
+- 선장 결정 B안 / B-1. 구현(`6f3d541`, `lib/Store.js` 1개): `zone("photo", <StorePhotoCard … />)` 2줄을 `#pseo-sec-basic` 종료 직후 · `visit` 앞으로 그대로 이동 + 순서 주석 갱신.
+  - 좌측 최종 순서: `ident → region → photo → visit → sf` = 업체 기본정보 → 생활권 → 업체 사진 → 출장·운영정보 → 검색 정보.
+  - 사진 카드 위치만 이동. 저장·업로드·삭제·교체·대표사진·순서변경 로직 · props · `storePhotos` state · API/DB/Storage 무변경. `data-zone="photo"` 유지.
+- 검증: 사진 카드 1개 · 기존 2장·대표 순서 유지 · 사진 바로 아래 운영정보 · 사진 GET 진입 시 1건(변경 전과 동일) · 사진 관련 쓰기 0 · 공개 /p/14 회귀 0(`pages/p/**` diff 0) · console error 0 · 1024/768 폭 신규 파손 0. 좌→우 / 우→좌 이동·강조 사장님 Chrome 실확인 PASS.
+  - 기록: Claude 패널이 숨김 상태면 smooth 스크롤·outline 전환 애니메이션이 진행되지 않음 → 패널 측정은 inline 스타일로 강조만 확인, 스크롤은 사장님 Chrome 으로 확인.
+  - 기록: 400폭에서는 좌측 열 전체가 91px 로 줄어 좌측 5개 영역이 모두 넘침 — 기존 레이아웃 특성(§8), F-1 무관.
+- F-1 · F-2 · F-3 모두 CLOSE / FREEZE.
+- 미해결 별도 후보(F-1 미포함): 공개 /p 두 번째 썸네일 회색 빈칸(Claude 패널에서만 관찰 · 사장님 Chrome 정상 · 썸네일 `loading="lazy"`) — 미조사.
+- 남은 1층 후보: F-4(제공 서비스 표시) · F-5(진행 순서·실제 방식 순서/라벨) · F-6(우측 role=button 접근 이름). 다음 F축 착수 금지 · 선장 결정 대기.
