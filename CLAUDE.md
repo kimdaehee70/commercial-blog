@@ -18,6 +18,7 @@
    @docs/claude/PROJECT_HISTORY.md
 4. `docs/claude/ENGINE_DEVELOPMENT_PLAYBOOK.md` — 신규/기존 콘텐츠 엔진 작업일 때 추가로 읽음
 5. 현재 미션이 참조하는 원본 Architecture / Decision / SOP 문서
+6. `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md` — ACTIVE / P페이지·P페이지 검색자산 작업 시 필독
 
 **이 문서만 읽고 현재 미션을 추측하지 않는다.** `CURRENT_MISSION.md`와 사용자가 전달한 최신 선장 지시가 현재 작업 범위를 정한다.
 
