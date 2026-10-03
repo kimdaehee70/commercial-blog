@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-03  
 **현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **다음 F축 = 미정 / 선장 결정 대기** — §13·§12·§11 참조  
+**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **`P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE**(`9dfa546`). **다음 축 = 미정 / 선장 결정 대기** — §14·§13·§12·§11 참조  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -73,6 +73,7 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+9dfa546  F2-SERVICE-AREA-POSITION-01  fix(p-page): align field service area (pages/p/[storeId]/index.js · lib/PseoRoom.js)
 e876b08  F3-TRAVEL-INFO-CONSISTENCY-01  fix(p-page): expose field visit info (pages/p/[storeId]/index.js · lib/PseoRoom.js)
 827bbf6  FIRST-USER-EDIT-FLOW-01 STEP 2  feat(p-page): connect editor and preview focus (pages/index.js · lib/Store.js · lib/PseoRoom.js)
 a789692  HANDOVER (문서) docs(handover): close p-page photo axis
@@ -134,7 +135,8 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 FIRST-USER-EDIT-FLOW-01 STEP 1  TRACE PASS (코드 변경 0)
 FIRST-USER-EDIT-FLOW-01 STEP 2  PRODUCT PASS / CLOSE (827bbf6 · 사장님 Chrome 「정상 반영」)
 F3-TRAVEL-INFO-CONSISTENCY-01   PRODUCT PASS / CLOSE (e876b08 · 사장님 Chrome PC/모바일 폭) — §13
-다음 F축                        미정 — 선장 결정 대기   ← 지금 여기
+F2-SERVICE-AREA-POSITION-01     PRODUCT PASS / CLOSE (9dfa546 · 사장님 Chrome) — §14
+다음 축                         미정 — 선장 결정 대기   ← 지금 여기
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -275,9 +277,9 @@ F3-TRAVEL-INFO-CONSISTENCY-01   PRODUCT PASS / CLOSE (e876b08 · 사장님 Chrom
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `e876b08` · `87c533b`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
+1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `9dfa546` · `3432b06`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. 다음 STEP/축 = **미정**. 선장 지시 전에는 어떤 축도 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-1·F-2·F-4~F-6(F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. 다음 STEP/축 = **미정**. 선장 지시 전에는 어떤 축도 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-1·F-4~F-6(F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -304,7 +306,7 @@ F3-TRAVEL-INFO-CONSISTENCY-01   PRODUCT PASS / CLOSE (e876b08 · 사장님 Chrom
 
 ## 후속 후보 (기록만 · 선장 판정 전 착수 금지)
 - F-1 좌측 사진 입력란을 생활권과 운영정보 사이로 이동(우·/p 순서 일치) — 사장님 제안.
-- F-2 출동 가능지역(serviceArea)을 상단 표시(우측+/p 동시 · 생활권과 합치지 않음 · 라벨 구분) — 사장님 제안, 기술 의견 = 표시만 이동(A안).
+- ~~F-2~~ → `P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE(§14). 원래 기록: 출동 가능지역(serviceArea)을 상단 표시(우측+/p 동시 · 생활권과 합치지 않음 · 라벨 구분) — 사장님 제안, 기술 의견 = 표시만 이동(A안).
 - ~~F-3~~ → `P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE(§13). 원래 기록: 출장형 운영정보 노출·라벨 정리: 출장 안내(etc)·출동 가능시간(dispatch24) 대표 페이지 미노출 · preVisit 「방문 전 확인사항」↔「상담 전 확인사항」 · 대표 페이지와 Intent 페이지 목록 불일치.
 - F-4 제공 서비스 표시 방식(A 이름·설명 한 줄 / B 이름만 나열 / C 펼치기 / D 유지) — 기술 의견 A.
 - F-5 진행 순서·실제 방식 순서 이동 기능 없음(끝에만 추가) · 라벨 불일치(「우리 업체의 실제 방식」↔「이렇게 일합니다」).
@@ -326,8 +328,23 @@ F3-TRAVEL-INFO-CONSISTENCY-01   PRODUCT PASS / CLOSE (e876b08 · 사장님 Chrom
 - 표시 특성(수정 안 함): 「출동 가능시간」 라벨이 좁은 라벨 칸에서 두 줄로 접힘 · `etc` 줄바꿈은 공백으로 합쳐짐(`dd` pre-line 없음).
 
 ## 남은 후보 / 관찰 (착수 금지)
-- `serviceArea` 위치(제공 서비스 아래 하단)·라벨(「서비스 지역」↔입력 「출동 가능지역」) — F-2 별도 후보 유지.
+- ~~`serviceArea` 위치·라벨~~ → F-2 CLOSE(§14).
 - `preVisit` Intent 미노출 · 대표/Intent 라벨 불일치(휴무↔휴무일 등) — 기록만.
 - 출장형 Intent 페이지 0건 — 별도 검색자산 축(F-3 범위 아님).
 - 관찰: Claude 브라우저 패널 모바일 폭에서 /p/14 두 번째 사진 썸네일이 회색 빈칸으로 보임(사장님 Chrome 에서는 정상 표시). 미조사·미착수.
 - 다음 F축 = 미정 / 선장 결정 대기.
+
+---
+
+# 14. P-PAGE-F2-SERVICE-AREA-POSITION-01 (CLOSE / FREEZE · `9dfa546`)
+
+목적: 출장형 「출동 가능지역」(`serviceArea`)의 좌측 입력 위치와 우측 수정 확인·공개 /p 표시 위치를 맞춘다.
+
+- STEP 1 TRACE: 입력은 운영정보 상자(출동 가능시간 옆)인데, 표시는 제공 서비스 아래 독립 「서비스 지역」 블록(`fact.serviceArea`)이었고 우측 클릭 연결도 없었음. 값 보유 = 출장형 store 14·20뿐.
+- 선장 결정 B안. 구현(`9dfa546`): `FIELD_VISIT_KEYS` 에 `["serviceArea","출동 가능지역"]` 을 `dispatch24`·`etc` 사이에 추가(두 파일 동일) · 독립 「서비스 지역」 블록 제거 · `fact.serviceArea` 제거(유일 소비처가 그 블록).
+  - 출장형 운영정보 최종 순서: 영업시간 → 휴무 → 출동 가능시간 → 출동 가능지역 → 출장 안내.
+  - 표시 라벨 「출동 가능지역」으로 통일 → 좌측 입력 ↔ 우측 수정 확인 ↔ 공개 /p 대응 일치. 우측 행은 `data-pv="visit"` 안 → 클릭 시 좌측 운영정보 이동·강조(STEP 2 로직 무변경).
+- 검증: /p/14 5행 순서·값 · 「서비스 지역」 HTML 0건 · 제공 서비스 다음 진행 순서 · 우측 동일 · 비출장형 회귀 0(DB 21행 전후 비교, 변화 = store 14·20) · 375/400/1366 가로 넘침 0 · console error 0. 사장님 Chrome PRODUCT PASS.
+- 변경 없음: Intent(`[intentSlug].js` 의 「서비스 지역」 라벨 유지) · DB · API · Store.js · CSS.
+- 기록만: 비출장형 업체가 `serviceArea` 값을 가져도 대표 /p·우측에 표시되지 않음(현재 해당 값 0건 · 비출장형 입력 양식에 입력란 없음).
+- 다음 축 = 미정 / 선장 결정 대기.
