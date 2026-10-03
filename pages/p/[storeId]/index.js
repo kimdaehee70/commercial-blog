@@ -92,6 +92,7 @@ const VISIT_KEYS = [
 //   (lib/PseoRoom.js FIELD_VISIT_KEYS 와 같은 값 — 동기화 지점)
 const FIELD_VISIT_KEYS = [
   ["dispatch24", "출동 가능시간"],
+  ["serviceArea", "출동 가능지역"], // [P-PAGE-F2-SERVICE-AREA-POSITION-01] 독립 「서비스 지역」 블록에서 이동
   ["etc", "출장 안내"],
 ];
 
@@ -105,7 +106,7 @@ const MAX_RECENT = 12;
 //   원천: store_profiles.meta.search_fact (업체 입력 · AI 생성 없음).
 //   ★ PUBLIC_FIELDS 에 meta 추가 금지 — 별도 select 후 search_fact 만 추출.
 //     meta 의 다른 키(note 등)는 props 로 나가지 않는다.
-//   ★ 서비스 지역·상담 전 확인은 visit_info SoT 에서 읽는다(복제 없음).
+//   ★ 상담 전 확인은 visit_info SoT 에서 읽는다(복제 없음). 출동 가능지역(serviceArea)은 FIELD_VISIT_KEYS 로 영업·이용정보에 표시.
 //   ★ 입력 없는 블록은 렌더하지 않는다. title/description·Intent 무접촉.
 //   (pages/api/me/store.js pickSearchFact 와 같은 규칙 — 파일 3개 제한으로 로컬 정의)
 function pickSearchFact(meta) {
@@ -285,7 +286,6 @@ export async function getServerSideProps(ctx) {
   const sf = pickSearchFact(metaRow && metaRow.meta);
   const fact = {
     services: sf.services,
-    serviceArea: String(vi.serviceArea || "").trim(),
     process: sf.process,
     differentiators: sf.differentiators,
     preVisit: String(vi.preVisit || "").trim(),
@@ -357,7 +357,7 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
     : "";
 
   const areaLine = [store.region, store.subRegion].filter(Boolean).join(" · ");
-  const f = fact || { services: [], serviceArea: "", process: [], differentiators: [], preVisit: "" };
+  const f = fact || { services: [], process: [], differentiators: [], preVisit: "" };
   const photos = Array.isArray(store.photos) ? store.photos : [];
   const cur = photoSel < photos.length ? photoSel : 0;
 
@@ -482,13 +482,6 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
                 </li>
               ))}
             </ul>
-          </section>
-        ) : null}
-
-        {f.serviceArea ? (
-          <section className="intents">
-            <h2 className="h2">서비스 지역</h2>
-            <p className="factText">{f.serviceArea}</p>
           </section>
         ) : null}
 
