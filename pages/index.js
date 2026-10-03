@@ -9622,6 +9622,10 @@ export default function Home() {
   const [hubStore,    setHubStore]    = useState(null);   // null=미로딩 | {industry,store_name,address,specialty,...}
   // [P-PAGE-ONE-SCREEN-01 ⑦-E] 업체사진 목록 [{path,url}] — StorePhotoCard 가 조작, 우측 HubCheck 가 읽기만. hubStore 와 분리(사진 state 는 이것 하나).
   const [storePhotos, setStorePhotos] = useState([]);
+  // [P-PAGE-FIRST-USER-EDIT-FLOW-01] 기본 설정 좌측 진입 영역 → 우측 HubCheck 대응 위치 이동·강조. 화면 표시 전용(저장 데이터 아님).
+  const [pseoFocus, setPseoFocus] = useState(null); // null | "ident" | "region" | "visit" | "sf" | "photo"
+  // 역방향 — 우측 대표 위치 클릭 → 좌측 입력 위치 이동·강조. n = 같은 위치 재클릭도 다시 동작.
+  const [pseoPick, setPseoPick] = useState(null);   // null | { k, n }
   const [pseoAccess,  setPseoAccess]  = useState(null);   // [PSEO-MINIHOME-UI-01] 서버 판정 결과 {state,can_enter,live,published_count} | null
   // [OWNER 검수 게이트] restaurant 멀티카테고리 검수용 임시 우회.
   //   일반 사용자: 기존대로 RESTAURANT_LIVE_CAT(분식)만 노출 — 운영 무영향.
@@ -10838,6 +10842,8 @@ export default function Home() {
   // [P-PAGE-ONE-SCREEN-01] P페이지 › 기본 설정 = 좌측 편집 한 화면(StoreInfoForm section="pseo"), 우측 = PseoRoom 미리보기 자리.
   //   입장 판정은 기존 서버 pseo_access.can_enter 그대로(미충족 시 좌측 기존 코치 · 우측 🔒).
   const pseoLeft = !!(authUserId && resultTab === "nav" && navView === "pseo-basic" && pseoAccess && pseoAccess.can_enter);
+  // 기본 설정을 벗어나면 초기화 — 재진입 시 첫 영역 진입이 다시 동작하도록.
+  useEffect(() => { if (!pseoLeft) { setPseoFocus(null); setPseoPick(null); } }, [pseoLeft]);
   // 마이페이지 흐름 중 업종 선택 = 우측에 업종 목록(IndustryTree). 업종 미확정 계정은 기본 표시.
   const mpIndustryRight = mpLeft && navView !== "history" && (mpIndustryOpen || !(hubStore && hubStore.industry));
   // 목차 활성: 키 일치 + 같은 키를 공유하는 항목이 여럿이면 마지막 선택 항목(없으면 첫 항목).
@@ -14018,6 +14024,8 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                     lex={lex}
                     photos={storePhotos}
                     setPhotos={setStorePhotos}
+                    onPseoFocus={setPseoFocus}
+                    pseoPick={pseoPick}
                   />
                 </div>
               ) : mpLeft ? (
@@ -14747,6 +14755,8 @@ function analyzeKeywordLocal(keyword, treatmentName, region) {
                   ) : (typeof navView === "string" && navView.startsWith("pseo-")) ? (
                     // [PSEO-MINIHOME-UI-01] P페이지 방 — 판정은 서버(pseoAccess), UI는 표시만.
                     <PseoRoom view={navView} authed={!!authUserId} store={hubStore} access={pseoAccess} photos={storePhotos}
+                      focusKey={pseoFocus} scrollBoxRef={navScrollRef}
+                      onPreviewPick={(k) => setPseoPick({ k, n: Date.now() })}
                       industryLabel={(hubStore?.industry && INDUSTRY_CONFIG[hubStore.industry]?.label) || (hubStore?.industry && getCatalogItem(hubStore.industry)?.name) || "—"}
                       onGoMypage={goMypageVisit} onGoPosting={goPosting} />
                   ) : navView === "su-history" ? (
