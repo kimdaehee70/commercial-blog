@@ -47,10 +47,12 @@ const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 function pickInfoBlockKey(treatment) {
   const cat = treatment.cat;
   if (cat === "구축아파트") return "oldapt";
-  if (cat === "욕실리모델링" || cat === "주방리모델링") return "space";
+  if (cat === "욕실리모델링") return "bath";      // [STEP 5A] space 공유 해제
+  if (cat === "주방리모델링") return "kitchen";
   if (cat === "도배장판") return "finish";
   if (cat === "체크리스트") return "check";
-  if (cat === "아파트리모델링" || cat === "부분인테리어") return "remodel";
+  if (cat === "아파트리모델링") return "remodel";
+  if (cat === "부분인테리어") return "part";   // [INTERIOR-SMOKE-FAIL-FIX-01] remodel 공유 해제
   return "cost";
 }
 
@@ -129,9 +131,12 @@ export default async function handleInterior(req, res) {
     //   문자열 t.id/t.name 과 비교하면 항상 false → 전 cat 이 TREATMENTS[0](아파트 리모델링)로
     //   폴백되던 결함. id·name 을 꺼내 흡수한다. treatmentId 우선순위는 기존 그대로.
     const tId = treatmentId || program?.id || program?.name || program;
-    const treatment =
-      INTERIOR_TREATMENTS.find((t) => t.id === tId || t.name === tId) ||
-      INTERIOR_TREATMENTS[0];
+    const _found = INTERIOR_TREATMENTS.find((t) => t.id === tId || t.name === tId);
+    // [INTERIOR-ENGINE-PREOPEN-AUDIT-01 · STEP 5E] it_check HOLD — 다른 메뉴로 폴백하지 않고 명시 거부.
+    if (_found && _found.id === "it_check") {
+      return res.status(403).json({ ok: false, error: "보류 중인 메뉴입니다: 인테리어 견적 체크리스트", code: "MENU_ON_HOLD" });
+    }
+    const treatment = _found || INTERIOR_TREATMENTS[0];
 
     // 단지명 결정: useApt면 풀에서 선택(또는 body 지정), 아니면 미사용
     let aptName = null;

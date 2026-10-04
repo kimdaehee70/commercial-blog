@@ -481,7 +481,8 @@ const ADMIN_CATS_LOCAL = ADMIN_CATS;  // ← 행정사 (7메뉴, administrative-
 const REALESTATE_CATS_LOCAL = REALESTATE_CATS;  // ← 부동산 (7메뉴, realestate-data 소유)
 const CLEANING_CATS_LOCAL = CLEANING_CATS;  // ← 입주청소 (8메뉴, cleaning-data 소유)
 const MOVING_CATS_LOCAL = MOVING_CATS;  // ← 이사업체 (8메뉴, moving-data 소유)
-const INTERIOR_CATS_LOCAL = INTERIOR_CATS;  // ← 인테리어 (8메뉴, interior-data 소유)
+// [INTERIOR-ENGINE-PREOPEN-AUDIT-01 · STEP 5E] 체크리스트(it_check) HOLD — 데이터 보존, 탭만 제외(OWNER 포함).
+const INTERIOR_CATS_LOCAL = INTERIOR_CATS.filter((c) => c !== "체크리스트");  // ← 인테리어 (8메뉴 중 7 노출, interior-data 소유)
 const GROUT_CATS_LOCAL = GROUT_CATS;  // ← 줄눈 (8메뉴, grout-data 소유)
 const COATING_CATS_LOCAL = COATING_CATS;  // ← 탄성코트 (8메뉴, coating-data 소유)
 const SYSTEMAIR_CATS_LOCAL = SYSTEMAIR_CATS;  // ← 시스템에어컨 (8메뉴, systemair-data 소유)
@@ -661,7 +662,8 @@ const INDUSTRY_TREATMENTS = {
   realestate: REALESTATE_TREATMENTS,    // ← 부동산 (분석리포트형·공인중개사화자)
   cleaning: CLEANING_TREATMENTS,        // ← 입주청소 (정보형·청소업체화자)
   moving: MOVING_TREATMENTS,            // ← 이사업체 (정보형·이사업체화자)
-  interior: INTERIOR_TREATMENTS,        // ← 인테리어 (정보형·인테리어업체화자)
+  // [STEP 5E] it_check HOLD — 단일·다중분야·소유업종 색인 전부 이 배열을 거친다. 정의(INTERIOR_TREATMENTS)는 보존.
+  interior: INTERIOR_TREATMENTS.filter((t) => t.id !== "it_check"),        // ← 인테리어 (정보형·인테리어업체화자)
   grout: GROUT_TREATMENTS,              // ← 줄눈 (정보형·줄눈시공업체화자)
   coating: COATING_TREATMENTS,          // ← 탄성코트 (정보형·탄성코트업체화자)
   systemair: SYSTEMAIR_TREATMENTS,      // ← 시스템에어컨 (정보형·시스템에어컨업체화자)

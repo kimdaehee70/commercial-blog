@@ -1,8 +1,8 @@
 # AI-POST · CURRENT MISSION
 
-**기준일:** 2026-10-03  
-**현재 대형 목표:** P페이지 1F 완성  
-**현재 상태:** ①~⑦-F CLOSE. **`P-PAGE-FIRST-USER-EDIT-FLOW-01` STEP 1 TRACE PASS · STEP 2 편집↔미리보기 양방향 연결 CLOSE**(`827bbf6`). **`P-PAGE-F3-TRAVEL-INFO-CONSISTENCY-01` CLOSE**(`e876b08`). **`P-PAGE-F2-SERVICE-AREA-POSITION-01` CLOSE**(`9dfa546`). **`P-PAGE-F1-PHOTO-INPUT-ORDER-01` CLOSE**(`6f3d541`). **`P-PAGE-1F-IDENTITY-01` CLOSE / PRODUCT PASS**(`6f4638f`). **`PSEO-FACT-INPUT-OPEN-01` CLOSE / PRODUCT PASS**(`c6f720e`). **다음 One Axis = `P-PAGE-1F-PRODUCTION-GATE-01`(C3)** — push·merge·deploy 아직 없음 — §17 참조  
+**기준일:** 2026-10-04  
+**현재 대형 목표:** P페이지 1F 완성 → **최종 CLOSE / Production 정상 사용 승인 (2026-10-03)**  
+**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. 이후 TRACE 2축(`P-PAGE-SEARCH-INDEX-TRACE` · `P-PAGE-SEARCH-FACT-INPUT-TRACE`) CLOSE — §19. 지역×서비스 검색 Pilot 0/8 → 대표서비스안 기각·원복 → 다중업무 SoT TRACE CLOSE — §20. 이후 `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01`(설계) → **`P-PAGE-MULTI-SERVICE-HUB-V1-01` CLOSE(`744ca94`) · `P-PAGE-SERVICE-LIMIT-REMOVE-01` CLOSE(`ca9a80d`)** — 둘 다 >8 실제 저장 E2E PENDING · 로컬 커밋만(push 금지) — §21. **다음 One Axis = 미정(선장 결정 대기)** (2F·Pilot 착수 금지 · HOLD 후보 2건 개발 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -73,6 +73,8 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+ca9a80d  P-PAGE-SERVICE-LIMIT-REMOVE-01  feat(p-page): remove service count limit (lib/Store.js · pages/api/me/store.js) — 로컬만
+744ca94  P-PAGE-MULTI-SERVICE-HUB-V1-01  feat(p-page): strengthen multi-service search hub (lib/Store.js · pages/api/me/store.js · pages/p/[storeId]/index.js · lib/PseoRoom.js) — 로컬만
 c6f720e  PSEO-FACT-INPUT-OPEN-01  feat(p-page): open search fact services and process to eligible members (pages/api/me/store.js · lib/Store.js)
 6f4638f  P-PAGE-1F-IDENTITY-01  fix(p-page): show store industry label (pages/p/[storeId]/index.js · lib/PseoRoom.js)
 6f3d541  F1-PHOTO-INPUT-ORDER-01  fix(p-page): align photo input order (lib/Store.js)
@@ -104,7 +106,9 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 695b9b3  (main 기준선)
 ```
 
-- push / main merge 없음.
+- **2026-10-03 main 반영 완료**: `695b9b3..1d1b32f` 34커밋 fast-forward(순서 무변경) → `git push origin main`(사장님 cmd 실행) → Vercel Production 자동배포 Ready. origin/main = 로컬 main = `1d1b32f`.
+- 이후 HANDOVER 문서 커밋은 작업 브랜치 로컬에만 있음(push 금지 · main 미반영 — main push 시 Vercel 재배포 발생, 시점은 선장 판정).
+- ⚠ main 에 push = Vercel Production 자동 배포. main 반영 승인 = 배포 승인.
 
 별도 브랜치 보존:
 - `fix/pseo-eligibility-enterprise-gap` — commit `a472ebe` (eligibility `PAID_PLANS` 에 enterprise 추가). 현재 브랜치에 임의 병합·cherry-pick 금지.
@@ -142,7 +146,18 @@ F2-SERVICE-AREA-POSITION-01     PRODUCT PASS / CLOSE (9dfa546 · 사장님 Chrom
 F1-PHOTO-INPUT-ORDER-01         PRODUCT PASS / CLOSE (6f3d541 · 사장님 Chrome) — §15
 P-PAGE-1F-IDENTITY-01           PRODUCT PASS / CLOSE (6f4638f · 사장님 Chrome) — §16
 PSEO-FACT-INPUT-OPEN-01         PRODUCT PASS / CLOSE (c6f720e · 고패킹 account 23 실제 E2E · 원복 완료) — §17
-P-PAGE-1F-PRODUCTION-GATE-01    다음 축   ← 지금 여기 (C3 · 2F/Pilot 금지)
+P-PAGE-1F-PRODUCTION-GATE-01    CLOSE (main 1d1b32f 배포 · Production E2E PASS) — §18
+P페이지 1층                      최종 CLOSE / Production 정상 사용 승인 (2026-10-03)
+P-PAGE-SEARCH-INDEX-TRACE       CLOSE (TRACE · 코드 변경 0) — §19
+P-PAGE-SEARCH-FACT-INPUT-TRACE  PASS / CLOSE (TRACE · 코드 변경 0) — §19
+P-PAGE-REGION-SERVICE-SEARCH-PILOT-01  STEP1 FAIL 0/8 · STEP2 신호 TRACE · STEP3 설계 · STEP4 NO PATCH / CLOSE — §20
+P-PAGE-PRIMARY-SERVICE-DESIGN-01      구현 후 제품 채택 기각 · 2파일 원복 완료(커밋 없음) — §20
+ONBOARDING-PRIMARY-WORK-TRACE-01      TRACE 완료(코드 변경 0) — §20
+P-PAGE 다중업무 SoT TRACE             CLOSE — §20
+P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01  DESIGN 완료 → 권장 C(Hub 강화 · 2F HOLD) 채택 — §21
+P-PAGE-MULTI-SERVICE-HUB-V1-01        CLOSE (744ca94 · >8 SAVE E2E PENDING) — §21
+P-PAGE-SERVICE-LIMIT-REMOVE-01        CLOSE (ca9a80d · >8 SAVE E2E PENDING) — §21
+다음 One Axis                    미정 · 선장 결정 대기 ← 지금 여기
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -174,6 +189,8 @@ P-PAGE-1F-PRODUCTION-GATE-01    다음 축   ← 지금 여기 (C3 · 2F/Pilot �
 - (⑦-F 이후 · 후보만, 다음 축 아님) `P-PAGE-PHOTO-VIEWER` — 사진 클릭 확대/라이트박스. ⑦-F 에서 범위 밖 판정
 - (⑦-F 이후 · 후보만) /p 「제공 서비스」가 첫 화면 맨 아래 제목만 보임 — 사진축 아님, P페이지 전체 정보구조 후보
 - (⑦-F 이후 · 미검증) 실제 6장 데이터 /p 렌더 — DB 변경 없이 브라우저 DOM 임시 복제로만 배열 확인(복제 썸네일은 클릭 동작 없음)
+- **HOLD** `P-PAGE-PUBLISH-INDEPENDENCE-01` — P페이지 공개(/p · sitemap)가 블로그 발행 1건(`MIN_HUB_POSTS`)에 종속되어야 하는지 (§19). 개발 금지.
+- **HOLD** `P-PAGE-FACT-SCOPE-01` — 일반회원에게 실제 업무방식/차이 FACT(`differentiators`)를 어디까지 입력받을지 (§19). 개발 금지. **2026-10-04 병합(선장 C 판정, §21):** differentiators 의 목적(실제 차이·선택 이유) · 일반회원 개방 여부 · 받을 FACT · 진행 순서와의 역할 경계 · 입력 안내 · 공개 명칭(「이렇게 일합니다」 적절성) · HubCheck↔/p 동기화 · Architecture §3-G 일치 — 이 축에서 통합 판단. 표시 제거하지 않음(현재 코드·데이터·표시 보존). store 14 3문장은 실험 표본 — 존폐 근거 아님.
 
 ---
 
@@ -283,9 +300,9 @@ P-PAGE-1F-PRODUCTION-GATE-01    다음 축   ← 지금 여기 (C3 · 2F/Pilot �
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 HANDOVER 커밋(직전 `6f3d541` · `6ca2ef3`) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
+1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 최종 HANDOVER 커밋(main = origin/main = Production `1d1b32f` · 그 위 로컬 커밋 = 문서 + 코드 2건 `744ca94` · `ca9a80d` — 미배포) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. 다음 축 = **`P-PAGE-1F-PRODUCTION-GATE-01`(C3)**(§17). 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. **다음 One Axis = 미정(선장 결정 대기).** 기준점 = 멀티서비스 Hub(`744ca94`) + 서비스 개수 제한 제거(`ca9a80d`) CLOSE(§21). >8 실제 저장 E2E 는 실제 9개+ 서비스 업체 표본이 생길 때만 실증(가짜 서비스 금지). (이하 기존 기록) P페이지 1층 최종 CLOSE(§18). 다음 방향(블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성)은 기록만 — 지시 전 개발 금지. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -388,5 +405,140 @@ P-PAGE-1F-PRODUCTION-GATE-01    다음 축   ← 지금 여기 (C3 · 2F/Pilot �
 
 - 일반 P페이지 자격회원(`getPseoAccess.can_enter`)에게 `search_fact` services·process 입력·저장 개방. differentiators 는 일반회원 HOLD(화면 미노출 · 서버 403 `PSEO_FACT_FIELD_LOCKED` · 기존값 보존). `canManagePseoFact`(OWNER·store 14) 무변경.
 - PRODUCT E2E: 고패킹 account 23 / store 20(관리자 지급 basic) 실제 저장·새로고침 유지·우측 반영 PASS. 원복 완료: account 23·20 free(admin 구독 이력은 canceled 로 보존), store 20 = 빈 search_fact 이력만 잔존(선장 인정). C1 업종 표시 미검증도 「하나2 → 바닥시공」으로 해소.
-- 다음 One Axis: `P-PAGE-1F-PRODUCTION-GATE-01` — 1층 누적 커밋/배포 대상 확인 → 회귀 Gate → 선장 승인 → merge/deploy → Production E2E → 1층 최종 CLOSE.
-- push · merge · deploy: 아직 없음. 기록만: account 19(store 18) test 표식 계정 · 실빌링키 자동결제 예정 2026-10-07.
+- 다음 One Axis: `P-PAGE-1F-PRODUCTION-GATE-01` → CLOSE(§18).
+- 기록만: account 19(store 18) test 표식 계정 · 실빌링키 자동결제 예정 2026-10-07.
+
+---
+
+# 18. P-PAGE-1F-PRODUCTION-GATE-01 (CLOSE · 2026-10-03) — P페이지 1층 최종 CLOSE
+
+## C3 TRACE (배포 전 Gate PASS)
+- 기준선: origin/main = main = `695b9b3` · HEAD..main 0 → fast-forward 가능.
+- 34커밋 감사(코드 21 · 문서 13) · 변경 14파일(코드 9 · 문서 5). FREEZE 경로 변경 0 · `[intentSlug].js`·eligibility·billing·vercel.json·package.json 변경 0 · 신규 env 0 · DDL 0. 저장계약 변경 = `pages/api/me/store.js` 2곳(8ff75f9 `pseo_access` GET · c6f720e search_fact 개방) 모두 승인 축.
+- 미커밋 156건 격리: 대상 14파일과 겹침 0 · HEAD 단독 clean worktree `next build` PASS.
+- Production Supabase = 로컬과 동일 프로젝트 `vuuqtrzcfjbywlxqskoi`(사장님 Vercel 환경변수 확인) · bucket `store-photos` 존재.
+- `a472ebe`(enterprise eligibility): enterprise 구독·accounts 0건 · 34커밋과 독립 → **제외 확정**(별도 축). `fix/pseo-eligibility-enterprise-gap` 에만 존재.
+
+## 배포
+- 사장님 cmd: `git fetch . feat/p-page-one-screen-01:main` → `git push origin main` (Claude 실행은 자동모드 안전장치 차단).
+- Vercel `1d1b32f` · main · Production · Ready 57s. 운영 `https://ai-post.ai/p/14` SSR 에 photo_pool 사진 URL 출력 = 새 코드 서비스 확인.
+
+## Production E2E
+- ① `/p/14` 사장님 Chrome: 대표 + 썸네일 · 썸네일 클릭 큰 사진 전환 PASS.
+- ② 기본 설정 저장: **SKIP**(선장 판정) — 배포 전 store 20 실제 E2E PASS + 배포 코드 동일성으로 승계. store 20 은 현재 free · 구독 기간 종료 · 발행 0 · `/p/20` 404 → 자격 재지급(A안) 기각.
+- ③ store 14 사진(선장이 이번 E2E 한정 쓰기 허용): 업로드 → 3/6 · 공개 SSR 3장(`[2] 14/072b6b2b-4023-442a-ad30-330f1bf7865f.jpg`) · Storage 200 → 공개 /p 3번째 썸네일 표시·클릭 → 테스트 1장 삭제 → 2/6 · 공개 SSR `[0] 7cbf7a81…` `[1] 2dc52872…`(업로드 전과 동일) · 테스트 객체 Storage 400. SERVICE_ROLE_KEY 운영 경로 실증.
+- 미검증 기록: 운영 DB photo_pool 직접 조회 안 함(안전장치 차단) — 공개 SSR(photo_pool 직접 판독)으로 대체 근거.
+- 기록만: 확인 열람으로 /p/14 page_view 수 건 발생(승인된 정상 동작).
+
+## 정리
+- 임시 빌드 worktree `D:\cb-gate-wt`: worktree 등록 해제 → node_modules junction 링크만 제거(/s 미사용 · 원본 node_modules 정상) → 빈 폴더 삭제. **정리 완료.**
+- 미커밋 156건(HOLD 3 포함): 기존 작업으로 그대로 보존 · stage·수정·삭제 등 접촉 금지.
+- `a472ebe`: 제외 유지(별도 축 · 선장 결정 전 병합 금지).
+
+## 최종 인수인계 (P페이지 1층)
+- `P-PAGE-1F-PRODUCTION-GATE-01` CLOSE · **P페이지 1층 Production 정상 사용 / 최종 CLOSE**.
+- Production = `1d1b32f`(main = origin/main). 이후 HANDOVER 문서 커밋은 작업 브랜치 로컬에만 있음 — push 금지(main push = Vercel 재배포).
+- 사진 Production E2E PASS · 테스트 사진 삭제 · store 14 `photo_pool` 원래 2장·순서 원복 완료.
+
+## 다음 방향 (기록만 · 개발 금지)
+- **블로그 본문 의존 제거 → 업체 FACT 기반의 독립적인 P페이지 생성 기능.**
+- 현재는 방향 기록일 뿐 OPEN 된 축이 아니다. 축 이름·범위·순서는 선장이 정한다.
+- 다음 방에서 **선장 TRACE 지시 대기**. 그 전에 코드 수정·설계·구현 착수 금지.
+- 2F · Pilot 착수 금지.
+
+---
+
+# 19. P페이지 검색기초 TRACE (2026-10-03 · 코드 변경 0)
+
+## P-PAGE-SEARCH-INDEX-TRACE (CLOSE)
+- STEP 1 Production 실측 `/p/14`: 200 · title 「LG 인테리어」(업체명만) · description 「{지역줄} LG 인테리어 연락처와 방문 안내」 · meta robots / X-Robots-Tag 없음 · self canonical · robots.txt `/p/` 차단 없음 · sitemap 포함. JSON-LD·og 0. SSR 본문 전체 HTML.
+- 원천: 업체 FACT = `store_profiles`(store_name·industry·region·sub_region·address·phone·visit_info·photo_pool) · 하는 일 = `meta.search_fact` · 블로그 의존 = 「최근 글」(publish_history 제목·날짜·링크 12) · 「이런 내용을 다룹니다」(core_keyword, store 14 = 0) · 공개 Gate(발행 ≥1).
+- 최근 글 제거 가정 검색의미 4문항(업체·지역·하는 일·이용/연락) 모두 YES — 하는 일은 store 14 search_fact 한정. 블로그 제목에는 search_fact 밖 작업명(샷시·현관문필름·배관·방충망·누수·줄눈) 노출.
+- STEP 2 Google 실검색: `site:ai-post.ai/p/14` · `site:ai-post.ai "LG 인테리어"` · `"https://ai-post.ai/p/14"` 모두 발견(스니펫에 search_fact 「제공 서비스」 문구 사용) · 「LG 인테리어 남양주」 3위 · 「LG 인테리어 덕소」 미발견. (상호명+지역 검색만 확인 — 비상호 「지역+하는 일」 검색은 미시험)
+- Naver 실검색 · GSC URL 검사 · Naver Search Advisor 콘솔 = **미검증**(패널 차단·로그인 필요). 소유확인 흔적: DNS TXT google-site-verification · `public/naver8ddb….html`(200).
+- sitemap P페이지 1건 = 조건(active · account · store 1 제외 · 유효 유료 구독행 · 발행 ≥1)을 DB 21행에 대입 시 store 14 만 통과(admin 지급 basic/canceled ~2099-12-31 · 발행 27). store 18 = 유료·발행 0.
+
+## P-PAGE-SEARCH-FACT-INPUT-TRACE (PASS / CLOSE)
+- 정식 경로 존재: P페이지 › ⚙️ 기본 설정 좌측 「🔎 검색 정보」 → `PATCH /api/me/store` → `sanitizeSearchFact`(saved_at 부여) → `meta.search_fact` merge → /p · 우측 HubCheck 소비. 마이페이지 입력란 없음.
+- AI 자동생성 · 발행키워드(core_keyword·treatment_name·departments) 혼입 0. 쓰기 경로 = store.js 단 1곳.
+- 일반 유료회원(`can_enter`) = services·process 입력 가능 · differentiators 제한(OWNER·store 14 전용). 무료 = 「준비 중」 카드 + 서버 403.
+- DB: search_fact 보유 = store 14(8/6/3, saved_at 2026-09-29 20:26 KST — 입력 잠금 `695b9b3` 3분 전) · store 20(빈 값, §17 흔적). 나머지 19 없음.
+- **store 14 search_fact 는 실제 업체 확인 여부 미검증** — 검색 노출 실험 표본으로만 사용. 「LG 인테리어가 실제 제공한다고 검증된 FACT」로 확정 금지.
+
+## HOLD 후보 (개발 금지 · 선장 판정 대기)
+- `P-PAGE-PUBLISH-INDEPENDENCE-01` — P페이지 공개가 블로그 발행 1건에 종속되어야 하는지(P페이지 독립 임대 상품 관점).
+- `P-PAGE-FACT-SCOPE-01` — 일반회원에게 실제 업무방식/차이 FACT 를 어디까지 입력받을지.
+
+## 기록 (선장 방향 메모 · 축 아님)
+- 다음 검색 Pilot 핵심 질문: 상호명 없는 「지역 + 하는 일」 검색(예: 남양주 주방 리모델링 / 욕실 리모델링 / 아파트 인테리어)에서 /p 가 잡히는가. 지시 전 착수 금지.
+- → §20 에서 실측 완료(0/8).
+
+---
+
+# 20. 지역×서비스 검색 Pilot → 다중업무 SoT 정리 (2026-10-03 · 코드 커밋 0)
+
+## P-PAGE-REGION-SERVICE-SEARCH-PILOT-01 (STEP 4 NO PATCH / CLOSE)
+- STEP 1 Google 실검색(브라우저 패널 · Google 로그아웃 · 한국 IP · 시크릿 아님): store 14 실제 services 기준 8개 검색어 — 남양주/덕소 × 아파트 인테리어·주방 리모델링·욕실 리모델링·도배 장판 → **/p/14 노출 0/8** · ai-post.ai 다른 페이지 0. (상호명 검색 「LG 인테리어 남양주」 = 3위 · §19)
+- STEP 2 신호 TRACE(/p/14 Production HTML): title·H1 = 상호명만 · desc 서비스어 0 · H2 5개 지역어 0 · 서비스명 = `li > span`(heading 아님) 각 1회 · **업체 FACT 영역 지역×서비스 결합 0**(결합 문구는 「최근 글」 블로그 제목 3건뿐) · 「덕소」 = 주소 「덕소리」 1회 · 내부링크로 /p/14 진입 0(sitemap 만) · JSON-LD 0.
+  비교(구조 차이만): ggid.co.kr/cases/namyangju(남양주 아파트 인테리어 1위) · sudong-interior.co.kr(남양주 도배 장판 1위) = title·H1 자체가 「남양주 + 서비스」 · 본문 heading 에 지역/서비스 구조.
+  원인 후보(증거순): ①FACT 영역 지역×서비스 결합 부재 ②title·H1·desc 서비스어 0 ③내부링크 0 ④서비스명 heading 아님 ⑤권위·JSON-LD(미측정).
+- STEP 3 설계: title `{region} {services[0].name} | {store_name}` 안 → **선장 기각**(services[0] = 대표 FACT 아님).
+- STEP 4: 파일럿 범위 제한 기존 경로 TRACE → 없음(`PSEO_TEST_STORE_IDS` 는 입력·입장 권한 전용 — 머리 주석 「공개 /p/* 와 무관」 · env/DB 플래그 0) → **NO PATCH / CLOSE**. store14 전용 상수·새 env·DB 플래그·allowlist 의미 확장 모두 금지 판정.
+- 덕소는 성공판정 대상 아님(서비스지역 FACT 에 없음 · 주소 확대해석 금지).
+
+## P-PAGE-PRIMARY-SERVICE-DESIGN-01 (구현 → 채택 기각 → 원복)
+- `search_fact.services[i].primary:true`(0~1개) 를 store.js·Store.js 에 구현 · 로직 Gate 11/11 PASS 했으나 **선장 방향 정정으로 채택 기각**. `git checkout` 으로 2파일 정확 원복(diff 0 · 커밋 이력 없음).
+- **선장 결정: 대표 서비스 개념 도입 안 함.** 업체가 실제 수행하는 모든 서비스가 동등한 검색 대상.
+
+## ONBOARDING-PRIMARY-WORK-TRACE-01 (코드 변경 0)
+- 온보딩 = 업종 1개(`industry`, 인테리어는 업종센터에서 선택) + 업체명·주소·전화·생활권. 「하는 일/서비스」 선택 단계 없음. POST 시 `departments=[industry]` 서버 자동.
+- 「내 메뉴」(myMenusMap) = localStorage 전용(DB 없음). 엔진 TREATMENTS = 코드 카탈로그. 온보딩 FACT 로 대표 「업종」은 가능, 대표/개별 「서비스」 결정 불가.
+
+## P-PAGE 다중업무 SoT TRACE (CLOSE)
+- 다중선택 UI = 마이페이지 「🔧 시공·서비스 분야」(secGuide 「함께 하는 분야를 모두 고르면 분야별 메뉴로 글을 쓸 수 있습니다. ★ 표시가 대표 분야입니다.」) → `store_profiles.departments`(jsonb, [0]=industry 불변, 서버 normalizeDepartments).
+- 그룹: hospital(진료과 17) · construction(시공 17 + 생활 14) · silvercare(4). 그룹 없음 = 단일(dental·oriental·clinic — 주석 「독립 개원이 압도적」 · 음식점 · 전문직 · funeral · nursinghome · bedding 등 → 항상 []).
+- 생성 소비 = 분야별 메뉴 섹션 → 메뉴→분야 역인덱스 → payload.industry(엔진 라우팅). generator/prompt 는 departments 값 직접 미참조.
+- store 14 = `industry interior` · `departments ["interior"]`(사용자 추가 0) vs services 8개. 「주방 리모델링」 대응 분야 키 없음 · 도배·장판 = dobae+flooring 2키.
+- **선장 판정(CLOSE):** ① departments = 엔진 분야/겸업 분류 SoT 유지 ② P페이지 실제 서비스 FACT 로 승격 금지(헌법 §5.4 · H-005 유지) ③ `search_fact.services` = P페이지 고객 관점 실제 서비스 FACT ④ 대표 서비스 개념 도입 안 함 ⑤ primary 원복 유지 ⑥ FREEZE 엔진·departments 계약 변경 금지.
+
+## (완료 → §21) `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01` (DESIGN ONLY) — 원 지시 기록
+- 목표: 한 업체의 `search_fact.services` N개를 각각 「지역 × 서비스」 검색기회로 만드는 검색자산 구조 설계.
+- 비교 최소 3안: (a) 현재 `/p/{storeId}` 한 페이지 안에서 N개 서비스를 지역과 각각 결합 (b) 업체 아래 서비스별 검색 URL/자산 (c) 기존 Intent/pSEO 구조(`[intentSlug].js` · core_keyword 기반) 재사용 가능성.
+- 제약: Blog 본문 복제 금지 · departments 를 서비스 FACT 로 사용 금지 · publish_history 를 서비스 FACT 로 사용 금지 · 서비스 SoT = `search_fact.services` 만 · 없는 지역×서비스 조합 생성 금지 · 업체 미입력 서비스 생성 금지 · 대량 페이지부터 만들지 말 것 · 기존 P페이지 전환 기능 유지 · DDL 0 우선.
+- 예제 필수: store 14 실제 8개 서비스 — 남양주 × 아파트 인테리어 / 주방 리모델링 / 욕실 리모델링 / 도배·장판 … 각각 어떻게 검색 의미를 갖는지.
+- 산출: 구조안 비교 후 STOP(코드 수정 0).
+- 참고 실측 자산: §19(색인·스니펫) · §20 STEP 2(신호·경쟁 구조) · store 14 search_fact 는 실제 업체 확인 미검증(실험 표본).
+
+---
+
+# 21. 멀티서비스 Hub · 서비스 개수 제한 제거 (2026-10-04 · CLOSE · 로컬 커밋 · push 금지)
+
+## P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01 (DESIGN · 코드 0)
+- 3안 비교: A 단일 Hub 강화 / B 서비스별 URL(2F 후보 · 구현 미승인) / C 혼합(Hub + 미래 분리) → **C 채택, 1단계 = Hub 강화.**
+- **선장 기준(확정):** 「사용자가 "나는 이 일을 한다"고 등록하면 그것이 검색 FACT다.」 진위 재심사 없음 · departments/core_keyword/treatment_name/publish_history 로 보충·판정 금지 · 대표/primary 서비스 없음 · 등록 서비스 N개 전건 동등.
+- 폐기: 「서비스별 고유 FACT 없으면 검색기회 없음」 Gate · 서비스마다 지역 줄 반복 · 서비스별 CTA 반복.
+- 2F 로 넘긴 미결: `/p/{id}/{slug}` 가 Intent(core_keyword) 네임스페이스와 충돌 · 서비스 고정 id/slug 없음 · 얇은 페이지 · 자기경쟁(Hub↔서비스, 도배·장판↔바닥 공사 등) · 서비스별 지역 FACT 없음 · canonical/sitemap/공개 Gate · Blog 역할 · Naver Adapter · /p 내부링크 0.
+
+## P-PAGE-MULTI-SERVICE-HUB-V1-01 (CLOSE · `744ca94` · 4파일 +19/−13)
+- 서비스 입력 상한 8 → 16 (다음 축에서 제거됨).
+- `/p`: H2 「{region} {업체명} 제공 서비스」(지역 1회 선언) → 등록 서비스 N개 각 `<h3>`(입력 순서) · 한 줄 「서비스명 - note」(폭 초과 시 자연 줄바꿈) · `.fact` flex 제거 · `.factName` inline. 1열 유지(.wrap 30rem 무변경 — PC 2열 지시는 폭 실측 후 철회).
+- HubCheck: 같은 제목 + 한 줄 표시 — **동기화 지점**(`lib/PseoRoom.js` ↔ `pages/p/[storeId]/index.js`).
+- title = 「{업체명} | {region} {industryName}」(기존 FACT 만 · 없으면 생략 · 서비스 미포함). 예: `LG 인테리어 | 남양주 인테리어`. H1 = 업체명(무변경).
+- meta description = **Production 원문 그대로**(`{areaLine} {업체명} 연락처와 방문 안내` · 생활권 전건 보존). 서비스명 일부(앞 3개) 삽입안은 앞쪽 우대·생활권 축소로 **선장 기각·원복**.
+- 무변경: DDL · Intent · FREEZE · sitemap · JSON-LD · og · canonical · 서비스별 URL.
+- 검증: 로컬 SSR /p/14 title·description(Production 문자열 동일)·H2·H3×8 · PC 1366 8행 한 줄 · 375 가로넘침 0 · HubCheck 8행 · console 0 · 사장님 화면 PRODUCT PASS(8개 기준).
+
+## P-PAGE-SERVICE-LIMIT-REMOVE-01 (CLOSE · `ca9a80d` · 2파일 +8/−8)
+- **원칙:** 「실제 하는 일이 있으면 필요한 만큼 등록한다. AI-POST 가 서비스 개수를 사업적으로 제한하지 않는다.」
+- `lib/Store.js`: `SF_MAX = { process: 6, differentiators: 3 }`(services 키 없음 = 무제한) · 서비스 추가 버튼 항상 표시 · 「(n/max)」·「(최대 N개)」 서비스용 제거.
+- `pages/api/me/store.js`: `SF_LIMITS.services = { name: 40, note: 120 }` · `SEARCH_FACT_TOO_MANY` 에서 services 개수 검사만 제거.
+- 유지: 서비스명 40 / 설명 120 · process 6 · differentiators 3. 별도 safety cap 없음 — Next.js 기본 요청 본문 1MB(최대 길이 서비스 약 2,000개 지점 413)가 기술적 최후 방어.
+- 검증(DB 쓰기 0): sanitize 16/17/20/50/100/2000 ok · 41/121자 TOO_LONG · process 7·diff 4 TOO_MANY · UI 로컬 108행 추가·입력 정상(쓰기 차단 장치 · 새로고침 폐기 · /p/14 8/6/3 무변경) · 사장님 화면 확인.
+- payload 실측(최대 길이): 20개 11.5KB · 50개 26.6KB · 100개 51.7KB.
+
+## PENDING / 기록
+- **>8 실제 저장 E2E PENDING** — 실제 9개 이상 서비스를 가진 업체 표본 발생 시 그 업체 실제 FACT 로 1회 실증(9번째 추가 → 저장 → 재진입 → HubCheck → 공개 /p → SSR). **가짜 서비스·store 14 임의 추가 금지.**
+- `P-PAGE-FACT-SCOPE-01` 에 differentiators(선택 이유·표시·일반회원 개방) 판정 병합 — §5.
+- 기록만: 서비스 수가 많을 때(50~100) 공개 /p 세로 길이·하단 섹션 도달성 · 편집기 순서 변경 기능 없음(F-5) — 별도 축 후보, 착수 금지.
+- 기록만: 패널 확인 중 로컬 /p/14 열람 page_view 발생 가능(기존 동작).
+- Git: main = origin/main = `1d1b32f`(Production 무변경). `744ca94` · `ca9a80d` 및 HANDOVER 문서 커밋은 작업 브랜치 로컬만 — **push 금지(main push = Vercel 배포, 선장 승인 필요).** 무관 dirty 156건(HOLD 3 포함) 보존.
