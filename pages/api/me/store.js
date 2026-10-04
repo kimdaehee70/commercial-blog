@@ -84,7 +84,7 @@ const STORE_SELECT =
 //   STORE_SELECT 는 무변경. meta 는 서버 내부 조회에만 덧붙인다.
 const STORE_SELECT_META = STORE_SELECT + ", meta";
 const SF_LIMITS = {
-  services: { max: 8, name: 40, note: 120 },
+  services: { max: 16, name: 40, note: 120 }, // [P-PAGE-MULTI-SERVICE-HUB-V1-01] 제품 상한 V1 = 16 (lib/Store.js SF_MAX 와 동기화)
   process: { max: 6, len: 80 },
   differentiators: { max: 3, len: 120 },
 };

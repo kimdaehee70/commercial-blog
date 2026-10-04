@@ -367,10 +367,15 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
   const photos = Array.isArray(store.photos) ? store.photos : [];
   const cur = photoSel < photos.length ? photoSel : 0;
 
+  // [P-PAGE-MULTI-SERVICE-HUB-V1-01] title = 업체명 | 지역 업종 (region · 카탈로그 업종명 FACT 만, 없으면 생략).
+  //   서비스는 title 에 넣지 않는다(대표 서비스 금지). 서비스 N개 검색신호는 H2→H3 목록이 담당.
+  const regionKind = [store.region, store.industryName].filter(Boolean).join(" ");
+  const pageTitle = regionKind ? `${store.storeName} | ${regionKind}` : store.storeName;
+
   return (
     <>
       <Head>
-        <title>{store.storeName}</title>
+        <title>{pageTitle}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta
           name="description"
@@ -480,12 +485,14 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
         {/* [PSEO-LG-FOUNDATION-V1-01] 업체 검색 FACT — 입력된 블록만. 문장 생성 없음. */}
         {f.services.length > 0 ? (
           <section className="intents">
-            <h2 className="h2">제공 서비스</h2>
+            {/* [P-PAGE-MULTI-SERVICE-HUB-V1-01] H2 = 지역 × 업체 범위 1회 선언 → H3 = 입력 서비스 N개(같은 계층·입력 순서).
+                서비스마다 지역 반복 없음. 한 줄 = 「서비스명 - note」(폭 초과 시 자연 줄바꿈). */}
+            <h2 className="h2">{store.region ? `${store.region} ` : ""}{store.storeName} 제공 서비스</h2>
             <ul className="facts">
               {f.services.map((s, i) => (
                 <li className="fact" key={i}>
-                  <span className="factName">{s.name}</span>
-                  {s.note ? <span className="factNote">{s.note}</span> : null}
+                  <h3 className="factName">{s.name}</h3>
+                  {s.note ? <span className="factNote"> - {s.note}</span> : null}
                 </li>
               ))}
             </ul>
@@ -806,12 +813,10 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
           font-size: 0.95rem;
           line-height: 1.55;
         }
-        .fact {
-          display: flex;
-          flex-direction: column;
-          gap: 0.2rem;
-        }
         .factName {
+          display: inline;
+          margin: 0;
+          font-size: inherit;
           font-weight: 600;
         }
         .factNote {
