@@ -2,7 +2,7 @@
 
 **기준일:** 2026-10-04  
 **현재 대형 목표:** P페이지 1F 완성 → **최종 CLOSE / Production 정상 사용 승인 (2026-10-03)**  
-**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. 이후 TRACE 2축(`P-PAGE-SEARCH-INDEX-TRACE` · `P-PAGE-SEARCH-FACT-INPUT-TRACE`) CLOSE — §19. 지역×서비스 검색 Pilot 0/8 → 대표서비스안 기각·원복 → 다중업무 SoT TRACE CLOSE — §20. 이후 `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01`(설계) → **`P-PAGE-MULTI-SERVICE-HUB-V1-01` CLOSE(`744ca94`) · `P-PAGE-SERVICE-LIMIT-REMOVE-01` CLOSE(`ca9a80d`)** — 둘 다 >8 실제 저장 E2E PENDING · 로컬 커밋만(push 금지) — §21. **다음 One Axis = 미정(선장 결정 대기)** (2F·Pilot 착수 금지 · HOLD 후보 2건 개발 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18  
+**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. 이후 TRACE 2축(`P-PAGE-SEARCH-INDEX-TRACE` · `P-PAGE-SEARCH-FACT-INPUT-TRACE`) CLOSE — §19. 지역×서비스 검색 Pilot 0/8 → 대표서비스안 기각·원복 → 다중업무 SoT TRACE CLOSE — §20. 이후 `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01`(설계) → **`P-PAGE-MULTI-SERVICE-HUB-V1-01` CLOSE(`744ca94`) · `P-PAGE-SERVICE-LIMIT-REMOVE-01` CLOSE(`ca9a80d`)** — 둘 다 >8 실제 저장 E2E PENDING · 로컬 커밋만(push 금지) — §21. **다음 One Axis = 미정(선장 결정 대기)** (2F·Pilot 착수 금지 · HOLD 후보 2건 개발 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18. **이후 `INTERIOR-ENGINE-PREOPEN-AUDIT-01` CLOSE(인테리어 엔진 개발·사전감사 축)** — 검증 정본 `7d3f6b9`(Production 정본 아님) · 로컬 커밋만 · **Production 미반영(push/main 반영/deploy 미실행)** · main = origin/main = `6ef6d3e` 과 작업 브랜치는 `1d1b32f` 이후 diverged · `it_check` HOLD — §22  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -73,6 +73,15 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+7d3f6b9  INTERIOR-AXIS3-CONDITION-GUARD-01  fix(interior): preserve conditional work in generation (lib/interior-prompts.js) — 로컬만 · Interior 검증 정본
+8b0ff34  INTERIOR-SMOKE-FAIL-FIX-01  fix(interior): align generation with search decisions (lib/interior-prompts.js · lib/spine/scenes/interior.js · lib/interior-data.js · pages/api/generateInterior.js) — 로컬만
+ef0705a  INTERIOR-INTENT-REALIGN-01  fix(interior): realign intents with search questions (lib/spine/intents/interior.js · lib/spine/scenes/interior.js) — 로컬만
+b36a7a9  INTERIOR-ENGINE-PREOPEN-AUDIT-01 STEP 5E  fix(interior): hold estimate checklist menu — 로컬만
+d1c4189  INTERIOR-ENGINE-PREOPEN-AUDIT-01 STEP 5C  fix(interior): make scene narration fact-safe — 로컬만
+8f7673c  INTERIOR-ENGINE-PREOPEN-AUDIT-01 STEP 5B  fix(interior): make old apartment work conditional — 로컬만
+c4a5feb  INTERIOR-ENGINE-PREOPEN-AUDIT-01 STEP 5A  fix(interior): separate bath and kitchen info blocks — 로컬만
+c962755  (축 기록 필요)  feat(p-page): link service areas to services and add store tagline — 로컬만
+ef4ccb0  (축 기록 필요)  feat(p-page): open "how we work" fact input to eligible members — 로컬만
 ca9a80d  P-PAGE-SERVICE-LIMIT-REMOVE-01  feat(p-page): remove service count limit (lib/Store.js · pages/api/me/store.js) — 로컬만
 744ca94  P-PAGE-MULTI-SERVICE-HUB-V1-01  feat(p-page): strengthen multi-service search hub (lib/Store.js · pages/api/me/store.js · pages/p/[storeId]/index.js · lib/PseoRoom.js) — 로컬만
 c6f720e  PSEO-FACT-INPUT-OPEN-01  feat(p-page): open search fact services and process to eligible members (pages/api/me/store.js · lib/Store.js)
@@ -109,6 +118,7 @@ e18ed8c  MISSION-HANDOVER-2026-10-01
 - **2026-10-03 main 반영 완료**: `695b9b3..1d1b32f` 34커밋 fast-forward(순서 무변경) → `git push origin main`(사장님 cmd 실행) → Vercel Production 자동배포 Ready. origin/main = 로컬 main = `1d1b32f`.
 - 이후 HANDOVER 문서 커밋은 작업 브랜치 로컬에만 있음(push 금지 · main 미반영 — main push 시 Vercel 재배포 발생, 시점은 선장 판정).
 - ⚠ main 에 push = Vercel Production 자동 배포. main 반영 승인 = 배포 승인.
+- **정정(2026-10-04 실측):** main = origin/main = `6ef6d3e`(fix: align subscription writes with single-row contract — 작업 브랜치에 없음). 작업 브랜치와 main 은 공통 조상 `1d1b32f` 이후 **diverged**(main 쪽 1커밋 · 브랜치 쪽 16커밋). **fast-forward 불가.** 반영 방식(rebase/merge)은 미결정 — 선장 판정 대기(`PRODUCTION-REFLECT-INTERIOR-01` TRACE 선행).
 
 별도 브랜치 보존:
 - `fix/pseo-eligibility-enterprise-gap` — commit `a472ebe` (eligibility `PAID_PLANS` 에 enterprise 추가). 현재 브랜치에 임의 병합·cherry-pick 금지.
@@ -300,9 +310,9 @@ P-PAGE-SERVICE-LIMIT-REMOVE-01        CLOSE (ca9a80d · >8 SAVE E2E PENDING) —
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 최종 HANDOVER 커밋(main = origin/main = Production `1d1b32f` · 그 위 로컬 커밋 = 문서 + 코드 2건 `744ca94` · `ca9a80d` — 미배포) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
+1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 최종 HANDOVER 커밋(코드 기준 Interior 검증 정본 `7d3f6b9` — Production 정본 아님) · main = origin/main = `6ef6d3e`(작업 브랜치와 `1d1b32f` 이후 diverged · fast-forward 불가 · §3) · 작업 브랜치 로컬 커밋 전부 미배포 · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. **다음 One Axis = 미정(선장 결정 대기).** 기준점 = 멀티서비스 Hub(`744ca94`) + 서비스 개수 제한 제거(`ca9a80d`) CLOSE(§21). >8 실제 저장 E2E 는 실제 9개+ 서비스 업체 표본이 생길 때만 실증(가짜 서비스 금지). (이하 기존 기록) P페이지 1층 최종 CLOSE(§18). 다음 방향(블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성)은 기록만 — 지시 전 개발 금지. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. **다음 One Axis = 미정(선장 결정 대기).** 후보: `PRODUCTION-REFLECT-INTERIOR-01` TRACE — main `6ef6d3e` 와 작업 브랜치 16커밋이 왜 갈라졌는지·무엇을 보존해야 하는지 확인 후 반영 방식(rebase/merge)을 선장이 결정. 자동 merge/rebase 금지(§3 · §22). (이하 기존 기록) 기준점 = 멀티서비스 Hub(`744ca94`) + 서비스 개수 제한 제거(`ca9a80d`) CLOSE(§21). >8 실제 저장 E2E 는 실제 9개+ 서비스 업체 표본이 생길 때만 실증(가짜 서비스 금지). (이하 기존 기록) P페이지 1층 최종 CLOSE(§18). 다음 방향(블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성)은 기록만 — 지시 전 개발 금지. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -541,4 +551,52 @@ P-PAGE-SERVICE-LIMIT-REMOVE-01        CLOSE (ca9a80d · >8 SAVE E2E PENDING) —
 - `P-PAGE-FACT-SCOPE-01` 에 differentiators(선택 이유·표시·일반회원 개방) 판정 병합 — §5.
 - 기록만: 서비스 수가 많을 때(50~100) 공개 /p 세로 길이·하단 섹션 도달성 · 편집기 순서 변경 기능 없음(F-5) — 별도 축 후보, 착수 금지.
 - 기록만: 패널 확인 중 로컬 /p/14 열람 page_view 발생 가능(기존 동작).
-- Git: main = origin/main = `1d1b32f`(Production 무변경). `744ca94` · `ca9a80d` 및 HANDOVER 문서 커밋은 작업 브랜치 로컬만 — **push 금지(main push = Vercel 배포, 선장 승인 필요).** 무관 dirty 156건(HOLD 3 포함) 보존.
+- Git: (당시 기록) main = origin/main = `1d1b32f`(Production 무변경) → **정정: 현재 main = origin/main = `6ef6d3e`, 작업 브랜치와 diverged — §3 정정 줄 참조.** `744ca94` · `ca9a80d` 및 HANDOVER 문서 커밋은 작업 브랜치 로컬만 — **push 금지(main push = Vercel 배포, 선장 승인 필요).** 무관 dirty 156건(HOLD 3 포함) 보존.
+
+---
+
+# 22. INTERIOR-ENGINE-PREOPEN-AUDIT-01 (CLOSE · 2026-10-04 · 로컬 커밋 · Production 미반영)
+
+## 판정
+- **인테리어 엔진 개발·사전감사 축 CLOSE.** 검증 정본 = `7d3f6b9` — **Interior 엔진 검증 기준이며 Production 정본이 아니다.**
+- **Production 미반영:** push / main 반영 / deploy 전부 미실행. main = origin/main = `6ef6d3e`, 작업 브랜치와 `1d1b32f` 이후 diverged(fast-forward 불가 · §3). 반영 방식(rebase/merge)은 미결정 — 선장 판정 대기.
+- `it_check`(인테리어 견적 체크리스트) **HOLD 유지** — 서버 403 `MENU_ON_HOLD`(`b36a7a9`).
+- 무관 dirty 156건(HOLD 3 포함) 보존.
+
+## 커밋 (전부 작업 브랜치 로컬)
+- `c4a5feb` 5A 욕실·주방 정보박스 분리 · `8f7673c` 5B 구축 work 조건부 · `d1c4189` 5C 장면 서술 FACT 차단 · `b36a7a9` 5E it_check HOLD
+- `ef0705a` Intent 7종 Search Question 재정렬(intents/interior.js · scenes 욕실·주방 work)
+- `8b0ff34` axis4 판단 기준화 · 고정 예시(「남은 방」·「남은 공정만」) 제거 · 주제 축 지시문 복사 방지 · 아파트·상가 work 조건부 · 부분인테리어 전용 `part` 정보박스(generateInterior.js 매핑 1곳)
+- `7d3f6b9` axis3 조건 보존 가드 · 규칙 5-1 고정 예시 삭제 · 사진 안내 메타화 · closing 원칙형 · 단지명 없을 때 「이 단지」 금지
+
+## 확정 Search Question (근거 = 네이버 검색자 질문, STEP 5D · REALIGN STEP 1~2)
+| 메뉴 | Search Question |
+|---|---|
+| 아파트 리모델링 | 전체로 할까, 예산·거주기간에 맞춰 필요한 곳만 할까 |
+| 구축아파트 인테리어 | 마감만 바꿔도 될까, 배관·전기·단열 등 설비 상태부터 확인해야 할까 |
+| 욕실 리모델링 | 덧방으로 가능할까, 전체 철거가 필요할까 |
+| 부분 인테리어 | 어디까지 하고 무엇을 빼거나 살려도 될까 |
+| 주방 리모델링 | 현재 배치를 유지할까, ㄱ자·ㄷ자·아일랜드 등으로 바꿀까 |
+| 도배장판 | 이사 일정에 맞춰 언제 해야 하고, 짐은 어떻게 해야 할까 |
+| 상가 인테리어 | 빈 상가에서 설비와 인테리어 공사를 무엇부터 해야 할까 |
+
+- 경계: 아파트(범위 결정) → 구축(노후 우선순위, 「상태 확인 후 결정」) → 부분(부분공사 결정 후 항목 선택). 「A만 vs 묶어서」 복제형 Intent 폐기.
+- 아파트 리모델링 CAT 은 조합·분담금·사업성·재건축 투자판단으로 확장하지 않는다.
+
+## 검증
+- 초기 FINAL Smoke 4/7 → 결함 수정(`8b0ff34`) → 재-Smoke 4/7(구축·주방이 같은 Scene 에서 PASS→FAIL, 조건 확률 삭제 실증 · H-013)
+- `7d3f6b9` 이후: Gate A 8/8(아파트·구축·주방·상가 ×2) + Gate B 7/7(7메뉴 ×1) = **15/15 PASS.**
+- 0/15: 조건 삭제 허구공정 · 업체 FACT · 사진/이미지 메타 노출 · 없는 「이 단지」.
+- 방법: 로컬 Node 에서 `pages/api/generateInterior.js` 핸들러 직접 호출(남양주 · 단지명 없음 · OpenAI 실호출 · DB 기록·사용량 차감·발행 0).
+- 미검증: 실제 로그인 화면의 Intent 셀렉터 표시 · Production 생성.
+
+## 업체 FACT 경계 (유지)
+- 꼼꼼함·A/S·경험·전문성·부분시공 가능·당일 시공·실제 가격은 업체 FACT 없이 생성 금지.
+
+## 개선 후보 (오픈 차단 결함 아님 · 착수 금지)
+- closing 끝의 「효율적/중요합니다」 추상 문장 · axis3 보양·차단 단계 목적 설명
+- axis1 규칙 5 ⭕ 고정 예시 · Intent axis4 원문의 「마지막에 다시 확인」 표현
+- remodel 정보박스 「한 업체 일괄/공정별 분리」 줄 · 상가 arrive 영업 중 흔적 · 시스템 [필수 요소] 「전체/부분」
+
+## 다음
+- 다음 방 첫 축 후보: `PRODUCTION-REFLECT-INTERIOR-01` TRACE — 갈라짐 원인·보존 대상 확인 후 반영 방식 선장 결정. 자동 merge/rebase 금지.
