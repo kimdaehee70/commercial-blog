@@ -1,8 +1,8 @@
 # AI-POST · CURRENT MISSION
 
-**기준일:** 2026-10-03  
+**기준일:** 2026-10-04  
 **현재 대형 목표:** P페이지 1F 완성 → **최종 CLOSE / Production 정상 사용 승인 (2026-10-03)**  
-**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. 이후 TRACE 2축(`P-PAGE-SEARCH-INDEX-TRACE` · `P-PAGE-SEARCH-FACT-INPUT-TRACE`) CLOSE — §19. 지역×서비스 검색 Pilot 0/8 → 대표서비스안 기각·원복 → 다중업무 SoT TRACE CLOSE — §20. **다음 One Axis = `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01` (DESIGN ONLY · 구현 금지 · 미착수)** — §20 (2F·Pilot 착수 금지 · HOLD 후보 2건 개발 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18  
+**현재 상태:** **`P-PAGE-1F-PRODUCTION-GATE-01` CLOSE** — 34커밋 main fast-forward(`695b9b3..1d1b32f`) · push · Vercel Production 배포 Ready · Production E2E PASS — §18 참조. ①~⑦-F · FIRST-USER-EDIT-FLOW · F1~F3 · IDENTITY · FACT-INPUT-OPEN 전부 CLOSE. 이후 TRACE 2축(`P-PAGE-SEARCH-INDEX-TRACE` · `P-PAGE-SEARCH-FACT-INPUT-TRACE`) CLOSE — §19. 지역×서비스 검색 Pilot 0/8 → 대표서비스안 기각·원복 → 다중업무 SoT TRACE CLOSE — §20. 이후 `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01`(설계) → **`P-PAGE-MULTI-SERVICE-HUB-V1-01` CLOSE(`744ca94`) · `P-PAGE-SERVICE-LIMIT-REMOVE-01` CLOSE(`ca9a80d`)** — 둘 다 >8 실제 저장 E2E PENDING · 로컬 커밋만(push 금지) — §21. **다음 One Axis = 미정(선장 결정 대기)** (2F·Pilot 착수 금지 · HOLD 후보 2건 개발 금지). 다음 방향(기록만 · 개발 금지): 블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성 — §18  
 **⚠ store 14 사진 2장(`14/7cbf7a81-…` 대표 · `14/2dc52872-…`) 유지 — 삭제·변경 금지**
 
 > 이 문서는 영구 헌법이 아니다. 현재 항해 상태를 기록하며 선장 지시에 따라 갱신한다.
@@ -73,6 +73,8 @@ P페이지 › ⚙️ 기본 설정 (`navView="pseo-basic"`, 서버 `pseo_access
 작업 브랜치: `feat/p-page-one-screen-01`
 
 ```text
+ca9a80d  P-PAGE-SERVICE-LIMIT-REMOVE-01  feat(p-page): remove service count limit (lib/Store.js · pages/api/me/store.js) — 로컬만
+744ca94  P-PAGE-MULTI-SERVICE-HUB-V1-01  feat(p-page): strengthen multi-service search hub (lib/Store.js · pages/api/me/store.js · pages/p/[storeId]/index.js · lib/PseoRoom.js) — 로컬만
 c6f720e  PSEO-FACT-INPUT-OPEN-01  feat(p-page): open search fact services and process to eligible members (pages/api/me/store.js · lib/Store.js)
 6f4638f  P-PAGE-1F-IDENTITY-01  fix(p-page): show store industry label (pages/p/[storeId]/index.js · lib/PseoRoom.js)
 6f3d541  F1-PHOTO-INPUT-ORDER-01  fix(p-page): align photo input order (lib/Store.js)
@@ -152,7 +154,10 @@ P-PAGE-REGION-SERVICE-SEARCH-PILOT-01  STEP1 FAIL 0/8 · STEP2 신호 TRACE · S
 P-PAGE-PRIMARY-SERVICE-DESIGN-01      구현 후 제품 채택 기각 · 2파일 원복 완료(커밋 없음) — §20
 ONBOARDING-PRIMARY-WORK-TRACE-01      TRACE 완료(코드 변경 0) — §20
 P-PAGE 다중업무 SoT TRACE             CLOSE — §20
-다음 One Axis                    P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01 (DESIGN ONLY) ← 지금 여기 · 미착수
+P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01  DESIGN 완료 → 권장 C(Hub 강화 · 2F HOLD) 채택 — §21
+P-PAGE-MULTI-SERVICE-HUB-V1-01        CLOSE (744ca94 · >8 SAVE E2E PENDING) — §21
+P-PAGE-SERVICE-LIMIT-REMOVE-01        CLOSE (ca9a80d · >8 SAVE E2E PENDING) — §21
+다음 One Axis                    미정 · 선장 결정 대기 ← 지금 여기
 (구 ⑥ Preview: ③에서 「수정 확인 + 공개 P페이지 보기」로 대체 판정 — 별도 Preview 만들지 않음)
 ```
 
@@ -185,7 +190,7 @@ P-PAGE 다중업무 SoT TRACE             CLOSE — §20
 - (⑦-F 이후 · 후보만) /p 「제공 서비스」가 첫 화면 맨 아래 제목만 보임 — 사진축 아님, P페이지 전체 정보구조 후보
 - (⑦-F 이후 · 미검증) 실제 6장 데이터 /p 렌더 — DB 변경 없이 브라우저 DOM 임시 복제로만 배열 확인(복제 썸네일은 클릭 동작 없음)
 - **HOLD** `P-PAGE-PUBLISH-INDEPENDENCE-01` — P페이지 공개(/p · sitemap)가 블로그 발행 1건(`MIN_HUB_POSTS`)에 종속되어야 하는지 (§19). 개발 금지.
-- **HOLD** `P-PAGE-FACT-SCOPE-01` — 일반회원에게 실제 업무방식/차이 FACT(`differentiators`)를 어디까지 입력받을지 (§19). 개발 금지.
+- **HOLD** `P-PAGE-FACT-SCOPE-01` — 일반회원에게 실제 업무방식/차이 FACT(`differentiators`)를 어디까지 입력받을지 (§19). 개발 금지. **2026-10-04 병합(선장 C 판정, §21):** differentiators 의 목적(실제 차이·선택 이유) · 일반회원 개방 여부 · 받을 FACT · 진행 순서와의 역할 경계 · 입력 안내 · 공개 명칭(「이렇게 일합니다」 적절성) · HubCheck↔/p 동기화 · Architecture §3-G 일치 — 이 축에서 통합 판단. 표시 제거하지 않음(현재 코드·데이터·표시 보존). store 14 3문장은 실험 표본 — 존폐 근거 아님.
 
 ---
 
@@ -295,9 +300,9 @@ P-PAGE 다중업무 SoT TRACE             CLOSE — §20
 
 # 11. 새 세션이 할 일
 
-1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 최종 HANDOVER 커밋(main = origin/main = Production `1d1b32f` · 그 위 로컬 문서 커밋만 존재) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
+1. git 기준선 확인(헌법 §8) — branch `feat/p-page-one-screen-01` · HEAD = 이 문서의 최종 HANDOVER 커밋(main = origin/main = Production `1d1b32f` · 그 위 로컬 커밋 = 문서 + 코드 2건 `744ca94` · `ca9a80d` — 미배포) · dirty = 기존 156건만(HOLD 3 포함) · staged 0. store 14 `photo_pool` 2장은 의도된 상태(§7) — 원복·삭제하지 않는다.
 2. 사용자가 「인수인계 확인」을 보내면 기준선 결과만 보고하고 STOP.
-3. **다음 One Axis = `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01` — DESIGN ONLY, 구현 금지. 지시 원문 요약·제약은 §20 끝.** 사용자가 이 축 착수를 지시하면 설계안(구조 비교)만 제출하고 STOP. (이하 기존 기록) P페이지 1층 최종 CLOSE(§18). 다음 방향(블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성)은 기록만 — 지시 전 개발 금지. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
+3. **다음 One Axis = 미정(선장 결정 대기).** 기준점 = 멀티서비스 Hub(`744ca94`) + 서비스 개수 제한 제거(`ca9a80d`) CLOSE(§21). >8 실제 저장 E2E 는 실제 9개+ 서비스 업체 표본이 생길 때만 실증(가짜 서비스 금지). (이하 기존 기록) P페이지 1층 최종 CLOSE(§18). 다음 방향(블로그 본문 의존 제거 → 업체 FACT 기반 독립 P페이지 생성)은 기록만 — 지시 전 개발 금지. 2F·Pilot 으로 시작하지 않는다. 그 외 축은 선장 지시 전 OPEN 하지 않는다. §5 후보 · §12 후속 후보 F-4~F-6(F-1·F-2·F-3 CLOSE) · `P-PAGE-SEARCH-DISCOVERY-01`(2F 미래 후보)을 임의로 승격하지 않는다.
 4. P페이지·P페이지 검색자산 작업이면 `docs/claude/P-PAGE_SEARCH_CONVERSION_ARCHITECTURE-01.md`(ACTIVE)를 먼저 읽는다. push/merge 금지.
 
 ---
@@ -496,10 +501,44 @@ P-PAGE 다중업무 SoT TRACE             CLOSE — §20
 - store 14 = `industry interior` · `departments ["interior"]`(사용자 추가 0) vs services 8개. 「주방 리모델링」 대응 분야 키 없음 · 도배·장판 = dobae+flooring 2키.
 - **선장 판정(CLOSE):** ① departments = 엔진 분야/겸업 분류 SoT 유지 ② P페이지 실제 서비스 FACT 로 승격 금지(헌법 §5.4 · H-005 유지) ③ `search_fact.services` = P페이지 고객 관점 실제 서비스 FACT ④ 대표 서비스 개념 도입 안 함 ⑤ primary 원복 유지 ⑥ FREEZE 엔진·departments 계약 변경 금지.
 
-## NEXT ONE AXIS — `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01` (DESIGN ONLY · 구현 금지 · 미착수)
+## (완료 → §21) `P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01` (DESIGN ONLY) — 원 지시 기록
 - 목표: 한 업체의 `search_fact.services` N개를 각각 「지역 × 서비스」 검색기회로 만드는 검색자산 구조 설계.
 - 비교 최소 3안: (a) 현재 `/p/{storeId}` 한 페이지 안에서 N개 서비스를 지역과 각각 결합 (b) 업체 아래 서비스별 검색 URL/자산 (c) 기존 Intent/pSEO 구조(`[intentSlug].js` · core_keyword 기반) 재사용 가능성.
 - 제약: Blog 본문 복제 금지 · departments 를 서비스 FACT 로 사용 금지 · publish_history 를 서비스 FACT 로 사용 금지 · 서비스 SoT = `search_fact.services` 만 · 없는 지역×서비스 조합 생성 금지 · 업체 미입력 서비스 생성 금지 · 대량 페이지부터 만들지 말 것 · 기존 P페이지 전환 기능 유지 · DDL 0 우선.
 - 예제 필수: store 14 실제 8개 서비스 — 남양주 × 아파트 인테리어 / 주방 리모델링 / 욕실 리모델링 / 도배·장판 … 각각 어떻게 검색 의미를 갖는지.
 - 산출: 구조안 비교 후 STOP(코드 수정 0).
 - 참고 실측 자산: §19(색인·스니펫) · §20 STEP 2(신호·경쟁 구조) · store 14 search_fact 는 실제 업체 확인 미검증(실험 표본).
+
+---
+
+# 21. 멀티서비스 Hub · 서비스 개수 제한 제거 (2026-10-04 · CLOSE · 로컬 커밋 · push 금지)
+
+## P-PAGE-MULTI-SERVICE-SEARCH-ARCHITECTURE-01 (DESIGN · 코드 0)
+- 3안 비교: A 단일 Hub 강화 / B 서비스별 URL(2F 후보 · 구현 미승인) / C 혼합(Hub + 미래 분리) → **C 채택, 1단계 = Hub 강화.**
+- **선장 기준(확정):** 「사용자가 "나는 이 일을 한다"고 등록하면 그것이 검색 FACT다.」 진위 재심사 없음 · departments/core_keyword/treatment_name/publish_history 로 보충·판정 금지 · 대표/primary 서비스 없음 · 등록 서비스 N개 전건 동등.
+- 폐기: 「서비스별 고유 FACT 없으면 검색기회 없음」 Gate · 서비스마다 지역 줄 반복 · 서비스별 CTA 반복.
+- 2F 로 넘긴 미결: `/p/{id}/{slug}` 가 Intent(core_keyword) 네임스페이스와 충돌 · 서비스 고정 id/slug 없음 · 얇은 페이지 · 자기경쟁(Hub↔서비스, 도배·장판↔바닥 공사 등) · 서비스별 지역 FACT 없음 · canonical/sitemap/공개 Gate · Blog 역할 · Naver Adapter · /p 내부링크 0.
+
+## P-PAGE-MULTI-SERVICE-HUB-V1-01 (CLOSE · `744ca94` · 4파일 +19/−13)
+- 서비스 입력 상한 8 → 16 (다음 축에서 제거됨).
+- `/p`: H2 「{region} {업체명} 제공 서비스」(지역 1회 선언) → 등록 서비스 N개 각 `<h3>`(입력 순서) · 한 줄 「서비스명 - note」(폭 초과 시 자연 줄바꿈) · `.fact` flex 제거 · `.factName` inline. 1열 유지(.wrap 30rem 무변경 — PC 2열 지시는 폭 실측 후 철회).
+- HubCheck: 같은 제목 + 한 줄 표시 — **동기화 지점**(`lib/PseoRoom.js` ↔ `pages/p/[storeId]/index.js`).
+- title = 「{업체명} | {region} {industryName}」(기존 FACT 만 · 없으면 생략 · 서비스 미포함). 예: `LG 인테리어 | 남양주 인테리어`. H1 = 업체명(무변경).
+- meta description = **Production 원문 그대로**(`{areaLine} {업체명} 연락처와 방문 안내` · 생활권 전건 보존). 서비스명 일부(앞 3개) 삽입안은 앞쪽 우대·생활권 축소로 **선장 기각·원복**.
+- 무변경: DDL · Intent · FREEZE · sitemap · JSON-LD · og · canonical · 서비스별 URL.
+- 검증: 로컬 SSR /p/14 title·description(Production 문자열 동일)·H2·H3×8 · PC 1366 8행 한 줄 · 375 가로넘침 0 · HubCheck 8행 · console 0 · 사장님 화면 PRODUCT PASS(8개 기준).
+
+## P-PAGE-SERVICE-LIMIT-REMOVE-01 (CLOSE · `ca9a80d` · 2파일 +8/−8)
+- **원칙:** 「실제 하는 일이 있으면 필요한 만큼 등록한다. AI-POST 가 서비스 개수를 사업적으로 제한하지 않는다.」
+- `lib/Store.js`: `SF_MAX = { process: 6, differentiators: 3 }`(services 키 없음 = 무제한) · 서비스 추가 버튼 항상 표시 · 「(n/max)」·「(최대 N개)」 서비스용 제거.
+- `pages/api/me/store.js`: `SF_LIMITS.services = { name: 40, note: 120 }` · `SEARCH_FACT_TOO_MANY` 에서 services 개수 검사만 제거.
+- 유지: 서비스명 40 / 설명 120 · process 6 · differentiators 3. 별도 safety cap 없음 — Next.js 기본 요청 본문 1MB(최대 길이 서비스 약 2,000개 지점 413)가 기술적 최후 방어.
+- 검증(DB 쓰기 0): sanitize 16/17/20/50/100/2000 ok · 41/121자 TOO_LONG · process 7·diff 4 TOO_MANY · UI 로컬 108행 추가·입력 정상(쓰기 차단 장치 · 새로고침 폐기 · /p/14 8/6/3 무변경) · 사장님 화면 확인.
+- payload 실측(최대 길이): 20개 11.5KB · 50개 26.6KB · 100개 51.7KB.
+
+## PENDING / 기록
+- **>8 실제 저장 E2E PENDING** — 실제 9개 이상 서비스를 가진 업체 표본 발생 시 그 업체 실제 FACT 로 1회 실증(9번째 추가 → 저장 → 재진입 → HubCheck → 공개 /p → SSR). **가짜 서비스·store 14 임의 추가 금지.**
+- `P-PAGE-FACT-SCOPE-01` 에 differentiators(선택 이유·표시·일반회원 개방) 판정 병합 — §5.
+- 기록만: 서비스 수가 많을 때(50~100) 공개 /p 세로 길이·하단 섹션 도달성 · 편집기 순서 변경 기능 없음(F-5) — 별도 축 후보, 착수 금지.
+- 기록만: 패널 확인 중 로컬 /p/14 열람 page_view 발생 가능(기존 동작).
+- Git: main = origin/main = `1d1b32f`(Production 무변경). `744ca94` · `ca9a80d` 및 HANDOVER 문서 커밋은 작업 브랜치 로컬만 — **push 금지(main push = Vercel 배포, 선장 승인 필요).** 무관 dirty 156건(HOLD 3 포함) 보존.
