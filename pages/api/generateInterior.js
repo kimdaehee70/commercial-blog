@@ -47,7 +47,8 @@ const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 function pickInfoBlockKey(treatment) {
   const cat = treatment.cat;
   if (cat === "구축아파트") return "oldapt";
-  if (cat === "욕실리모델링" || cat === "주방리모델링") return "space";
+  if (cat === "욕실리모델링") return "bath";      // [STEP 5A] space 공유 해제
+  if (cat === "주방리모델링") return "kitchen";
   if (cat === "도배장판") return "finish";
   if (cat === "체크리스트") return "check";
   if (cat === "아파트리모델링" || cat === "부분인테리어") return "remodel";
