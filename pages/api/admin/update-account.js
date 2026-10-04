@@ -13,9 +13,9 @@
 //     period=now()~now()+N개월).
 //   · plan='free': ①accounts.plan='free' ②활성행만 종료. 새 행 생성 없음.
 //   · months 파라미터(선택, 기본 1, 1~36). 미전달 시 1개월 지급.
-//   · 구독 처리는 best-effort — 실패해도 accounts.plan 갱신은 유지되고 200을 반환한다.
-//     이유: B-3 전까지 실제 차단 기준은 여전히 accounts.plan이므로, 이력 기록 실패로
-//     관리자 작업 전체를 막으면 손해가 더 크다. 실패는 응답 subscription.error로 노출.
+//   · (폐기 — SUBSCRIPTION-SINGLE-ROW-CONTRACT-FIX-01) 구 best-effort(실패해도 200) 규칙.
+//     현재: 구독 반영 실패 시 accounts.plan 을 되돌리고 500 SUBSCRIPTION_APPLY_FAILED.
+//     구독행 append-only 서술(위 B-2)도 폐기 — 계정당 1행 update-in-place(subscriptionWrite.js 머리 주석).
 //   · status/blog_account 단독 변경 경로는 무영향(plan 미포함이면 구독 로직 미진입).
 //
 // 91차 v0.4: blog_account 매핑 필드 추가 (회원 ↔ publish_history 연결고리)
@@ -167,6 +167,25 @@ export default async function handler(req, res) {
         months: grantMonths,
         source: 'admin',   // B-5 자동결제 시도 대상 아님
       });
+
+      // [SUBSCRIPTION-SINGLE-ROW-CONTRACT-FIX-01] 구독 반영 실패를 성공(200)으로 숨기지 않는다.
+      //   quota 기간은 구독행이 결정하므로, 구독 실패 + accounts.plan 만 변경 = 플랜·기간 불일치 상태다.
+      //   accounts.plan 을 변경 전 값으로 되돌리고 실패를 반환한다(화면은 !ok 를 오류로 표시).
+      if (subscriptionResult?.error) {
+        const { error: rbErr } = await supabaseAdmin
+          .from('accounts')
+          .update({ plan: target.plan, updated_at: new Date().toISOString() })
+          .eq('id', target_id);
+        if (rbErr) console.error(`[update-account] CRITICAL plan rollback failed id=${target_id}`, rbErr.message);
+        console.error(`[update-account] subscription apply failed id=${target_id} plan=${plan} → plan rollback=${rbErr ? 'FAILED' : 'ok'}`);
+        return res.status(500).json({
+          ok: false,
+          error: 'SUBSCRIPTION_APPLY_FAILED',
+          message: '구독 반영에 실패해 플랜 변경을 취소했습니다.',
+          detail: subscriptionResult.error,
+          plan_rolled_back: !rbErr,
+        });
+      }
     }
 
     // ── audit 기록 (best-effort, non-blocking) ────────────────
