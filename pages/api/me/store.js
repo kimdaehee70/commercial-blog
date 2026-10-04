@@ -84,7 +84,7 @@ const STORE_SELECT =
 //   STORE_SELECT 는 무변경. meta 는 서버 내부 조회에만 덧붙인다.
 const STORE_SELECT_META = STORE_SELECT + ", meta";
 const SF_LIMITS = {
-  services: { name: 40, note: 120 }, // [P-PAGE-SERVICE-LIMIT-REMOVE-01] 개수 제한 없음 — 항목 길이만 검증
+  services: { max: 16, name: 40, note: 120 }, // [P-PAGE-MULTI-SERVICE-HUB-V1-01] 제품 상한 V1 = 16 (lib/Store.js SF_MAX 와 동기화)
   process: { max: 6, len: 80 },
   differentiators: { max: 3, len: 120 },
 };
@@ -130,7 +130,8 @@ function sanitizeSearchFact(sf) {
   if (process === null || differentiators === null) return { ok: false, error: "SEARCH_FACT_INVALID" };
   if (process === "TOO_LONG" || differentiators === "TOO_LONG") return { ok: false, error: "SEARCH_FACT_TOO_LONG" };
 
-  if (process.length > SF_LIMITS.process.max ||
+  if (services.length > SF_LIMITS.services.max ||
+      process.length > SF_LIMITS.process.max ||
       differentiators.length > SF_LIMITS.differentiators.max) {
     return { ok: false, error: "SEARCH_FACT_TOO_MANY" };
   }
