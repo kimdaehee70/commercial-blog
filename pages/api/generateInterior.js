@@ -130,9 +130,12 @@ export default async function handleInterior(req, res) {
     //   문자열 t.id/t.name 과 비교하면 항상 false → 전 cat 이 TREATMENTS[0](아파트 리모델링)로
     //   폴백되던 결함. id·name 을 꺼내 흡수한다. treatmentId 우선순위는 기존 그대로.
     const tId = treatmentId || program?.id || program?.name || program;
-    const treatment =
-      INTERIOR_TREATMENTS.find((t) => t.id === tId || t.name === tId) ||
-      INTERIOR_TREATMENTS[0];
+    const _found = INTERIOR_TREATMENTS.find((t) => t.id === tId || t.name === tId);
+    // [INTERIOR-ENGINE-PREOPEN-AUDIT-01 · STEP 5E] it_check HOLD — 다른 메뉴로 폴백하지 않고 명시 거부.
+    if (_found && _found.id === "it_check") {
+      return res.status(403).json({ ok: false, error: "보류 중인 메뉴입니다: 인테리어 견적 체크리스트", code: "MENU_ON_HOLD" });
+    }
+    const treatment = _found || INTERIOR_TREATMENTS[0];
 
     // 단지명 결정: useApt면 풀에서 선택(또는 body 지정), 아니면 미사용
     let aptName = null;
