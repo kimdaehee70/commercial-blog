@@ -87,7 +87,6 @@ const SF_LIMITS = {
   services: { name: 40, note: 120 }, // [P-PAGE-SERVICE-LIMIT-REMOVE-01] 개수 제한 없음 — 항목 길이만 검증
   process: { max: 6, len: 80 },
   differentiators: { max: 3, len: 120 },
-  tagline: { len: 60 }, // [P-PAGE-MINI-HOMEPAGE-COMPLETION-01] 우리 업체 홍보 한마디 — 선택 1문장
 };
 
 // 입력 검증·정규화. 빈 항목 제거. 형식·개수·길이 위반 → { ok:false, error }.
@@ -135,15 +134,7 @@ function sanitizeSearchFact(sf) {
       differentiators.length > SF_LIMITS.differentiators.max) {
     return { ok: false, error: "SEARCH_FACT_TOO_MANY" };
   }
-  // [P-PAGE-MINI-HOMEPAGE-COMPLETION-01] tagline — 키를 보낸 경우만 검증·포함(빈 문자열 = 삭제). 미전송은 merge 에서 기존값 보존.
-  let tagline;
-  if ("tagline" in sf) {
-    if (sf.tagline != null && typeof sf.tagline !== "string") return { ok: false, error: "SEARCH_FACT_INVALID" };
-    tagline = str(sf.tagline);
-    if (tagline.length > SF_LIMITS.tagline.len) return { ok: false, error: "SEARCH_FACT_TOO_LONG" };
-  }
-  return { ok: true, value: { services, process, differentiators, ...(tagline !== undefined ? { tagline } : {}),
-    saved_at: new Date().toISOString() } };
+  return { ok: true, value: { services, process, differentiators, saved_at: new Date().toISOString() } };
 }
 
 // 응답용 추출 — meta 에서 search_fact 만. 없으면 null.
@@ -158,7 +149,6 @@ function pickSearchFact(meta) {
       : [],
     process: strs(sf.process),
     differentiators: strs(sf.differentiators),
-    tagline: typeof sf.tagline === "string" ? sf.tagline.trim() : "", // [P-PAGE-MINI-HOMEPAGE-COMPLETION-01]
     saved_at: typeof sf.saved_at === "string" ? sf.saved_at : null,
   };
 }
@@ -359,13 +349,8 @@ export default async function handler(req, res) {
     if (searchFact) {
       const baseMeta = store.meta && typeof store.meta === "object" && !Array.isArray(store.meta) ? store.meta : {};
       // [P-PAGE-FACT-SCOPE-01] differentiators 키를 보내지 않은 저장 = 기존값 그대로 유지(지우지 않음).
-      const _prevSf = pickSearchFact(baseMeta) || {};
-      const _keep = !("differentiators" in body.search_fact) ? { differentiators: _prevSf.differentiators || [] } : {};
-      // [P-PAGE-MINI-HOMEPAGE-COMPLETION-01] tagline 미전송 = 기존값 보존 / 빈 문자열 전송 = 키 삭제.
-      if (!("tagline" in body.search_fact) && _prevSf.tagline) _keep.tagline = _prevSf.tagline;
-      const _nextSf = { ...searchFact, ..._keep };
-      if (!_nextSf.tagline) delete _nextSf.tagline;
-      patch.meta = { ...baseMeta, search_fact: _nextSf };
+      const _keep = !("differentiators" in body.search_fact) ? { differentiators: (pickSearchFact(baseMeta) || {}).differentiators || [] } : {};
+      patch.meta = { ...baseMeta, search_fact: { ...searchFact, ..._keep } };
     }
 
     // 업종만 보냈다가 거부된 경우 — 갱신할 필드 없음. 현재값 그대로 반환(DB 무변경).
