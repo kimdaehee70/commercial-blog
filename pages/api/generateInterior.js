@@ -51,7 +51,8 @@ function pickInfoBlockKey(treatment) {
   if (cat === "주방리모델링") return "kitchen";
   if (cat === "도배장판") return "finish";
   if (cat === "체크리스트") return "check";
-  if (cat === "아파트리모델링" || cat === "부분인테리어") return "remodel";
+  if (cat === "아파트리모델링") return "remodel";
+  if (cat === "부분인테리어") return "part";   // [INTERIOR-SMOKE-FAIL-FIX-01] remodel 공유 해제
   return "cost";
 }
 
