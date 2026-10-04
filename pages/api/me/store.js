@@ -277,9 +277,10 @@ export default async function handler(req, res) {
     // [PSEO-LG-FOUNDATION-V1-01] search_fact 전용 분기 — 검증만 여기서. merge 는 기존 meta 조회 후.
     // [PSEO-INTERNAL-WORK-MODE-FIX-01] 내부공사 기간 잠금 — OWNER 또는 테스트 업체 외 403(다른 필드 저장도 하지 않음).
     // [PSEO-FACT-INPUT-OPEN-01] 일반회원 개방 — P페이지 사용 자격(getPseoAccess.can_enter, 입장 Gate 와 같은 판정)이면
+    //   services·process 만 저장(sfBasic). differentiators 는 HOLD — 보내면 403, 기존값은 보존.
     //   canManagePseoFact(OWNER·테스트 업체) 판정·동작은 무변경.
-    // [P-PAGE-FACT-SCOPE-01] differentiators(이렇게 일합니다)도 일반 자격회원 개방 — 필드 잠금(403) 제거.
     let searchFact = null;
+    let sfBasic = false;
     if ("search_fact" in body) {
       {
         let _own = !!(account.auth_user_id && account.auth_user_id === OWNER_UID);
@@ -297,10 +298,14 @@ export default async function handler(req, res) {
           if (!_acc.can_enter) {
             return res.status(403).json({ ok: false, error: "PSEO_FACT_LOCKED" });
           }
+          sfBasic = true;
         }
       }
       const sf = sanitizeSearchFact(body.search_fact);
       if (!sf.ok) return res.status(400).json({ ok: false, error: sf.error });
+      if (sfBasic && sf.value.differentiators.length > 0) {
+        return res.status(403).json({ ok: false, error: "PSEO_FACT_FIELD_LOCKED" });
+      }
       searchFact = sf.value;
     }
 
@@ -348,8 +353,8 @@ export default async function handler(req, res) {
     //   jsonb 가 객체가 아니면(null 등) 빈 객체에서 시작.
     if (searchFact) {
       const baseMeta = store.meta && typeof store.meta === "object" && !Array.isArray(store.meta) ? store.meta : {};
-      // [P-PAGE-FACT-SCOPE-01] differentiators 키를 보내지 않은 저장 = 기존값 그대로 유지(지우지 않음).
-      const _keep = !("differentiators" in body.search_fact) ? { differentiators: (pickSearchFact(baseMeta) || {}).differentiators || [] } : {};
+      // [PSEO-FACT-INPUT-OPEN-01] 일반회원 저장 = 기존 differentiators 그대로 유지(지우지 않음).
+      const _keep = sfBasic ? { differentiators: (pickSearchFact(baseMeta) || {}).differentiators || [] } : {};
       patch.meta = { ...baseMeta, search_fact: { ...searchFact, ..._keep } };
     }
 
