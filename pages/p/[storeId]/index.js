@@ -111,7 +111,7 @@ const MAX_RECENT = 12;
 //   (pages/api/me/store.js pickSearchFact 와 같은 규칙 — 파일 3개 제한으로 로컬 정의)
 function pickSearchFact(meta) {
   const sf = meta && typeof meta === "object" ? meta.search_fact : null;
-  if (!sf || typeof sf !== "object") return { services: [], process: [], differentiators: [] };
+  if (!sf || typeof sf !== "object") return { services: [], process: [], differentiators: [], tagline: "" };
   const strs = (v) =>
     Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim()) : [];
   const services = Array.isArray(sf.services)
@@ -119,7 +119,17 @@ function pickSearchFact(meta) {
         .filter((x) => x && typeof x === "object" && typeof x.name === "string" && x.name.trim())
         .map((x) => ({ name: x.name.trim(), note: typeof x.note === "string" ? x.note.trim() : "" }))
     : [];
-  return { services, process: strs(sf.process), differentiators: strs(sf.differentiators) };
+  return { services, process: strs(sf.process), differentiators: strs(sf.differentiators),
+    tagline: typeof sf.tagline === "string" ? sf.tagline.trim() : "" }; // [P-PAGE-MINI-HOMEPAGE-COMPLETION-01]
+}
+
+// [P-PAGE-MINI-HOMEPAGE-COMPLETION-01] 서비스 관계문장의 지역 = 생활권(sub_region) 쉼표 분리 · 중복 제거.
+//   비면 대표지역(region) 1개. visit_info.serviceArea(출동 가능지역)는 쓰지 않는다 — 운영정보이지 검색 생활권이 아니다.
+//   (lib/PseoRoom.js HubCheck 와 같은 규칙 — 동기화 지점)
+function serviceAreas(region, subRegion) {
+  const subs = String(subRegion || "").split(",").map((x) => x.trim()).filter(Boolean);
+  const list = subs.length > 0 ? subs : [String(region || "").trim()].filter(Boolean);
+  return [...new Set(list)];
 }
 
 // ── service role 클라이언트 (서버 전용) ────────────────────────
@@ -288,6 +298,7 @@ export async function getServerSideProps(ctx) {
     services: sf.services,
     process: sf.process,
     differentiators: sf.differentiators,
+    tagline: sf.tagline,
     preVisit: String(vi.preVisit || "").trim(),
   };
 
@@ -363,7 +374,7 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
     : "";
 
   const areaLine = [store.region, store.subRegion].filter(Boolean).join(" · ");
-  const f = fact || { services: [], process: [], differentiators: [], preVisit: "" };
+  const f = fact || { services: [], process: [], differentiators: [], tagline: "", preVisit: "" };
   const photos = Array.isArray(store.photos) ? store.photos : [];
   const cur = photoSel < photos.length ? photoSel : 0;
 
@@ -371,16 +382,24 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
   //   서비스는 title 에 넣지 않는다(대표 서비스 금지). 서비스 N개 검색신호는 H2→H3 목록이 담당.
   const regionKind = [store.region, store.industryName].filter(Boolean).join(" ");
   const pageTitle = regionKind ? `${store.storeName} | ${regionKind}` : store.storeName;
+  // [P-PAGE-MINI-HOMEPAGE-COMPLETION-01] 생활권 ↔ 실제 서비스 관계문장 — H2 아래 1회. 조합 나열·H3 지역 반복 없음.
+  const areas = serviceAreas(store.region, store.subRegion);
+  const relLine = f.services.length > 0 && areas.length > 0 ? `${areas.join(", ")}에서 아래 서비스를 제공합니다.` : "";
+  // description — 입력 FACT 만 조합. 서비스 목록·특정 서비스 선택 없음(서비스 신호는 H2 → 관계문장 → H3).
+  //   서비스 0개면 기존 문구(+홍보 한마디)를 유지한다.
+  const areaAt = areaLine ? `${areaLine}에서 ` : "";
+  const pageDesc = f.services.length === 0
+    ? `${f.tagline ? f.tagline + " " : ""}${areaLine ? areaLine + " " : ""}${store.storeName} 연락처와 방문 안내`
+    : f.tagline
+      ? `${f.tagline} ${areaAt}제공 서비스를 확인하고 상담할 수 있습니다.`
+      : `${areaLine ? areaLine + " " : ""}${store.storeName}의 제공 서비스와 이용정보를 확인하고 상담할 수 있습니다.`;
 
   return (
     <>
       <Head>
         <title>{pageTitle}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta
-          name="description"
-          content={`${areaLine ? areaLine + " " : ""}${store.storeName} 연락처와 방문 안내`}
-        />
+        <meta name="description" content={pageDesc} />
         {/* [PSEO-CANONICAL-FOUNDATION-01] 이 페이지의 정본 주소 고지.
             query string(utm 등)이 붙어도 params 기반이라 값은 불변이다. */}
         <link rel="canonical" href={hubUrl(store.id)} />
@@ -391,6 +410,8 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
           {areaLine ? <p className="area">{areaLine}</p> : null}
           <h1 className="name">{store.storeName}</h1>
           {store.industryName ? <p className="kind">{store.industryName}</p> : null}
+          {/* [P-PAGE-MINI-HOMEPAGE-COMPLETION-01] 홍보 한마디 — 제목 없이 소개문장 한 줄. 빈값 미노출. */}
+          {f.tagline ? <p className="tagline">{f.tagline}</p> : null}
           {hasAddress ? <p className="addr">{store.address}</p> : null}
         </header>
 
@@ -488,6 +509,7 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
             {/* [P-PAGE-MULTI-SERVICE-HUB-V1-01] H2 = 지역 × 업체 범위 1회 선언 → H3 = 입력 서비스 N개(같은 계층·입력 순서).
                 서비스마다 지역 반복 없음. 한 줄 = 「서비스명 - note」(폭 초과 시 자연 줄바꿈). */}
             <h2 className="h2">{store.region ? `${store.region} ` : ""}{store.storeName} 제공 서비스</h2>
+            {relLine ? <p className="factLead">{relLine}</p> : null}
             <ul className="facts">
               {f.services.map((s, i) => (
                 <li className="fact" key={i}>
@@ -611,6 +633,12 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
           font-size: 0.95rem;
           font-weight: 600;
           color: #1c6b3f;
+        }
+        .tagline {
+          margin: 0.6rem 0 0;
+          font-size: 1rem;
+          line-height: 1.55;
+          color: #23201d;
         }
         .addr {
           margin: 0.6rem 0 0;
@@ -822,6 +850,12 @@ export default function StorePublicPage({ store, fact, intents = [], recent = []
         .factNote {
           font-size: 0.875rem;
           color: #5c5550;
+        }
+        .factLead {
+          margin: 0 0 0.75rem;
+          font-size: 0.95rem;
+          line-height: 1.6;
+          color: #2f2a26;
         }
         .step {
           display: flex;
