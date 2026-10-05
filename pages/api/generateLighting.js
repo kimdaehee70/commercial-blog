@@ -27,6 +27,9 @@ import {
 import {
   buildSystemPrompt,
   buildUserPrompt,
+  buildIntentSystemPrompt,
+  buildIntentUserPrompt,
+  COVE_PILOT_INTRO,
   getImageAlts,
   getSectionAlt,
   FORBIDDEN,
@@ -149,7 +152,16 @@ function buildTitleLegacy(region, treatment) {
   return title.replace(/\s{2,}/g, " ").trim();
 }
 
+// [LIGHTING-PILOT-COVE-L1-IMPLEMENT-01] treatment.intents 정의 메뉴(현재 lt_cove)만 Intent 경로.
+//   Intent 1종이라 화면 intentId 없이 서버가 결정한다. 미정의 메뉴 → null(기존 경로 그대로).
+function pickPilotIntent(treatment) {
+  const list = Array.isArray(treatment && treatment.intents) ? treatment.intents : [];
+  return list[0] || null;
+}
+
 function buildTitle(region, treatment) {
+  const _p = pickPilotIntent(treatment);
+  if (_p) return _p.title.replace(/\{region\}/g, region).replace(/\s{2,}/g, " ").trim();
   const _t = buildIntentTitleOrNull(region, treatment, "lighting");
   if (_t) return _t;
   return buildTitleLegacy(region, treatment);
@@ -181,7 +193,15 @@ export default async function handleLighting(req, res) {
     const sym = formatSymptom(symptom);
     const pt = getPartNote(part);
     const ctx = { symptom: sym, part: part || "" };
-    const systemPrompt = buildSystemPrompt(region, treatment, ctx);
+    // [LIGHTING-PILOT-COVE-L1-IMPLEMENT-01] Intent 경로: LIGHTING_FLOW 순서를 그대로 쓰되
+    //   axis1 자리 = 답 섹션 / axis2·axis3·axis4·infoblock 미생성(공정·비용·검수 = 승인 FACT 밖,
+    //   정보박스 ③④ = 제외 FACT). Scene·contextLine·기존 system 미사용. → intro → 답 → closing.
+    //   사진 = intro(before) · 답(diagnose)만.
+    const pilot = pickPilotIntent(treatment);
+    const PILOT_SKIP = new Set(["axis2", "axis3", "axis4", "infoblock"]);
+    const systemPrompt = pilot
+      ? buildIntentSystemPrompt(region, treatment, pilot)
+      : buildSystemPrompt(region, treatment, ctx);
 
     const writtenSections = new Set();
     const sections = [];
@@ -189,6 +209,7 @@ export default async function handleLighting(req, res) {
     for (const sec of LIGHTING_FLOW) {
       if (writtenSections.has(sec.key)) continue;
       writtenSections.add(sec.key);
+      if (pilot && PILOT_SKIP.has(sec.key)) continue;
 
       // infoblock 섹션은 GPT 호출 없이 INFO_BLOCKS 삽입
       if (sec.key === "infoblock") {
@@ -197,17 +218,25 @@ export default async function handleLighting(req, res) {
         continue;
       }
 
-      const userPrompt = buildUserPrompt(region, treatment, sec.key, ctx);
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.8,
-      });
-
-      let body = completion.choices[0]?.message?.content || "";
+      const pilotKey = pilot ? (sec.key === "axis1" ? "answer" : sec.key) : null;
+      const userPrompt = pilot
+        ? buildIntentUserPrompt(region, treatment, pilot, pilotKey)
+        : buildUserPrompt(region, treatment, sec.key, ctx);
+      // [LIGHTING-PILOT-COVE-L1-FIX-A-01] Pilot 도입 = 승인 고정문장. GPT 호출 없음(생성 자유도 차단).
+      let body;
+      if (pilot && sec.key === "intro") {
+        body = COVE_PILOT_INTRO;
+      } else {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.8,
+        });
+        body = completion.choices[0]?.message?.content || "";
+      }
       body = stripMidHashtags(body);
       body = body.replace(/!?\[[^\]]*\]/g, "").trim();
       body = body.replace(/(^|\n)\s*운영자\s*(\n|$)/g, "\n").trim();
