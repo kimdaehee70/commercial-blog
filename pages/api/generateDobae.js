@@ -27,6 +27,8 @@ import {
   getImageAlts,
   getSectionAlt,
   FORBIDDEN,
+  buildIntentSystemPrompt,
+  buildIntentUserPrompt,
 } from "../../lib/dobae-prompts";
 import { DOBAE_FLOW, DOBAE_SECTION_PHOTO } from "../../lib/dobae-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
@@ -150,9 +152,18 @@ function buildTitleLegacy(region, treatment) {
   return title.replace(/\s{2,}/g, " ").trim();
 }
 
+// [WALLPAPER-ENGINE-PILOT-01] treatment.intents 정의 메뉴(현재 do_partial)만 Intent 경로.
+//   Intent 1종이라 화면 intentId 없이 서버가 결정한다. 미정의 메뉴 → null(기존 경로 그대로).
+function pickPilotIntent(treatment) {
+  const list = Array.isArray(treatment && treatment.intents) ? treatment.intents : [];
+  return list[0] || null;
+}
+
 function buildTitle(region, treatment, site) {
   const _s = buildSiteTitleOrNull(region, treatment, site);
   if (_s) return _s;
+  const _p = pickPilotIntent(treatment);
+  if (_p) return _p.title.replace(/\{region\}/g, region).replace(/\s{2,}/g, " ").trim();
   const _t = buildIntentTitleOrNull(region, treatment, "dobae");
   if (_t) return _t;
   return buildTitleLegacy(region, treatment);
@@ -188,7 +199,15 @@ export default async function handleDobae(req, res) {
     //   Title string is NOT passed. Only the intent id decided by titleEngine SoT.
     const _intent = resolveIntentOrNull(region, treatment, "dobae");
     const ctx = { site, material: mat, intent: _intent && _intent.id ? _intent.id : null };
-    const systemPrompt = buildSystemPrompt(region, treatment, ctx);
+    // [WALLPAPER-ENGINE-PILOT-01] Intent 경로: 기존 DOBAE_FLOW 순서를 그대로 쓰되
+    //   axis1 자리 = 답 섹션 / axis2·axis3·axis4 미생성(장면 확인·벽지 제거·자재 판단·시공 후 = FACT 밖).
+    //   infoblock 미삽입 — 정보박스 항목 = 답 섹션의 허용 FACT 와 동일해 그대로 반복된다(1차 Gate 6/6).
+    //   → intro → 답 → closing. 사진은 기존 DOBAE_SECTION_PHOTO 값만 사용.
+    const pilot = pickPilotIntent(treatment);
+    const PILOT_SKIP = new Set(["axis2", "axis3", "axis4", "infoblock"]);
+    const systemPrompt = pilot
+      ? buildIntentSystemPrompt(region, treatment, pilot)
+      : buildSystemPrompt(region, treatment, ctx);
 
     const writtenSections = new Set();
     const sections = [];
@@ -196,6 +215,7 @@ export default async function handleDobae(req, res) {
     for (const sec of DOBAE_FLOW) {
       if (writtenSections.has(sec.key)) continue;
       writtenSections.add(sec.key);
+      if (pilot && PILOT_SKIP.has(sec.key)) continue;
 
       // infoblock 섹션은 GPT 호출 없이 INFO_BLOCKS 삽입
       if (sec.key === "infoblock") {
@@ -204,7 +224,10 @@ export default async function handleDobae(req, res) {
         continue;
       }
 
-      const userPrompt = buildUserPrompt(region, treatment, sec.key, ctx);
+      const pilotKey = pilot ? (sec.key === "axis1" ? "answer" : sec.key) : null;
+      const userPrompt = pilot
+        ? buildIntentUserPrompt(region, treatment, pilot, pilotKey)
+        : buildUserPrompt(region, treatment, sec.key, ctx);
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
@@ -224,7 +247,8 @@ export default async function handleDobae(req, res) {
         body = body.replace(/오늘은[^.\n]*안내해?\s*드리겠습니다[.,]?\s*/g, "").trim();
       }
 
-      const slot = DOBAE_SECTION_PHOTO[sec.key];
+      // Intent 경로의 답 섹션은 axis1 사진(밑작업 확인) 대신 기존 axis3 값(벽지 자재 확인) — 같은 제품 확보 문맥.
+      const slot = pilotKey === "answer" ? DOBAE_SECTION_PHOTO.axis3 : DOBAE_SECTION_PHOTO[sec.key];
       if (slot) body += "\n\n[이미지: " + getSectionAlt(region, treatment, slot) + "]";
       sections.push(body);
     }
