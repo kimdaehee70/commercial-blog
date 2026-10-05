@@ -490,7 +490,11 @@ const AIRCLEAN_CATS_LOCAL = AIRCLEAN_CATS;  // ← 에어컨청소 (8메뉴, air
 const SCREEN_CATS_LOCAL = SCREEN_CATS;  // ← 방충망 (8메뉴, screen-data 소유)
 const PESTCONTROL_CATS_LOCAL = PESTCONTROL_CATS;  // ← 방역 (4cat/8메뉴, pestcontrol-data 소유)
 const BUILDINGCLEAN_CATS_LOCAL = BUILDINGCLEAN_CATS;  // ← 건물청소 (6cat/8메뉴, buildingclean-data 소유)
-const DOBAE_CATS_LOCAL = DOBAE_CATS;  // ← 도배 (9cat/9메뉴 평면, dobae-data 소유)
+// [WALLPAPER-HOLD-MENU-SAFETY-GATE-01] 도배 HOLD 5메뉴 — 데이터 보존, 탭·메뉴만 제외(OWNER 포함).
+//   서버 403 MENU_ON_HOLD 는 pages/api/generateDobae.js(같은 id 목록 — 동기화 지점).
+const DOBAE_HOLD_IDS = new Set(["do_full", "do_movein", "do_silk", "do_hapji", "do_janpan"]);
+const DOBAE_HOLD_CATS = new Set(DOBAE_TREATMENTS.filter((t) => DOBAE_HOLD_IDS.has(t.id)).map((t) => t.cat));
+const DOBAE_CATS_LOCAL = DOBAE_CATS.filter((c) => !DOBAE_HOLD_CATS.has(c));  // ← 도배 (9cat 중 LOCK 4 노출, dobae-data 소유)
 const FLOORING_CATS_LOCAL = FLOORING_CATS;  // ← 장판 (10cat/10메뉴 평면, flooring-data 소유)
 const FILM_CATS_LOCAL = FILM_CATS;  // ← 인테리어필름 (10cat/10메뉴 평면, film-data 소유)
 const DOOR_CATS_LOCAL = DOOR_CATS;  // ← 도어수리 (10cat/10메뉴 평면, door-data 소유)
@@ -671,7 +675,8 @@ const INDUSTRY_TREATMENTS = {
   screen: SCREEN_TREATMENTS,            // ← 방충망 (정보형·방충망업체화자, useApt=true)
   pestcontrol: PESTCONTROL_TREATMENTS,  // ← 방역 (정보형·방역업체화자, 출장업종)
   buildingclean: BUILDINGCLEAN_TREATMENTS,  // ← 건물청소 (정보형·건물청소업체화자, 출장업종)
-  dobae: DOBAE_TREATMENTS,  // ← 도배 (정보형·도배업체화자, 출장업종·siteBlock 사용)
+  // [WALLPAPER-HOLD-MENU-SAFETY-GATE-01] HOLD 5메뉴 제외 — 단일·다중분야 색인 전부 이 배열을 거친다. 정의(DOBAE_TREATMENTS)는 보존.
+  dobae: DOBAE_TREATMENTS.filter((t) => !DOBAE_HOLD_IDS.has(t.id)),  // ← 도배 (정보형·도배업체화자, 출장업종·siteBlock 사용)
   flooring: FLOORING_TREATMENTS,  // ← 장판 (정보형·장판시공업체화자, 출장업종·siteBlock + 두께 축)
   film: FILM_TREATMENTS,  // ← 인테리어필름 (정보형·필름시공업체화자, 출장업종·siteBlock + 하지 축)
   door: DOOR_TREATMENTS,  // ← 도어수리 (정보형·도어수리업체화자, 출장수리·siteBlock 미사용 + 부품군 축)

@@ -37,6 +37,9 @@ import { buildIntentTitleOrNull, resolveIntentOrNull } from "../../lib/titleEngi
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// [WALLPAPER-HOLD-MENU-SAFETY-GATE-01] 개발 HOLD 메뉴 — pages/index.js DOBAE_HOLD_IDS 와 같은 값(동기화 지점).
+const DOBAE_HOLD_IDS = new Set(["do_full", "do_movein", "do_silk", "do_hapji", "do_janpan"]);
+
 // ── 후처리: 공백·조사 정리 ─────────────────────
 function cleanText(text) {
   let t = text;
@@ -191,6 +194,11 @@ export default async function handleDobae(req, res) {
 
     if (!treatment) {
       return res.status(400).json({ error: `도배 메뉴 매칭 실패: ${program?.name}` });
+    }
+    // [WALLPAPER-HOLD-MENU-SAFETY-GATE-01] HOLD 5메뉴 — 기존 7섹션 경로 생성 차단(정의는 보존).
+    //   생성 허용 = Intent LOCK 4메뉴(do_partial·do_leak·do_mold·do_live)만. 화면 필터는 pages/index.js.
+    if (DOBAE_HOLD_IDS.has(treatment.id)) {
+      return res.status(403).json({ ok: false, error: `보류 중인 메뉴입니다: ${treatment.name}`, code: "MENU_ON_HOLD" });
     }
 
     const kw = treatment.name;
