@@ -19,10 +19,7 @@ import {
   buildUserPrompt,
   getImageAlts,
   FORBIDDEN,
-  REPLACE_PIPE_INTRO,
-  REPLACE_PIPE_ANSWER,
-  REPLACE_PIPE_NEXT_ACTION,
-  REPLACE_PIPE_PHOTO_ALTS,
+  PILOT_CONTENT,
 } from "../../lib/systemair-prompts";
 import { SYSTEMAIR_FLOW } from "../../lib/systemair-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
@@ -236,6 +233,11 @@ export default async function handleCoating(req, res) {
     const kw = treatment.name;
     // [SYSTEMAIR-REPLACE-PIPE-SQ-01] Pilot = 단지명 미사용(APT_DATA 무작위 주입 차단) → effRegion = 입력 지역.
     const pilot = pickPilotIntent(treatment);
+    // Pilot 고정 콘텐츠 = factKey 로 선택. Intent 는 있는데 콘텐츠 계약이 없으면 legacy 로 빠지지 않고 실패.
+    const pc = pilot ? PILOT_CONTENT[pilot.factKey] : null;
+    if (pilot && !pc) {
+      return res.status(500).json({ error: `시스템에어컨 Pilot 콘텐츠 미등록: ${pilot.factKey}` });
+    }
     const { aptName, meta: aptMeta } = pilot
       ? { aptName: "", meta: null }
       : resolveAptName(treatment, region, bodyAptName);
@@ -249,11 +251,11 @@ export default async function handleCoating(req, res) {
     //   intro · axis1 자리 답 · closing = 전부 승인 고정문(FIX-D · GPT 호출 0회).
     //   axis2·axis3·axis4·infoblock 미생성(Scene 공정·정보블록 = 승인 FACT 밖).
     const PILOT_SKIP = new Set(["axis2", "axis3", "axis4", "infoblock"]);
-    const PILOT_BODY = { intro: REPLACE_PIPE_INTRO, axis1: REPLACE_PIPE_ANSWER, closing: REPLACE_PIPE_NEXT_ACTION };
+    const PILOT_BODY = pc ? { intro: pc.intro, axis1: pc.answer, closing: pc.next } : null;
     const systemPrompt = pilot ? null : buildSystemPrompt(effRegion, treatment, aptName, aptMeta);
 
     const PHOTO_ALT = pilot ? {
-      intro: REPLACE_PIPE_PHOTO_ALTS[0], axis1: REPLACE_PIPE_PHOTO_ALTS[1], closing: REPLACE_PIPE_PHOTO_ALTS[2],
+      intro: pc.alts[0], axis1: pc.alts[1], closing: pc.alts[2],
     } : {
       intro: "시스템에어컨 설치 안내", axis1: "설치 위치 안내", axis2: "배관·전기 안내",
       axis3: "진행 순서 안내", axis4: "설치 전 확인 안내", closing: "시스템에어컨 설치 상담 안내",
@@ -319,7 +321,7 @@ export default async function handleCoating(req, res) {
     content = insertLocationBeforeHashtags(content, _locStore);
 
     const title = buildTitle(effRegion, treatment, aptName, aptMeta);
-    const imageAlts = pilot ? [...REPLACE_PIPE_PHOTO_ALTS] : getImageAlts(effRegion, treatment, aptName);
+    const imageAlts = pilot ? [...pc.alts] : getImageAlts(effRegion, treatment, aptName);
 
     // ── QC 로그 ──
     const kwCount = (content.match(new RegExp(kw, "g")) || []).length;
