@@ -503,7 +503,11 @@ const PAINT_CATS_LOCAL = PAINT_CATS;  // ← 페인트공사 (8cat/8메뉴 평�
 const TILE_CATS_LOCAL = TILE_CATS;  // ← 타일시공 (6cat/6메뉴 평면, tile-data 소유)
 const WINDOW_CATS_LOCAL = WINDOW_CATS;  // ← 창호시공 (6cat/6메뉴 평면, window-data 소유)
 const FURNITURE_CATS_LOCAL = FURNITURE_CATS;  // ← 맞춤가구 (8cat/8메뉴 평면, furniture-data 소유)
-const LIGHTING_CATS_LOCAL = LIGHTING_CATS;  // ← 조명 (6cat/6메뉴 평면, lighting-data 소유)
+// [LIGHTING-OPEN-HOLD-SAFETY-GATE-01] 조명 HOLD 5메뉴 — 데이터 보존, 탭·메뉴만 제외(OWNER 포함).
+//   서버 403 MENU_ON_HOLD 는 pages/api/generateLighting.js(같은 id 목록 — 동기화 지점).
+const LIGHTING_HOLD_IDS = new Set(["lt_line", "lt_recess", "lt_mag", "lt_track", "lt_pendant"]);
+const LIGHTING_HOLD_CATS = new Set(LIGHTING_TREATMENTS.filter((t) => LIGHTING_HOLD_IDS.has(t.id)).map((t) => t.cat));
+const LIGHTING_CATS_LOCAL = LIGHTING_CATS.filter((c) => !LIGHTING_HOLD_CATS.has(c));  // ← 조명 (6cat 중 LOCK 1 노출, lighting-data 소유)
 const DEMOLITION_CATS_LOCAL = DEMOLITION_CATS;  // ← 철거공사 (3cat/3메뉴 평면, demolition-data 소유)
 const BIRDCONTROL_CATS_LOCAL = BIRDCONTROL_CATS;  // ← 비둘기퇴치 (5cat/8메뉴, birdcontrol-data 소유)
 const TANKCLEAN_CATS_LOCAL = TANKCLEAN_CATS;  // ← 저수조청소 (8cat/8메뉴, tankclean-data 소유)
@@ -685,7 +689,8 @@ const INDUSTRY_TREATMENTS = {
   tile: TILE_TREATMENTS,  // ← 타일시공 (정보형·타일시공업체화자, 출장시공·siteBlock 미사용 + 철거·덧방 판단 축)
   window: WINDOW_TREATMENTS,  // ← 창호시공 (정보형·창호시공업체화자, 출장시공·siteBlock 미사용 + 전체교체·부분보수 판단 축)
   furniture: FURNITURE_TREATMENTS,  // ← 맞춤가구 (정보형·맞춤가구제작업체화자, 출장제작설치·siteBlock 미사용 + 자리 제약 판단 축)
-  lighting: LIGHTING_TREATMENTS,  // ← 조명 (정보형·조명시공업체화자, 출장시공·siteBlock 미사용 + 배치 여건 판단 축)
+  // [LIGHTING-OPEN-HOLD-SAFETY-GATE-01] HOLD 5메뉴 제외 — 단일·다중분야 색인 전부 이 배열을 거친다. 정의(LIGHTING_TREATMENTS)는 보존.
+  lighting: LIGHTING_TREATMENTS.filter((t) => !LIGHTING_HOLD_IDS.has(t.id)),  // ← 조명 (정보형·조명시공업체화자, 출장시공·siteBlock 미사용 + 배치 여건 판단 축)
   demolition: DEMOLITION_TREATMENTS,  // ← 철거공사 (정보형·철거공사업체화자, 출장해체·siteBlock 미사용 + 살릴면·뜯을면 판단 축)
   birdcontrol: BIRDCONTROL_TREATMENTS,  // ← 비둘기퇴치 (정보형·비둘기퇴치업체화자, 출장업종)
   tankclean: TANKCLEAN_TREATMENTS,  // ← 저수조청소 (정보형·저수조청소업체화자, 출장업종·useApt)
@@ -1433,9 +1438,7 @@ const INDUSTRY_CONFIG = {
     greeting: "안녕하세요! 조명 블로그 생성기입니다. 천장 속 여유·받칠 자리·전원 지점을 재 보고 그 자리를 그대로 쓸지 자리를 만들지 정하는 과정을 조명 시공 업체 화자 정보형(자리 계측·배치 판단·점등 확인)으로 안내합니다.",
     examples: [
       "노원구 중계동 간접조명 자리를 정하는 기준",
-      "노원구 하계동 매립등 천장 여건에서 갈리는 지점",
-      "노원구 공릉동 라인조명 빛이 얼룩지는 이유",
-      "노원구 월계동 펜던트조명 높이에서 갈리는 지점",
+      // [LIGHTING-OPEN-HOLD-SAFETY-GATE-01] HOLD 메뉴(매립등·라인조명·펜던트조명) 예시 3개 제거.
     ],
     badge: "lighting v1.0 (정보형·조명시공업체화자·출장시공·배치여건판단축)",
   },
