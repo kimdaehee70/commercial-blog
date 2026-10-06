@@ -19,6 +19,10 @@ import {
   buildUserPrompt,
   getImageAlts,
   FORBIDDEN,
+  REPLACE_PIPE_INTRO,
+  REPLACE_PIPE_ANSWER,
+  REPLACE_PIPE_NEXT_ACTION,
+  REPLACE_PIPE_PHOTO_ALTS,
 } from "../../lib/systemair-prompts";
 import { SYSTEMAIR_FLOW } from "../../lib/systemair-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
@@ -192,7 +196,16 @@ function buildTitleLegacy(region, treatment, aptName, aptMeta) {
 
 // ── 제목 엔진 v1 (titleEngine) — Intent 축 제목. 실패 시 기존 로직 폴백.
 //   ★ buildTitle() 한정 교체. Runtime/Data/Prompt/SCENE_SPINE 무변경.
+// [SYSTEMAIR-REPLACE-PIPE-SQ-01] treatment.intents 정의 메뉴(현재 sa_replace)만 Intent 경로.
+//   Intent 1종이라 화면 intentId 없이 서버가 결정한다. 미정의 메뉴 → null(기존 경로 그대로).
+function pickPilotIntent(treatment) {
+  const list = Array.isArray(treatment && treatment.intents) ? treatment.intents : [];
+  return list[0] || null;
+}
+
 function buildTitle(region, treatment, aptName, aptMeta) {
+  const _p = pickPilotIntent(treatment);
+  if (_p) return _p.title.replace(/\{region\}/g, region).replace(/\s{2,}/g, " ").trim();
   const _t = buildIntentTitleOrNull(region, treatment, "systemair");
   if (_t) return _t;
   return buildTitleLegacy(region, treatment, aptName, aptMeta);
@@ -221,16 +234,27 @@ export default async function handleCoating(req, res) {
     }
 
     const kw = treatment.name;
-    const { aptName, meta: aptMeta } = resolveAptName(treatment, region, bodyAptName);
+    // [SYSTEMAIR-REPLACE-PIPE-SQ-01] Pilot = 단지명 미사용(APT_DATA 무작위 주입 차단) → effRegion = 입력 지역.
+    const pilot = pickPilotIntent(treatment);
+    const { aptName, meta: aptMeta } = pilot
+      ? { aptName: "", meta: null }
+      : resolveAptName(treatment, region, bodyAptName);
     // 단지 district가 있으면 region을 단지 소재 동으로 정밀화
     const baseRegionKey = resolveRegionKey(region);
     const regionDistrict = (aptMeta && aptMeta.district)
       ? `${(APT_DATA[baseRegionKey]?.region) || region} ${aptMeta.district}`.trim()
       : region;
     const effRegion = aptName ? regionDistrict : region;
-    const systemPrompt = buildSystemPrompt(effRegion, treatment, aptName, aptMeta);
+    // [SYSTEMAIR-REPLACE-PIPE-SQ-01] Intent 경로: SYSTEMAIR_FLOW 순서를 그대로 쓰되
+    //   intro · axis1 자리 답 · closing = 전부 승인 고정문(FIX-D · GPT 호출 0회).
+    //   axis2·axis3·axis4·infoblock 미생성(Scene 공정·정보블록 = 승인 FACT 밖).
+    const PILOT_SKIP = new Set(["axis2", "axis3", "axis4", "infoblock"]);
+    const PILOT_BODY = { intro: REPLACE_PIPE_INTRO, axis1: REPLACE_PIPE_ANSWER, closing: REPLACE_PIPE_NEXT_ACTION };
+    const systemPrompt = pilot ? null : buildSystemPrompt(effRegion, treatment, aptName, aptMeta);
 
-    const PHOTO_ALT = {
+    const PHOTO_ALT = pilot ? {
+      intro: REPLACE_PIPE_PHOTO_ALTS[0], axis1: REPLACE_PIPE_PHOTO_ALTS[1], closing: REPLACE_PIPE_PHOTO_ALTS[2],
+    } : {
       intro: "시스템에어컨 설치 안내", axis1: "설치 위치 안내", axis2: "배관·전기 안내",
       axis3: "진행 순서 안내", axis4: "설치 전 확인 안내", closing: "시스템에어컨 설치 상담 안내",
     };
@@ -241,6 +265,7 @@ export default async function handleCoating(req, res) {
     for (const sec of SYSTEMAIR_FLOW) {
       if (writtenSections.has(sec.key)) continue;
       writtenSections.add(sec.key);
+      if (pilot && PILOT_SKIP.has(sec.key)) continue;
 
       // infoblock 섹션은 GPT 호출 없이 INFO_BLOCKS 삽입
       if (sec.key === "infoblock") {
@@ -249,16 +274,22 @@ export default async function handleCoating(req, res) {
         continue;
       }
 
-      const userPrompt = buildUserPrompt(effRegion, treatment, sec.key, aptName);
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.8,
-      });
-      let body = completion.choices[0]?.message?.content || "";
+      // [SYSTEMAIR-REPLACE-PIPE-SQ-01 FIX-D] Pilot = 승인 고정문만(GPT 호출 없음).
+      let body;
+      if (pilot) {
+        body = PILOT_BODY[sec.key] || "";
+      } else {
+        const userPrompt = buildUserPrompt(effRegion, treatment, sec.key, aptName);
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.8,
+        });
+        body = completion.choices[0]?.message?.content || "";
+      }
       body = stripMidHashtags(body);
       body = body.replace(/!?\[[^\]]*\]/g, "").trim();
       body = body.replace(/(^|\n)\s*운영자\s*(\n|$)/g, "\n").trim();
@@ -277,7 +308,8 @@ export default async function handleCoating(req, res) {
     content = stripForbidden(content);
     content = softenReviewTone(content);   // 후기·체험 톤 완화
     content = removeDupParagraphs(content);
-    content = buildAgentIntro(effRegion, aptName) + "\n\n" + content;
+    // Pilot = 인사 첫 줄만(「설치를 안내」 고정문 미사용 — 질문 제기는 고정 도입문이 맡는다).
+    content = (pilot ? `안녕하세요. ${effRegion} 시스템에어컨 업체입니다.` : buildAgentIntro(effRegion, aptName)) + "\n\n" + content;
     content = applyPhotoBoxes(content);
     content = content.replace(/(^|\n)\s*운영자\s*(\n|$)/g, "\n").trim();
     // 마무리 해시태그
@@ -287,7 +319,7 @@ export default async function handleCoating(req, res) {
     content = insertLocationBeforeHashtags(content, _locStore);
 
     const title = buildTitle(effRegion, treatment, aptName, aptMeta);
-    const imageAlts = getImageAlts(effRegion, treatment, aptName);
+    const imageAlts = pilot ? [...REPLACE_PIPE_PHOTO_ALTS] : getImageAlts(effRegion, treatment, aptName);
 
     // ── QC 로그 ──
     const kwCount = (content.match(new RegExp(kw, "g")) || []).length;
