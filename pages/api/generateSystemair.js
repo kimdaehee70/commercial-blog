@@ -27,6 +27,9 @@ import { buildIntentTitleOrNull } from "../../lib/titleEngine.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// [SYSTEMAIR-HOLD-SAFETY-GATE-01] 개발 HOLD 메뉴 — pages/index.js SYSTEMAIR_HOLD_IDS 와 같은 값(동기화 지점).
+const SYSTEMAIR_HOLD_IDS = new Set(["sa_install", "sa_apt", "sa_quote", "sa_pipe", "sa_outunit"]);
+
 // ── 후처리: 공백·조사 정리 ─────────────────────
 function cleanText(text) {
   let t = text;
@@ -228,6 +231,12 @@ export default async function handleCoating(req, res) {
 
     if (!treatment) {
       return res.status(400).json({ error: `시스템에어컨 메뉴 매칭 실패: ${program?.name}` });
+    }
+
+    // [SYSTEMAIR-HOLD-SAFETY-GATE-01] 개발 HOLD 메뉴 — GPT·사용량 이전 차단(정의는 보존).
+    //   생성 허용 = Intent LOCK 메뉴(sa_replace·sa_oldapt·sa_add)만. 화면 필터는 pages/index.js.
+    if (SYSTEMAIR_HOLD_IDS.has(treatment.id)) {
+      return res.status(403).json({ ok: false, error: `보류 중인 메뉴입니다: ${treatment.name}`, code: "MENU_ON_HOLD" });
     }
 
     const kw = treatment.name;

@@ -485,7 +485,11 @@ const MOVING_CATS_LOCAL = MOVING_CATS;  // ← 이사업체 (8메뉴, moving-dat
 const INTERIOR_CATS_LOCAL = INTERIOR_CATS.filter((c) => c !== "체크리스트");  // ← 인테리어 (8메뉴 중 7 노출, interior-data 소유)
 const GROUT_CATS_LOCAL = GROUT_CATS;  // ← 줄눈 (8메뉴, grout-data 소유)
 const COATING_CATS_LOCAL = COATING_CATS;  // ← 탄성코트 (8메뉴, coating-data 소유)
-const SYSTEMAIR_CATS_LOCAL = SYSTEMAIR_CATS;  // ← 시스템에어컨 (8메뉴, systemair-data 소유)
+// [SYSTEMAIR-HOLD-SAFETY-GATE-01] 시스템에어컨 HOLD 5메뉴 — 데이터 보존, 탭·메뉴만 제외(OWNER 포함).
+//   서버 403 MENU_ON_HOLD 는 pages/api/generateSystemair.js(같은 id 목록 — 동기화 지점).
+const SYSTEMAIR_HOLD_IDS = new Set(["sa_install", "sa_apt", "sa_quote", "sa_pipe", "sa_outunit"]);
+const SYSTEMAIR_HOLD_CATS = new Set(SYSTEMAIR_TREATMENTS.filter((t) => SYSTEMAIR_HOLD_IDS.has(t.id)).map((t) => t.cat));
+const SYSTEMAIR_CATS_LOCAL = SYSTEMAIR_CATS.filter((c) => !SYSTEMAIR_HOLD_CATS.has(c));  // ← 시스템에어컨 (8cat 중 LOCK 3 노출, systemair-data 소유)
 const AIRCLEAN_CATS_LOCAL = AIRCLEAN_CATS;  // ← 에어컨청소 (8메뉴, airclean-data 소유)
 const SCREEN_CATS_LOCAL = SCREEN_CATS;  // ← 방충망 (8메뉴, screen-data 소유)
 const PESTCONTROL_CATS_LOCAL = PESTCONTROL_CATS;  // ← 방역 (4cat/8메뉴, pestcontrol-data 소유)
@@ -674,7 +678,8 @@ const INDUSTRY_TREATMENTS = {
   interior: INTERIOR_TREATMENTS.filter((t) => t.id !== "it_check"),        // ← 인테리어 (정보형·인테리어업체화자)
   grout: GROUT_TREATMENTS,              // ← 줄눈 (정보형·줄눈시공업체화자)
   coating: COATING_TREATMENTS,          // ← 탄성코트 (정보형·탄성코트업체화자)
-  systemair: SYSTEMAIR_TREATMENTS,      // ← 시스템에어컨 (정보형·시스템에어컨업체화자)
+  // [SYSTEMAIR-HOLD-SAFETY-GATE-01] HOLD 5메뉴 제외 — 단일·다중분야 색인 전부 이 배열을 거친다. 정의(SYSTEMAIR_TREATMENTS)는 보존.
+  systemair: SYSTEMAIR_TREATMENTS.filter((t) => !SYSTEMAIR_HOLD_IDS.has(t.id)),  // ← 시스템에어컨 (정보형·시스템에어컨업체화자)
   airclean: AIRCLEAN_TREATMENTS,        // ← 에어컨청소 (정보형·에어컨청소업체화자)
   screen: SCREEN_TREATMENTS,            // ← 방충망 (정보형·방충망업체화자, useApt=true)
   pestcontrol: PESTCONTROL_TREATMENTS,  // ← 방역 (정보형·방역업체화자, 출장업종)
@@ -1294,10 +1299,9 @@ const INDUSTRY_CONFIG = {
     label: "시스템에어컨",
     greeting: "안녕하세요! 시스템에어컨 블로그 생성기입니다. 설치, 아파트·구축아파트 설치, 교체, 견적, 추가설치, 배관(선배관·단배관·배수배관), 실외기실 체크를 시스템에어컨 업체 화자 정보형으로 안내합니다.",
     examples: [
-      "노원구 상계동 시스템에어컨 설치 전 확인사항",
       "노원구 구축아파트 시스템에어컨 진행 순서 안내",
       "노원구 시스템에어컨 교체 판단 기준 안내",
-      "노원구 시스템에어컨 배관 확인사항",
+      // [SYSTEMAIR-HOLD-SAFETY-GATE-01] HOLD 메뉴(설치·배관) 예시 2개 제거.
     ],
     badge: "systemair v1.0 (정보형·시스템에어컨업체화자)",
   },
