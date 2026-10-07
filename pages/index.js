@@ -467,7 +467,14 @@ const FAMILY_CATS   = ["전체", "검진", "예방접종", "만성질환", "감�
 const LEGAL_CATS    = ["전체", "부동산", "법인", "상속", "회생·파산", "보전·집행", "가족관계"];  // ← 법무사 (v150 — legal-data 6개 cat과 일치)
 const LAWYER_CATS_LOCAL = LAWYER_CATS;  // ← 변호사 (v29 — 형사·가사·상속·민사, lawyer-data 소유)
 const DAYCARE_CATS_LOCAL = DAYCARE_CATS;  // ← 데이케어센터 (8메뉴, daycare-data 소유)
-const NURSINGHOME_CATS_LOCAL = NURSINGHOME_CATS;  // ← 요양원 (10 CAT, nursinghome-data 소유 · RESEARCH-01 SoT)
+// [NURSINGHOME-REAUDIT STEP 5] 요양원 DROP 7메뉴 — 데이터 보존, 탭·메뉴만 제외(OWNER 포함).
+//   서버 403 MENU_ON_HOLD 는 pages/api/generateNursinghome.js(같은 id 목록 — 동기화 지점).
+const NURSINGHOME_HOLD_IDS = new Set([
+  "nursinghome_grade", "nursinghome_nonbenefit", "nursinghome_vs_hospital",
+  "nursinghome_dementia", "nursinghome_facility", "nursinghome_visit", "nursinghome_choice",
+]);
+const NURSINGHOME_HOLD_CATS = new Set(NURSINGHOME_TREATMENTS.filter((t) => NURSINGHOME_HOLD_IDS.has(t.id)).map((t) => t.cat));
+const NURSINGHOME_CATS_LOCAL = NURSINGHOME_CATS.filter((c) => !NURSINGHOME_HOLD_CATS.has(c));  // ← 요양원 (4 CAT 노출, nursinghome-data 소유)
 const KINDERGARTEN_CATS_LOCAL = KINDERGARTEN_CATS;  // ← 유치원 (반장 edu cats, kindergarten-data 소유)
 const FISHING_CATS_LOCAL = FISHING_CATS;  // ← 고패킹 (글유형 3종: 방법형·분석형·비교형, fishing-catalog 소유)
 const HOMECARE_CATS_LOCAL = HOMECARE_CATS;  // ← 방문요양 (7메뉴, homecare-data 소유)
@@ -676,7 +683,7 @@ const INDUSTRY_TREATMENTS = {
   legal:      LEGAL_TREATMENTS,         // ← 법무사 (v142 — 비의료·정보형)
   bedding:    BEDDING_TREATMENTS,       // ← 이브자리 침구 (v10 — 비의료·정보형·매장화자)
   lawyer:     LAWYER_TREATMENTS,        // ← 변호사 (v29 — 4대분류·정보형·사무소화자)
-  nursinghome: NURSINGHOME_TREATMENTS,  // ← 요양원(노인요양시설) (정보형·기관화자·Purpose Spine 10축)
+  nursinghome: NURSINGHOME_TREATMENTS.filter((t) => !NURSINGHOME_HOLD_IDS.has(t.id)),  // ← 요양원 (DROP 7 제외 · 4 CAT 고정문)
   daycare:    DAYCARE_TREATMENTS,       // ← 데이케어센터 (정보형·기관화자)
   homecare:   HOMECARE_TREATMENTS,      // ← 방문요양 (정보형·기관화자)
   funeral:    FUNERAL_TREATMENTS,       // ← 상조 (정보형·장례지도사화자)
@@ -1136,12 +1143,12 @@ const INDUSTRY_CONFIG = {
   },
   nursinghome: {
     label: "요양원",
-    greeting: "안녕하세요! 요양원(노인요양시설) 블로그 생성기입니다. 입소자격·장기요양등급·비용구조·선택기준을 보호자 관점으로 안내합니다.",
+    greeting: "안녕하세요! 요양원(노인요양시설) 블로그 생성기입니다. 입소 대상·한 달 비용·평가등급 확인·입소 서류를 공식 기준으로 안내합니다.",
     examples: [
-      "요양원 입소 대상은 어떻게 되나요?",
-      "요양원 비용은 어떤 구조로 나뉘나요",
-      "요양원과 요양병원, 무엇이 다른가요",
-      "요양원 면회·외출·외박 안내",
+      "요양원, 몇 등급이면 들어갈 수 있나요?",
+      "요양원 한 달 비용은 얼마인가요?",
+      "요양원 평가등급은 어디서 확인하나요?",
+      "요양원 입소할 때 필요한 서류는?",
     ],
     badge: "nursinghome v1.0 (정보형·기관화자·Purpose Spine)",
   },

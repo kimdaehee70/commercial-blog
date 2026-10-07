@@ -31,11 +31,24 @@ import {
   getRenderedBlockTitles,   // ★ 실제 정보블록 출력 순서
   detectSpeakerViolation,   // ★ 미확인 화자 검출
   resolveFactSlots,         // ⚠️ DEAD CODE (SEGMENT-01 이후 미사용 — 인라인 마커 경로): 삭제 금지
+  PILOT_CONTENT,            // ★ [NURSINGHOME-REAUDIT STEP 5] 4 CAT 승인 고정문
 } from "../../lib/nursinghome-prompts.js";
 // ★ ENTAILMENT GENERATION WIRING (선장 승인 2026-09-22) — FREEZE 판정기 호출만. 판정기 무수정.
 import { judgeParagraph } from "../../lib/nursinghome-entailment.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// [NURSINGHOME-REAUDIT STEP 5] DROP 메뉴 — pages/index.js NURSINGHOME_HOLD_IDS 와 같은 값(동기화 지점).
+//   정의는 보존, 생성은 GPT·사용량 이전 403. nonbenefit 은 CAT-2(cost)로 통합되어 DROP.
+const NURSINGHOME_HOLD_IDS = new Set([
+  "nursinghome_grade", "nursinghome_nonbenefit", "nursinghome_vs_hospital",
+  "nursinghome_dementia", "nursinghome_facility", "nursinghome_visit", "nursinghome_choice",
+]);
+
+// CAT-2 적용연도 대조용 — 서버 시각을 KST 연도로 환산
+function currentKstYear(now = new Date()) {
+  return new Date(now.getTime() + 9 * 3600 * 1000).getUTCFullYear();
+}
 
 
 // ───────── 기능 모듈 (업종 공통) ─────────
@@ -336,10 +349,49 @@ export default async function handleNursinghome(req, res) {
     const _locStore = { address, map_guide, transit, building_desc, parking_info };
 
     // 메뉴 매칭 (daycare 동형: program.id → name)
+    // [NURSINGHOME-REAUDIT STEP 5] 매칭 실패 시 첫 메뉴로 대신 생성하지 않는다(fail-closed).
     const treatment =
       NURSINGHOME_TREATMENTS.find((t) => t.id === program?.id) ||
-      NURSINGHOME_TREATMENTS.find((t) => t.name === program?.name) ||
-      NURSINGHOME_TREATMENTS[0];
+      NURSINGHOME_TREATMENTS.find((t) => t.name === program?.name);
+    if (!treatment) {
+      return res.status(400).json({ error: `요양원 메뉴 매칭 실패: ${program?.id || program?.name || ""}`, code: "MENU_NOT_FOUND" });
+    }
+    if (NURSINGHOME_HOLD_IDS.has(treatment.id)) {
+      return res.status(403).json({ ok: false, error: `보류 중인 메뉴입니다: ${treatment.name}`, code: "MENU_ON_HOLD" });
+    }
+
+    // [NURSINGHOME-REAUDIT STEP 5] 4 CAT 고정문 경로 — GPT 0회 · cleanText/중복제거/이미지 슬롯 등 후처리 미적용.
+    //   Intent 가 없거나 콘텐츠 계약이 없으면 legacy GPT 경로로 빠지지 않고 실패.
+    const pilot = Array.isArray(treatment.intents) ? treatment.intents[0] : null;
+    const pc = pilot ? PILOT_CONTENT[pilot.factKey] : null;
+    if (!pc) {
+      return res.status(500).json({ error: `요양원 고정 콘텐츠 미등록: ${treatment.id}`, code: "CONTENT_NOT_REGISTERED" });
+    }
+    if (pc.appliesYear && pc.appliesYear !== currentKstYear()) {
+      return res.status(503).json({
+        error: `요양원 비용 기준연도(${pc.appliesYear})가 현재 연도와 달라 생성을 중단했습니다.`,
+        code: "FACT_YEAR_MISMATCH",
+      });
+    }
+    {
+      const r = region.replace(/\s+/g, "");
+      let pOut = pc.paragraphs.map((p) => p.replace(/\{region\}/g, region)).join("\n\n");
+      pOut += "\n\n" + pc.hashtags(r).join(" ");
+      pOut = insertLocationBeforeHashtags(pOut, _locStore);
+      const pTitle = pilot.title.replace(/\{region\}/g, region).replace(/\s{2,}/g, " ").trim();
+      console.log(`[QC][nursinghome] ${treatment.id}(${pilot.id}) 고정문 · GPT 0회 · 글자수 ${pOut.length}`);
+      return res.status(200).json({
+        industry: "nursinghome",
+        region,
+        treatment: treatment.id,
+        intentId: pilot.id,
+        title:        pTitle,
+        text:         pOut,
+        textMarkdown: pOut,
+        content:      pOut,
+        imageAlts:    [],
+      });
+    }
 
     const fullKeyword = `${region} 요양원`;
     const systemPrompt = SYSTEM_PROMPT.replace(/\{region\}/g, region);
