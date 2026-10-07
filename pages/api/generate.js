@@ -256,7 +256,8 @@ function applyWarningTailGate(text) {
 // ── [NURSINGHOME-EMERGENCY-FAIL-CLOSED-01] 업종 단위 신규 생성 일시 중단 ──────────
 //   업종 로직이 아니라 안전 Gate. 인증·사용량·DB·GPT 진입 전 차단(엔진 FREEZE 무접촉).
 //   resolve(industry) 와 같은 변수로 비교 → 해당 핸들러 도달 경로 전부 차단. 해제 = Set 에서 제거.
-const GENERATION_SUSPENDED_INDUSTRIES = new Set(["nursinghome"]);
+//   [NURSINGHOME-REAUDIT STEP 6B] nursinghome 해제 — 4 CAT 고정문 엔진 OPEN.
+const GENERATION_SUSPENDED_INDUSTRIES = new Set([]);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
