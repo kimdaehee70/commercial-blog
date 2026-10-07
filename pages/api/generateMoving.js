@@ -17,12 +17,16 @@ import {
   buildUserPrompt,
   getImageAlts,
   FORBIDDEN,
+  PILOT_CONTENT,
 } from "../../lib/moving-prompts";
 import { MOVING_FLOW } from "../../lib/moving-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
 import { buildIntentTitleOrNull } from "../../lib/titleEngine.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// [MOVING-REAUDIT STEP 6] 개발 HOLD 메뉴 — pages/index.js MOVING_HOLD_IDS 와 같은 값(동기화 지점).
+const MOVING_HOLD_IDS = new Set(["mv_halfpacked", "mv_oneroom", "mv_tworoom", "mv_yongdal", "mv_select", "mv_check"]);
 
 // ── 후처리: 공백·조사 정리 ─────────────────────
 function cleanText(text) {
@@ -196,7 +200,16 @@ function buildTitleLegacy(region, treatment, aptName, aptMeta) {
 
 // ── 제목 엔진 v1 (titleEngine) — Intent 축 제목. 실패 시 기존 로직 폴백.
 //   ★ buildTitle() 한정 교체. Runtime/Data/Prompt/SCENE_SPINE 무변경.
+// [MOVING-REAUDIT STEP 6] treatment.intents 정의 메뉴(mv_packed_cost · mv_storage)만 Pilot 경로.
+//   Intent 1종이라 화면 intentId 없이 서버가 결정한다. 미정의 메뉴 → null(기존 경로).
+function pickPilotIntent(treatment) {
+  const list = Array.isArray(treatment && treatment.intents) ? treatment.intents : [];
+  return list[0] || null;
+}
+
 function buildTitle(region, treatment, aptName, aptMeta) {
+  const _p = pickPilotIntent(treatment);
+  if (_p) return _p.title.replace(/\{region\}/g, region).replace(/\s{2,}/g, " ").trim();
   const _t = buildIntentTitleOrNull(region, treatment, "moving");
   if (_t) return _t;
   return buildTitleLegacy(region, treatment, aptName, aptMeta);
@@ -223,7 +236,51 @@ export default async function handleMoving(req, res) {
       return res.status(400).json({ error: `이사업체 메뉴 매칭 실패: ${program?.name}` });
     }
 
+    // [MOVING-REAUDIT STEP 6] 개발 HOLD 메뉴 — GPT·사용량 이전 차단(정의는 보존).
+    //   생성 허용 = Pilot Intent 메뉴(mv_packed_cost · mv_storage)만. 화면 필터는 pages/index.js.
+    if (MOVING_HOLD_IDS.has(treatment.id)) {
+      return res.status(403).json({ ok: false, error: `보류 중인 메뉴입니다: ${treatment.name}`, code: "MENU_ON_HOLD" });
+    }
+
     const kw = treatment.name;
+
+    // [MOVING-REAUDIT STEP 6] Pilot 경로 — 승인 고정문만 조립(GPT 호출 0회).
+    //   기존 7섹션·Scene·정보블록·APT_DATA 단지명 미사용. 고정문에는 stripForbidden ·
+    //   softenReviewTone · removeDupParagraphs 를 적용하지 않는다(승인 문구 보존).
+    //   Intent 는 있는데 콘텐츠 계약이 없으면 legacy 로 빠지지 않고 실패.
+    const pilot = pickPilotIntent(treatment);
+    if (pilot) {
+      const pc = PILOT_CONTENT[pilot.factKey];
+      if (!pc) {
+        return res.status(500).json({ error: `이사업체 Pilot 콘텐츠 미등록: ${pilot.factKey}` });
+      }
+      const parts = [];
+      for (const sec of MOVING_FLOW) {
+        const body = pc.body[sec.key];
+        if (!body) continue;
+        parts.push(pc.alts[sec.key] ? `${body}\n\n[이미지: ${pc.alts[sec.key]}]` : body);
+      }
+      let pContent = buildAgentIntro(region, "") + "\n\n" + parts.join("\n\n");
+      pContent = applyPhotoBoxes(pContent);
+      pContent += buildHashtags(region, kw, "");
+      pContent = pContent.replace(/\n{3,}/g, "\n\n").trim();
+      pContent = insertLocationBeforeHashtags(pContent, _locStore);
+      const pTitle = buildTitle(region, treatment, "", null);
+      console.log(`[QC][moving] Pilot(${pilot.id}) 고정문 · GPT 0회 · 글자수 ${pContent.length}`);
+      return res.status(200).json({
+        title:        pTitle,
+        text:         pContent,
+        textMarkdown: pContent,
+        content:      pContent,
+        imageAlts:    Object.values(pc.alts),
+        industry: "moving",
+        treatmentId: treatment.id,
+        treatmentName: treatment.name,
+        intentId: pilot.id,
+        aptName: null,
+        seoScore: null,
+      });
+    }
     const { aptName, meta: aptMeta } = resolveAptName(treatment, region, bodyAptName);
     // 단지 district가 있으면 region을 단지 소재 동으로 정밀화
     const baseRegionKey = resolveRegionKey(region);

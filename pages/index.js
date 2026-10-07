@@ -480,7 +480,11 @@ const SENIORGOODS_CATS_LOCAL = SENIORGOODS_CATS;  // ← 노인용품 (17메뉴:
 const ADMIN_CATS_LOCAL = ADMIN_CATS;  // ← 행정사 (7메뉴, administrative-data 소유)
 const REALESTATE_CATS_LOCAL = REALESTATE_CATS;  // ← 부동산 (7메뉴, realestate-data 소유)
 const CLEANING_CATS_LOCAL = CLEANING_CATS;  // ← 입주청소 (8메뉴, cleaning-data 소유)
-const MOVING_CATS_LOCAL = MOVING_CATS;  // ← 이사업체 (8메뉴, moving-data 소유)
+// [MOVING-REAUDIT STEP 6] 이사업체 HOLD 6메뉴 — 데이터 보존, 탭·메뉴만 제외(OWNER 포함).
+//   서버 403 MENU_ON_HOLD 는 pages/api/generateMoving.js(같은 id 목록 — 동기화 지점).
+const MOVING_HOLD_IDS = new Set(["mv_halfpacked", "mv_oneroom", "mv_tworoom", "mv_yongdal", "mv_select", "mv_check"]);
+const MOVING_HOLD_CATS = new Set(MOVING_TREATMENTS.filter((t) => MOVING_HOLD_IDS.has(t.id)).map((t) => t.cat));
+const MOVING_CATS_LOCAL = MOVING_CATS.filter((c) => !MOVING_HOLD_CATS.has(c));  // ← 이사업체 (8cat 중 OPEN 2 노출, moving-data 소유)
 // [INTERIOR-ENGINE-PREOPEN-AUDIT-01 · STEP 5E] 체크리스트(it_check) HOLD — 데이터 보존, 탭만 제외(OWNER 포함).
 const INTERIOR_CATS_LOCAL = INTERIOR_CATS.filter((c) => c !== "체크리스트");  // ← 인테리어 (8메뉴 중 7 노출, interior-data 소유)
 const GROUT_CATS_LOCAL = GROUT_CATS;  // ← 줄눈 (8메뉴, grout-data 소유)
@@ -676,7 +680,7 @@ const INDUSTRY_TREATMENTS = {
   administrative: ADMIN_TREATMENTS,     // ← 행정사 (정보형·행정사화자)
   realestate: REALESTATE_TREATMENTS,    // ← 부동산 (분석리포트형·공인중개사화자)
   cleaning: CLEANING_TREATMENTS,        // ← 입주청소 (정보형·청소업체화자)
-  moving: MOVING_TREATMENTS,            // ← 이사업체 (정보형·이사업체화자)
+  moving: MOVING_TREATMENTS.filter((t) => !MOVING_HOLD_IDS.has(t.id)),  // ← 이사업체 (HOLD 6 제외 · OPEN 2)
   // [STEP 5E] it_check HOLD — 단일·다중분야·소유업종 색인 전부 이 배열을 거친다. 정의(INTERIOR_TREATMENTS)는 보존.
   interior: INTERIOR_TREATMENTS.filter((t) => t.id !== "it_check"),        // ← 인테리어 (정보형·인테리어업체화자)
   grout: GROUT_TREATMENTS,              // ← 줄눈 (정보형·줄눈시공업체화자)
@@ -1256,12 +1260,11 @@ const INDUSTRY_CONFIG = {
   },
   moving: {
     label: "이사업체",
-    greeting: "안녕하세요! 이사업체 블로그 생성기입니다. 포장이사·원룸/투룸·용달·반포장·보관이사·비용·체크리스트를 이사업체 화자 정보형으로 안내합니다.",
+    // [MOVING-REAUDIT STEP 6] OPEN 2(포장이사 비용·보관이사) 범위로 교체 — HOLD 메뉴 예시 제거.
+    greeting: "안녕하세요! 이사업체 블로그 생성기입니다. 포장이사 비용(견적서·계약 확인)과 보관이사(보관 조건 확인)를 이사화물 표준약관 기준 정보형으로 안내합니다.",
     examples: [
-      "노원구 포장이사 비용 확인사항",
-      "노원구 원룸이사 준비 체크리스트",
-      "노원구 보관이사 필요한 경우",
-      "노원구 이사업체 선택 기준",
+      "노원구 포장이사 비용 견적서 확인",
+      "노원구 보관이사 계약 전 확인",
     ],
     badge: "moving v1.0 (정보형·이사업체화자)",
   },
