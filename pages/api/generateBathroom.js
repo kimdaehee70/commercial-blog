@@ -22,6 +22,7 @@ import {
   buildUserPrompt,
   getImageAlts,
   FORBIDDEN,
+  PILOT_CONTENT,
 } from "../../lib/bathroom-prompts";
 import { BATHROOM_FLOW } from "../../lib/bathroom-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
@@ -132,7 +133,17 @@ function renderInfoBlock(block) {
 
 // ── 제목 생성 ───────────────────────────────────
 //   ★ 출장업종: 단지 토큰 없음. {region} 1회 치환만. region 중복 차단.
+// [BATHROOM-REAUDIT P4] treatment.intents 정의 메뉴(현재 bt_faucet)만 Intent 경로.
+//   Intent 1종이라 화면 intentId 없이 서버가 결정한다. 미정의 메뉴 → null(기존 경로 그대로).
+function pickPilotIntent(treatment) {
+  const list = Array.isArray(treatment && treatment.intents) ? treatment.intents : [];
+  return list[0] || null;
+}
+
 function buildTitle(region, treatment) {
+  // Pilot = Intent 제목(공용 titleEngine 풀 미경유).
+  const _p = pickPilotIntent(treatment);
+  if (_p) return _p.title.replace(/\{region\}/g, region).replace(/\s{2,}/g, " ").trim();
   // titleEngine v1 — Intent 축 제목. 실패 시 data.js titlePatterns 폴백(엔진 내부 처리).
   return buildIntentTitle(region, treatment, "bathroom");
 }
@@ -159,9 +170,20 @@ export default async function handleBathroom(req, res) {
     }
 
     const kw = treatment.name;
-    const systemPrompt = buildSystemPrompt(region, treatment);
+    // [BATHROOM-REAUDIT P4] Pilot 고정 콘텐츠 = factKey 로 선택. Intent 는 있는데 콘텐츠 계약이 없으면 legacy 로 빠지지 않고 실패.
+    const pilot = pickPilotIntent(treatment);
+    const pc = pilot ? PILOT_CONTENT[pilot.factKey] : null;
+    if (pilot && !pc) {
+      return res.status(500).json({ error: `욕실리모델링 Pilot 콘텐츠 미등록: ${pilot.factKey}` });
+    }
+    // Intent 경로: BATHROOM_FLOW 순서를 그대로 쓰되 intro · scope 자리 답 · closing = 승인 고정문(GPT 호출 0회).
+    //   cause·infoblock·process·manage 미생성(장면 서술·조건 없는 공정·기존 정보박스 = 승인 FACT 밖).
+    const PILOT_SKIP = new Set(["cause", "infoblock", "process", "manage"]);
+    const PILOT_BODY = pc ? { intro: pc.intro, scope: pc.answer, closing: pc.next } : null;
+    const systemPrompt = pilot ? null : buildSystemPrompt(region, treatment);
 
-    const PHOTO_ALT = {
+    // Pilot = 사진 슬롯만(캡션 없음). 아래 마커 분기 참고.
+    const PHOTO_ALT = pilot ? {} : {
       intro: "욕실 작업 전 상태 안내", scope: "욕실 시공 범위 안내", cause: "욕실 작업 부위·원인 안내",
       process: "작업 진행 안내", manage: "작업 후 확인 안내", closing: "욕실 마감 상태 안내",
     };
@@ -172,6 +194,7 @@ export default async function handleBathroom(req, res) {
     for (const sec of BATHROOM_FLOW) {
       if (writtenSections.has(sec.key)) continue;
       writtenSections.add(sec.key);
+      if (pilot && PILOT_SKIP.has(sec.key)) continue;
 
       // infoblock 섹션은 GPT 호출 없이 INFO_BLOCKS 삽입
       if (sec.key === "infoblock") {
@@ -180,16 +203,21 @@ export default async function handleBathroom(req, res) {
         continue;
       }
 
-      const userPrompt = buildUserPrompt(region, treatment, sec.key);
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.8,
-      });
-      let body = completion.choices[0]?.message?.content || "";
+      let body;
+      if (pilot) {
+        body = PILOT_BODY[sec.key] || "";
+      } else {
+        const userPrompt = buildUserPrompt(region, treatment, sec.key);
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.8,
+        });
+        body = completion.choices[0]?.message?.content || "";
+      }
       body = stripMidHashtags(body);
       body = body.replace(/!?\[[^\]]*\]/g, "").trim();
       body = body.replace(/(^|\n)\s*운영자\s*(\n|$)/g, "\n").trim();
@@ -198,7 +226,7 @@ export default async function handleBathroom(req, res) {
         body = body.replace(/^안녕하세요[^.\n]*욕실리모델링\s*업체입니다[.,]?\s*/g, "").trim();
         body = body.replace(/오늘은[^.\n]*안내해?\s*드리겠습니다[.,]?\s*/g, "").trim();
       }
-      body += "\n\n[이미지: " + (PHOTO_ALT[sec.key] || "욕실리모델링 안내") + "]";
+      body += pilot ? "\n\n[이미지: ]" : "\n\n[이미지: " + (PHOTO_ALT[sec.key] || "욕실리모델링 안내") + "]";
       sections.push(body);
     }
 
@@ -208,8 +236,11 @@ export default async function handleBathroom(req, res) {
     content = stripForbidden(content);
     content = softenReviewTone(content);   // 후기·작업일지 톤 완화
     content = removeDupParagraphs(content);
-    content = buildAgentIntro(region, kw) + "\n\n" + content;
+    // Pilot = 인사 첫 줄만(「…를 안내」 고정문 미사용 — 질문 제기는 고정 도입문이 맡는다).
+    content = (pilot ? `안녕하세요. ${region} 욕실리모델링 업체입니다.` : buildAgentIntro(region, kw)) + "\n\n" + content;
     content = applyPhotoBoxes(content);
+    // Pilot = 캡션 없는 사진 슬롯 표기 정리(「📷 사진:  (…)」 → 「📷 사진 (…)」).
+    if (pilot) content = content.replace(/📷 사진:\s+\(업로드 후 이 줄 삭제\)/g, "📷 사진 (업로드 후 이 줄 삭제)");
     content = content.replace(/(^|\n)\s*운영자\s*(\n|$)/g, "\n").trim();
     // 마무리 해시태그
     content += buildHashtags(region, kw);
@@ -218,7 +249,7 @@ export default async function handleBathroom(req, res) {
     content = insertLocationBeforeHashtags(content, _locStore);
 
     const title = buildTitle(region, treatment);
-    const imageAlts = getImageAlts(region, treatment);
+    const imageAlts = pilot ? [] : getImageAlts(region, treatment);
 
     // ── QC 로그 ──
     const kwCount = (content.match(new RegExp(kw, "g")) || []).length;
