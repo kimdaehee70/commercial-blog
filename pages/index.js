@@ -519,7 +519,11 @@ const LIGHTING_CATS_LOCAL = LIGHTING_CATS.filter((c) => !LIGHTING_HOLD_CATS.has(
 const DEMOLITION_CATS_LOCAL = DEMOLITION_CATS;  // ← 철거공사 (3cat/3메뉴 평면, demolition-data 소유)
 const BIRDCONTROL_CATS_LOCAL = BIRDCONTROL_CATS;  // ← 비둘기퇴치 (5cat/8메뉴, birdcontrol-data 소유)
 const TANKCLEAN_CATS_LOCAL = TANKCLEAN_CATS;  // ← 저수조청소 (8cat/8메뉴, tankclean-data 소유)
-const LEAKDETECT_CATS_LOCAL = LEAKDETECT_CATS;  // ← 누수탐지 (8cat/8메뉴, leakdetect-data 소유)
+// [LEAK-DETECTION-REAUDIT STEP 6] 누수탐지 HOLD 7메뉴 — 데이터 보존, 탭·메뉴만 제외(OWNER 포함).
+//   서버 403 MENU_ON_HOLD 는 pages/api/generateLeakdetect.js(같은 id 목록 — 동기화 지점).
+const LEAKDETECT_HOLD_IDS = new Set(["ld_leak", "ld_apt", "ld_bathroom", "ld_ceiling", "ld_cost", "ld_insurance", "ld_downstairs"]);
+const LEAKDETECT_HOLD_CATS = new Set(LEAKDETECT_TREATMENTS.filter((t) => LEAKDETECT_HOLD_IDS.has(t.id)).map((t) => t.cat));
+const LEAKDETECT_CATS_LOCAL = LEAKDETECT_CATS.filter((c) => !LEAKDETECT_HOLD_CATS.has(c));  // ← 누수탐지 (8cat 중 OPEN 1 노출, leakdetect-data 소유)
 const SEWER_CATS_LOCAL = SEWER_CATS;  // ← 하수구막힘 (10cat/10메뉴, sewer-data 소유)
 const PLUMBING_CATS_LOCAL = PLUMBING_CATS;  // ← 수도설비 (8cat/8메뉴, plumbing-data 소유)
 const BOILER_CATS_LOCAL = BOILER_CATS;  // ← 보일러설치 (12cat/12메뉴, boiler-data 소유)
@@ -706,7 +710,7 @@ const INDUSTRY_TREATMENTS = {
   demolition: DEMOLITION_TREATMENTS,  // ← 철거공사 (정보형·철거공사업체화자, 출장해체·siteBlock 미사용 + 살릴면·뜯을면 판단 축)
   birdcontrol: BIRDCONTROL_TREATMENTS,  // ← 비둘기퇴치 (정보형·비둘기퇴치업체화자, 출장업종)
   tankclean: TANKCLEAN_TREATMENTS,  // ← 저수조청소 (정보형·저수조청소업체화자, 출장업종·useApt)
-  leakdetect: LEAKDETECT_TREATMENTS,  // ← 누수탐지 (정보형·누수탐지업체화자, 출장업종·useApt)
+  leakdetect: LEAKDETECT_TREATMENTS.filter((t) => !LEAKDETECT_HOLD_IDS.has(t.id)),  // ← 누수탐지 (HOLD 7 제외 · OPEN 1 ld_pipe)
   sewer: SEWER_TREATMENTS,  // ← 하수구막힘 (정보형·하수구막힘업체화자, 출장업종·APT미사용)
   plumbing: PLUMBING_TREATMENTS,  // ← 수도설비 (정보형·수도설비업체화자, 출장업종·APT미사용)
   boiler: BOILER_TREATMENTS,  // ← 보일러설치 (정보형·보일러설치업체화자, 출장업종·APT미사용)
@@ -1498,12 +1502,11 @@ const INDUSTRY_CONFIG = {
   },
   leakdetect: {
     label: "누수탐지",
-    greeting: "안녕하세요! 누수탐지 블로그 생성기입니다. 누수탐지·아파트누수·화장실누수·천장누수·수도배관누수·비용·보험처리·아래층누수를 누수탐지 업체 화자 정보형(원인·탐지절차·장비)으로 안내합니다.",
+    // [LEAK-DETECTION-REAUDIT STEP 7] OPEN 1(ld_pipe · 계량기 자가 확인 Q-A) 범위로 교체 — HOLD 메뉴 안내·예시 제거.
+    greeting: "안녕하세요! 누수탐지 블로그 생성기입니다. 누수가 의심될 때 업체를 부르기 전 수도계량기로 누수 의심 여부를 확인하는 방법을 수도 관련 기관 안내 기준 정보형으로 안내합니다.",
     examples: [
-      "노원구 공릉동 누수탐지 전 확인사항",
-      "노원구 하계동 아파트누수 원인 점검",
-      "노원구 중계동 화장실누수 확인방법",
-      "노원구 월계동 천장누수 원인 분석",
+      "노원구 수도배관누수 계량기 자가 확인",
+      "노원구 수도배관누수 업체 부르기 전 계량기 확인",
     ],
     badge: "leakdetect v1.0 (정보형·누수탐지업체화자·출장업종·useApt)",
   },

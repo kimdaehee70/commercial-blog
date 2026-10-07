@@ -18,12 +18,22 @@ import {
   buildUserPrompt,
   getImageAlts,
   FORBIDDEN,
+  PILOT_CONTENT,
 } from "../../lib/leakdetect-prompts";
 import { LEAKDETECT_FLOW } from "../../lib/leakdetect-playConfig";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock.js";
 import { buildIntentTitleOrNull } from "../../lib/titleEngine.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// [LEAK-DETECTION-REAUDIT STEP 6] 개발 HOLD 메뉴 — pages/index.js LEAKDETECT_HOLD_IDS 와 같은 값(동기화 지점).
+const LEAKDETECT_HOLD_IDS = new Set(["ld_leak", "ld_apt", "ld_bathroom", "ld_ceiling", "ld_cost", "ld_insurance", "ld_downstairs"]);
+
+// [LEAK-DETECTION-REAUDIT STEP 6] treatment.intents 정의 메뉴(ld_pipe)만 Pilot 경로. Intent 1종 → 서버가 결정.
+function pickPilotIntent(treatment) {
+  const list = Array.isArray(treatment && treatment.intents) ? treatment.intents : [];
+  return list[0] || null;
+}
 
 // ── 후처리: 공백·조사 정리 ─────────────────────
 function cleanText(text) {
@@ -201,6 +211,44 @@ export default async function handleLeakdetect(req, res) {
 
     if (!treatment) {
       return res.status(400).json({ error: `누수탐지 메뉴 매칭 실패: ${program?.name}` });
+    }
+
+    // [LEAK-DETECTION-REAUDIT STEP 6] 개발 HOLD 메뉴 — GPT·사용량 이전 차단(정의는 보존). id·메뉴명 매칭 공통.
+    if (LEAKDETECT_HOLD_IDS.has(treatment.id)) {
+      return res.status(403).json({ ok: false, error: `보류 중인 메뉴입니다: ${treatment.name}`, code: "MENU_ON_HOLD" });
+    }
+
+    // [LEAK-DETECTION-REAUDIT STEP 6] Pilot 경로 — 승인 고정문만 조립(GPT 호출 0회).
+    //   업체 인사(buildAgentIntro) · 7섹션 · 정보블록 · APT_DATA 단지명 · 기존 해시태그 빌더 미사용.
+    //   고정문에는 stripForbidden · softenReviewTone · removeDupParagraphs 미적용(승인 문구 보존).
+    //   지역 = 제목 1회 + 해시태그 1개. Intent 는 있는데 콘텐츠 계약이 없으면 legacy 로 빠지지 않고 실패.
+    const pilot = pickPilotIntent(treatment);
+    if (pilot) {
+      const pc = PILOT_CONTENT[pilot.factKey];
+      if (!pc) {
+        return res.status(500).json({ error: `누수탐지 Pilot 콘텐츠 미등록: ${pilot.factKey}` });
+      }
+      const parts = pc.paragraphs.map((p, i) =>
+        i === pc.photoAfter ? `${p}\n\n[이미지: ${pc.photoAlt}]` : p);
+      let pContent = applyPhotoBoxes(parts.join("\n\n"));
+      pContent += "\n\n" + pc.hashtags(region.replace(/\s+/g, "")).join(" ");
+      pContent = pContent.replace(/\n{3,}/g, "\n\n").trim();
+      pContent = insertLocationBeforeHashtags(pContent, _locStore);
+      const pTitle = pilot.title.replace(/\{region\}/g, region).replace(/\s{2,}/g, " ").trim();
+      console.log(`[QC][leakdetect] Pilot(${pilot.id}) 고정문 · GPT 0회 · 글자수 ${pContent.length}`);
+      return res.status(200).json({
+        title:        pTitle,
+        text:         pContent,
+        textMarkdown: pContent,
+        content:      pContent,
+        imageAlts:    [pc.photoAlt],
+        industry: "leakdetect",
+        treatmentId: treatment.id,
+        treatmentName: treatment.name,
+        intentId: pilot.id,
+        aptName: null,
+        seoScore: null,
+      });
     }
 
     const kw = treatment.name;
