@@ -253,6 +253,11 @@ function applyWarningTailGate(text) {
   return { out: changed ? paras.join("\n\n") : text, stats: changed ? stats : null };
 }
 
+// ── [NURSINGHOME-EMERGENCY-FAIL-CLOSED-01] 업종 단위 신규 생성 일시 중단 ──────────
+//   업종 로직이 아니라 안전 Gate. 인증·사용량·DB·GPT 진입 전 차단(엔진 FREEZE 무접촉).
+//   resolve(industry) 와 같은 변수로 비교 → 해당 핸들러 도달 경로 전부 차단. 해제 = Set 에서 제거.
+const GENERATION_SUSPENDED_INDUSTRIES = new Set(["nursinghome"]);
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -261,6 +266,13 @@ export default async function handler(req, res) {
 
   // ── 업종 결정 ────────────────────────────────────────
   const industry = req.body.industry || process.env.NEXT_PUBLIC_INDUSTRY || "clinic";
+
+  if (GENERATION_SUSPENDED_INDUSTRIES.has(industry)) {
+    return res.status(403).json({
+      error: "요양원 글 생성은 점검을 위해 일시 중단되었습니다.",
+      code: "INDUSTRY_GENERATION_SUSPENDED",
+    });
+  }
 
   // [STORE-01] 방문형 업종 → 위치 3필드·주차·방문정보 스트립(핸들러 무수정).
   stripVisitFieldsIfNoStore(req.body, industry);
