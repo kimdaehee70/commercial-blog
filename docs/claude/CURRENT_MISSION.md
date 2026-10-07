@@ -600,3 +600,32 @@ P-PAGE-SERVICE-LIMIT-REMOVE-01        CLOSE (ca9a80d · >8 SAVE E2E PENDING) —
 
 ## 다음
 - 다음 방 첫 축 후보: `PRODUCTION-REFLECT-INTERIOR-01` TRACE — 갈라짐 원인·보존 대상 확인 후 반영 방식 선장 결정. 자동 merge/rebase 금지.
+
+---
+
+# 생활서비스 재감사 Production 반영 (2026-10-07 · Release Set 분리 반영)
+
+> 이 절은 Production main 전용 최소 기록이다. 상세 축 기록(§23~§35)은 작업 브랜치 `feat/p-page-one-screen-01` 의 CURRENT_MISSION.md(기록 정본 `851130d`)에 있으며 여기로 복사하지 않는다.
+
+## 반영 내용
+- 생활서비스 ⬜ 재감사 7개 업종 전부 CLOSE · 최종 상태:
+  - 도배 — LOCK 4(부분·누수·곰팡이·거주중) / HOLD 5
+  - 조명 — OPEN 1(간접조명 `lt_cove`) / HOLD 5
+  - 시스템에어컨 — LOCK 3(교체·구축아파트·추가설치) / HOLD 5
+  - 욕실리모델링 — LOCK 1(수전 `bt_faucet`) / HOLD 12
+  - 이사업체 — LOCK 2(포장이사 비용·보관이사) / HOLD 6
+  - 누수탐지 — LOCK 1(계량기 자가 확인 `ld_pipe`) / HOLD 7
+  - 집수리 — 0 OPEN / HOLD 8
+- HOLD 메뉴 = UI 비노출 + 서버 403 `MENU_ON_HOLD`(GPT·사용량 이전 차단). 메뉴 정의는 보존.
+- 🟨 승격: 7개 업종 catalog `version: "v2-pilot"` → `"v2-new"`(조명 `verified: true` 동반) · 표시 전용. 🟨 = 재감사 완료·판정 확정(OPEN 메뉴 보유 의미 아님 — 집수리는 🟨 이지만 0 OPEN).
+
+## Release Set 분리 반영
+- 로컬 작업 브랜치 이력(`f4b6b3f..851130d` 37커밋)에서 생활서비스 코드 17커밋만 origin/main(`7959468`) 위에 순서대로 cherry-pick(-x)으로 분리 반영. 원 커밋: 도배 `ac82206` `b25a49f` `792297a` `264773d` `98ed253` · 조명 `f3a4346` `72a2269` · 시스템에어컨 `dd14f73` `c3e9b33` `c03887b` `2b78658` · 욕실 `9d6fdc0` `eda76f0` · 이사 `c0954a3` · 누수 `1725d84` · 집수리 `8f7be7e` · 🟨 `80bdb29`.
+- **제외:** sewer(`f4400f9`) · tile(`fdb57bb`) 전체(Production 반영 미승인 — sewer 비-Intent 9메뉴 출력 변경 미검증 · maxDuration 미확인 / tile 나머지 5메뉴 회귀 Gate 없음) · SOP·인수인계·누적 문서 커밋.
+- 보존: P페이지 revert 4건(`744ca94`·`ca9a80d`·`ef4ccb0`·`c962755` 제외 상태) · billing(`6ef6d3e`) = origin/main 그대로.
+
+## 반영 전 Gate (격리 worktree `D:\cb-reflect-wt`)
+- Tree: 대상 21파일 = `851130d` · origin/main 대비 변경 파일 정확히 21 · P페이지 4파일·billing = origin/main · sewer/tile·`lib/spine` = origin/main.
+- `next build` PASS.
+- 핸들러 Gate(openai stub 계수 · DB 0): HOLD 48/48 = 403 `MENU_ON_HOLD` · GPT 0 · OPEN/LOCK 12/12 = 200 · 출력이 `851130d` 와 동일(12/12).
+- 원 작업폴더 무관 dirty 156건 변화 0.
