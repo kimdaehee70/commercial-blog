@@ -360,6 +360,12 @@ export default async function handleNursinghome(req, res) {
       return res.status(403).json({ ok: false, error: `보류 중인 메뉴입니다: ${treatment.name}`, code: "MENU_ON_HOLD" });
     }
 
+    // [NURSINGHOME-REAUDIT STEP 5-B] 유효한 지역값이 없으면 생성 중단 — 「지역 요양원…」 제목 방지(요양원 전용).
+    const _regionIn = String(regionRaw || "").trim();
+    if (!_regionIn || _regionIn === "지역") {
+      return res.status(400).json({ error: "지역을 입력한 뒤 다시 생성해 주세요.", code: "REGION_REQUIRED" });
+    }
+
     // [NURSINGHOME-REAUDIT STEP 5] 4 CAT 고정문 경로 — GPT 0회 · cleanText/중복제거/이미지 슬롯 등 후처리 미적용.
     //   Intent 가 없거나 콘텐츠 계약이 없으면 legacy GPT 경로로 빠지지 않고 실패.
     const pilot = Array.isArray(treatment.intents) ? treatment.intents[0] : null;

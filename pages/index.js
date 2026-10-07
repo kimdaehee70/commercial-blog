@@ -1150,7 +1150,7 @@ const INDUSTRY_CONFIG = {
       "요양원 평가등급은 어디서 확인하나요?",
       "요양원 입소할 때 필요한 서류는?",
     ],
-    badge: "nursinghome v1.0 (정보형·기관화자·Purpose Spine)",
+    badge: "nursinghome (공식 FACT 정보형·4 CAT)",
   },
   daycare: {
     label: "데이케어센터",
