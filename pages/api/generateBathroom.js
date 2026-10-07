@@ -30,6 +30,10 @@ import { buildIntentTitle } from "../../lib/titleEngine.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// [BATHROOM-HOLD-ENFORCEMENT-01] 재감사 HOLD 메뉴 — pages/index.js BATHROOM_HOLD_IDS 와 같은 값(동기화 지점).
+//   생성 허용 = LOCK 메뉴(bt_faucet)만. 정의(BATHROOM_TREATMENTS)는 보존.
+const BATHROOM_HOLD_IDS = new Set(["bt_remodel", "bt_toilet_remodel", "bt_tile", "bt_bathtub", "bt_booth", "bt_toilet", "bt_basin", "bt_fan", "bt_silicone", "bt_drain", "bt_cabinet", "bt_ceiling"]);
+
 // ── 한글 받침 판별 조사 선택 (을/를) ───────────
 function josa(word, withBatchim, withoutBatchim) {
   if (!word) return withoutBatchim;
@@ -167,6 +171,11 @@ export default async function handleBathroom(req, res) {
 
     if (!treatment) {
       return res.status(400).json({ error: `욕실리모델링 메뉴 매칭 실패: ${program?.name}` });
+    }
+
+    // [BATHROOM-HOLD-ENFORCEMENT-01] HOLD 메뉴 — GPT·사용량 이전 차단.
+    if (BATHROOM_HOLD_IDS.has(treatment.id)) {
+      return res.status(403).json({ ok: false, error: `보류 중인 메뉴입니다: ${treatment.name}`, code: "MENU_ON_HOLD" });
     }
 
     const kw = treatment.name;

@@ -522,7 +522,10 @@ const BOILER_CATS_LOCAL = BOILER_CATS;  // ← 보일러설치 (12cat/12메뉴, 
 const HOMEFIX_CATS_LOCAL = HOMEFIX_CATS;  // ← 집수리 (8cat/8메뉴, homefix-data 소유)
 const ELECTRICREPAIR_CATS_LOCAL = ELECTRICREPAIR_CATS;  // ← 전기수리 (8cat/8메뉴, electricrepair-data 소유)
 const SINKREPAIR_CATS_LOCAL = SINKREPAIR_CATS;  // ← 싱크대수리 (8cat/8메뉴, sinkrepair-data 소유)
-const BATHROOM_CATS_LOCAL = BATHROOM_CATS;  // ← 욕실리모델링 (12cat/12메뉴, bathroom-data 소유)
+// [BATHROOM-HOLD-ENFORCEMENT-01] 재감사 HOLD 12메뉴 — LOCK = bt_faucet 만. 서버 generateBathroom.js 와 같은 값(동기화 지점).
+const BATHROOM_HOLD_IDS = new Set(["bt_remodel", "bt_toilet_remodel", "bt_tile", "bt_bathtub", "bt_booth", "bt_toilet", "bt_basin", "bt_fan", "bt_silicone", "bt_drain", "bt_cabinet", "bt_ceiling"]);
+const BATHROOM_HOLD_CATS = new Set(BATHROOM_TREATMENTS.filter((t) => BATHROOM_HOLD_IDS.has(t.id)).map((t) => t.cat));
+const BATHROOM_CATS_LOCAL = BATHROOM_CATS.filter((c) => !BATHROOM_HOLD_CATS.has(c));  // ← 욕실리모델링 (13cat 중 LOCK 1 노출, bathroom-data 소유)
 const SHAMAN_CATS_LOCAL = SHAMAN_CATS;  // ← 무속 상담 (7cat/41메뉴 — 분야6 + "전문분야 소개"1, shaman-data 소유)
 
 // ============================================================
@@ -706,7 +709,7 @@ const INDUSTRY_TREATMENTS = {
   homefix: HOMEFIX_TREATMENTS,  // ← 집수리 (정보형·집수리업체화자, 출장업종·APT미사용)
   electricrepair: ELECTRICREPAIR_TREATMENTS,  // ← 전기수리 (정보형·전기수리업체화자, 출장업종·APT미사용)
   sinkrepair: SINKREPAIR_TREATMENTS,  // ← 싱크대수리 (정보형·싱크대수리업체화자, 출장업종·APT미사용)
-  bathroom: BATHROOM_TREATMENTS,  // ← 욕실리모델링 (정보형·욕실리모델링업체화자, 출장업종·APT미사용)
+  bathroom: BATHROOM_TREATMENTS.filter((t) => !BATHROOM_HOLD_IDS.has(t.id)),  // ← 욕실리모델링 (HOLD 12 제외 · 단일·다중분야 색인 공통)
   shaman: SHAMAN_TREATMENTS,  // ← 무속 상담 (공감형·상담소화자, 상황35 + 분야소개6 = 41 / cat=분야 라벨)
 };
 
@@ -1570,11 +1573,10 @@ const INDUSTRY_CONFIG = {
   bathroom: {
     label: "욕실리모델링",
     greeting: "안녕하세요! 욕실리모델링 블로그 생성기입니다. 욕실리모델링·화장실리모델링·욕실타일·욕조교체·샤워부스·변기교체·세면대교체·욕실수전·욕실환풍기·욕실실리콘·욕실배수구·거울장 교체를 욕실리모델링 업체 화자 정보형(작업범위·점검항목·발생원인·관리방법)으로 안내합니다.",
+    // [BATHROOM-HOLD-ENFORCEMENT-01] 도움말 「입력 예시」 = LOCK 메뉴(bt_faucet) 범위만.
     examples: [
-      "노원구 공릉동 욕실리모델링 안내",
-      "노원구 하계동 욕실타일교체 점검방법",
-      "노원구 월계동 욕조교체 확인사항",
-      "노원구 공릉동 변기교체 점검방법",
+      "노원구 공릉동 세면대 수전 교체 전 설치 형태 확인",
+      "노원구 하계동 벽붙이 샤워수전 교체 전 규격 확인",
     ],
     badge: "bathroom v1.0 (정보형·욕실리모델링업체화자·출장업종·APT미사용)",
   },
