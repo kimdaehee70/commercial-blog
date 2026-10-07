@@ -527,7 +527,11 @@ const LEAKDETECT_CATS_LOCAL = LEAKDETECT_CATS.filter((c) => !LEAKDETECT_HOLD_CAT
 const SEWER_CATS_LOCAL = SEWER_CATS;  // ← 하수구막힘 (10cat/10메뉴, sewer-data 소유)
 const PLUMBING_CATS_LOCAL = PLUMBING_CATS;  // ← 수도설비 (8cat/8메뉴, plumbing-data 소유)
 const BOILER_CATS_LOCAL = BOILER_CATS;  // ← 보일러설치 (12cat/12메뉴, boiler-data 소유)
-const HOMEFIX_CATS_LOCAL = HOMEFIX_CATS;  // ← 집수리 (8cat/8메뉴, homefix-data 소유)
+// [HOME-REPAIR-REAUDIT FINAL HOLD] 집수리 8메뉴 전부 HOLD(0 OPEN) — 데이터 보존, 탭·메뉴만 제외(OWNER 포함).
+//   서버 403 MENU_ON_HOLD 는 pages/api/generateHomefix.js(같은 id 목록 — 동기화 지점).
+const HOMEFIX_HOLD_IDS = new Set(["hf_handle", "hf_door", "hf_closer", "hf_dryer", "hf_curtain", "hf_silicone", "hf_outlet", "hf_light"]);
+const HOMEFIX_HOLD_CATS = new Set(HOMEFIX_TREATMENTS.filter((t) => HOMEFIX_HOLD_IDS.has(t.id)).map((t) => t.cat));
+const HOMEFIX_CATS_LOCAL = HOMEFIX_CATS.filter((c) => !HOMEFIX_HOLD_CATS.has(c));  // ← 집수리 (8cat 전부 HOLD · 노출 0, homefix-data 소유)
 const ELECTRICREPAIR_CATS_LOCAL = ELECTRICREPAIR_CATS;  // ← 전기수리 (8cat/8메뉴, electricrepair-data 소유)
 const SINKREPAIR_CATS_LOCAL = SINKREPAIR_CATS;  // ← 싱크대수리 (8cat/8메뉴, sinkrepair-data 소유)
 // [BATHROOM-HOLD-ENFORCEMENT-01] 재감사 HOLD 12메뉴 — LOCK = bt_faucet 만. 서버 generateBathroom.js 와 같은 값(동기화 지점).
@@ -714,7 +718,7 @@ const INDUSTRY_TREATMENTS = {
   sewer: SEWER_TREATMENTS,  // ← 하수구막힘 (정보형·하수구막힘업체화자, 출장업종·APT미사용)
   plumbing: PLUMBING_TREATMENTS,  // ← 수도설비 (정보형·수도설비업체화자, 출장업종·APT미사용)
   boiler: BOILER_TREATMENTS,  // ← 보일러설치 (정보형·보일러설치업체화자, 출장업종·APT미사용)
-  homefix: HOMEFIX_TREATMENTS,  // ← 집수리 (정보형·집수리업체화자, 출장업종·APT미사용)
+  homefix: HOMEFIX_TREATMENTS.filter((t) => !HOMEFIX_HOLD_IDS.has(t.id)),  // ← 집수리 (HOLD 8 제외 · OPEN 0)
   electricrepair: ELECTRICREPAIR_TREATMENTS,  // ← 전기수리 (정보형·전기수리업체화자, 출장업종·APT미사용)
   sinkrepair: SINKREPAIR_TREATMENTS,  // ← 싱크대수리 (정보형·싱크대수리업체화자, 출장업종·APT미사용)
   bathroom: BATHROOM_TREATMENTS.filter((t) => !BATHROOM_HOLD_IDS.has(t.id)),  // ← 욕실리모델링 (HOLD 12 제외 · 단일·다중분야 색인 공통)
@@ -1545,12 +1549,10 @@ const INDUSTRY_CONFIG = {
   },
   homefix: {
     label: "집수리",
-    greeting: "안녕하세요! 집수리 블로그 생성기입니다. 문손잡이교체·현관문수리·도어클로저교체·빨래건조대설치·커튼레일설치·실리콘보수·콘센트교체·전등교체를 집수리 업체 화자 정보형(작업범위·점검항목·발생원인·관리방법)으로 안내합니다.",
+    // [HOME-REPAIR-REAUDIT FINAL HOLD] 8메뉴 전부 HOLD — HOLD 메뉴 안내·예시 제거(빈 examples 는 의료 예시 폴백이라 안내 1줄 유지).
+    greeting: "안녕하세요! 집수리 블로그 생성기입니다. 현재 집수리 메뉴는 모두 보류 중이라 글을 생성할 수 없습니다.",
     examples: [
-      "노원구 공릉동 문손잡이교체 안내",
-      "노원구 하계동 현관문수리 점검방법",
-      "노원구 월계동 빨래건조대설치 교체 전 확인사항",
-      "노원구 공릉동 실리콘보수 관리방법",
+      "집수리 메뉴는 현재 모두 보류 중입니다",
     ],
     badge: "homefix v1.0 (정보형·집수리업체화자·출장업종·APT미사용)",
   },

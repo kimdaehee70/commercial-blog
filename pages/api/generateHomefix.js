@@ -28,6 +28,9 @@ import { buildIntentTitleOrNull } from "../../lib/titleEngine.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// [HOME-REPAIR-REAUDIT FINAL HOLD] 8메뉴 전부 개발 HOLD(0 OPEN) — pages/index.js HOMEFIX_HOLD_IDS 와 같은 값(동기화 지점).
+const HOMEFIX_HOLD_IDS = new Set(["hf_handle", "hf_door", "hf_closer", "hf_dryer", "hf_curtain", "hf_silicone", "hf_outlet", "hf_light"]);
+
 // ── 한글 받침 판별 조사 선택 (을/를) ───────────
 //   boiler buildAgentIntro 고정 "를" 하드코딩 버그 미복제. 받침 유무로 분기.
 function josa(word, withBatchim, withoutBatchim) {
@@ -169,6 +172,11 @@ export default async function handleHomefix(req, res) {
 
     if (!treatment) {
       return res.status(400).json({ error: `집수리 메뉴 매칭 실패: ${program?.name}` });
+    }
+
+    // [HOME-REPAIR-REAUDIT FINAL HOLD] 개발 HOLD 메뉴 — GPT·사용량 이전 차단(정의는 보존). id·메뉴명 매칭 공통.
+    if (HOMEFIX_HOLD_IDS.has(treatment.id)) {
+      return res.status(403).json({ ok: false, error: `보류 중인 메뉴입니다: ${treatment.name}`, code: "MENU_ON_HOLD" });
     }
 
     const kw = treatment.name;
