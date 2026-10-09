@@ -36,6 +36,7 @@ import { readPatternDB } from "../../lib/kindergarten-patternDB";
 import { insertLocationBeforeHashtags } from "../../lib/locationBlock";
 // [이식] 데이터 — fallback/게이트용 (handler는 req.body.program 우선)
 import { KINDERGARTEN_TREATMENTS } from "../../lib/kindergarten-data";
+import { isOwner } from "../../lib/constants"; // [KINDERGARTEN-OWNER-ONLY-GATE-01]
 // [이식] savePost/extractPattern 직접 import 제거 → autoSave 래퍼 사용 (결정2)
 
 
@@ -2194,6 +2195,14 @@ function removeForeignConcept(text, subKw) {
 export default async function handleKindergarten(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
+  // [KINDERGARTEN-OWNER-ONLY-GATE-01] 유치원·어린이집 엔진은 관리자(OWNER) 검증 전용.
+  //   화면은 IndustrySelector TREE_OWNER_ONLY 로 숨기지만, /api/generate 는 body.industry 를 그대로 받아
+  //   일반 회원의 API 직접 요청이 이 핸들러에 도달할 수 있었다 → 모든 모드(사진메타·묶음·일반·Pilot) 진입 전 차단.
+  //   req.storeRuntime 은 라우터가 주입(인증 실패는 라우터에서 이미 401). GPT·사용량 이전.
+  if (!isOwner(req.storeRuntime?.account?.auth_user_id)) {
+    return res.status(403).json({ error: "관리자 전용 기능입니다.", code: "OWNER_ONLY_INDUSTRY" });
+  }
+
   const {
     bundleMode,          // ← 묶음 생성 모드
     target, program, programs, blogType,
@@ -2504,6 +2513,8 @@ export default async function handleKindergarten(req, res) {
   const mainKw      = getMainKeyword(target, mainProgram);
   const region      = sanitizeRegion(userRegion?.trim() || "");
   const memo        = userMemo?.trim() || "";
+
+
 
   try {
     console.log("[v36] 섹션 분할 생성 시작");
