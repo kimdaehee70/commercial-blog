@@ -737,7 +737,7 @@ function postProcess(text, sectionKey) {
 
 const DETAIL_MAP = {
   "과학":       "비커 10세트, 보호안경, 실험테이블 2개, 동시 12명 운영 구조",
-  "블랙라이트": "암막커튼 완전 차단, 블랙라이트 4대, 형광블락 세트, VR 12세트",
+  "블랙라이트": "7m 두꺼운 암막, 형광블럭 세트, VR 기본 12대(최대 24대), 블랙라이트·더비·레이저 조명", // [PILOT-02] 근거 없는 「블랙라이트 4대」 교체 — 사장님 확인값
   "에어바운스": "대형 8m 구조, 동시 20명 이용, 안전요원 4명 배치",
   "캠핑":       "텐트 4동, 모닥불존, 화로 2개, 별자리 프로젝터 구성",
   "시장놀이":   "8m 배경막, 4개 상점 구성, 화폐 400장, 장바구니 제공",
@@ -762,6 +762,216 @@ function injectDetail(text, subKw) {
   const insertIdx = Math.min(3, lines.length);
   lines.splice(insertIdx, 0, `\n운영 규모는 ${detail}으로 구성된다.\n`);
   return lines.join("\n");
+}
+
+// ============================================================
+// [KINDERGARTEN-BLACKLIGHT-PILOT-02 · B] 블랙라이트(별나라 우주여행) 전용 Pilot
+//   대상: program.id === "blacklight" 단일 생성만. 다른 16개 프로그램·묶음·보완 경로는 기존 그대로.
+//   FACT 출처: 사장님 확인값 > 홈페이지·영상 > 활동지 절차. data(KINDERGARTEN_TREATMENTS)는 보존·미변경.
+//   GPT 1회 호출로 글 전체를 만든다(섹션별 FACT 분리 + 앞 섹션을 이어받는 흐름).
+//   대사 강제 주입·DETAIL_MAP 삽입·단어 부분삭제·위치블록·autoSave 는 거치지 않는다.
+// ============================================================
+const BLACKLIGHT_PILOT = {
+  titles: [
+    "유치원 블랙라이트 체험, 교실에서 즐기는 별나라 우주여행 3가지 프로그램",
+    "어린이집 참여수업 블랙라이트 체험, 별자리 열쇠고리와 VR까지 한 번에",
+    "유치원 블랙라이트 체험 준비, 원에서 할 일과 반장이 준비하는 것",
+    "어린이집 블랙라이트 체험｜유치원까지 찾아가는 별나라 우주여행 3가지 활동", // [PILOT-06] 유치원·어린이집 동시 공략
+    "어린이집 블랙라이트 체험, 교실을 우주로 바꾸는 방법｜유치원·어린이집 방문 체험",
+  ],
+  regionTitle: (r) => `${r} 유치원 블랙라이트 체험｜교실이 우주로 바뀌는 별나라 우주여행`,
+  sections: [
+    { key: "intro", role: "행사를 준비하는 원장님·선생님에게 묻는 질문으로 시작 → 이 프로그램이 무엇이고 어떤 행사에 맞는지 소개",
+      facts: [
+        "도입은 고민을 모든 선생님의 사실처럼 단정하지 않고 질문으로 연다. 방향 예: '매번 비슷한 실내 행사 대신 교실 분위기부터 달라지는 체험을 찾고 계신가요?' (문장을 그대로 베끼지 말고 자연스럽게 새로 쓴다)",
+        "핵심 메시지: 평소 쓰던 교실을 블랙라이트 놀이 공간으로 바꾸고, 만들기와 VR 체험까지 연결한 반장 자체 기획 프로그램이다",
+        "반장이 유아 행사 현장 경험을 바탕으로 직접 기획·구성한 원방문 체험 프로그램 '별나라 우주여행'이다 (소품은 구매해 조합했다. '직접 제작'이라고 쓰지 않는다)",
+        "블랙라이트 체험, 나만의 별자리 열쇠고리 만들기, VR 가상체험 3가지 활동으로 구성된다",
+        "참여수업(부모참여수업)이나 스페셜데이 프로그램으로 활용할 수 있고, 부모와 아이가 함께 놀이할 수 있다",
+        "유치원과 어린이집 모두 진행할 수 있다. 글 전체에서 '유치원·어린이집' 두 기관을 함께 독자로 부른다 (PILOT-06)",
+      ] },
+    { key: "space", role: "평범한 교실이 블랙라이트 공간으로 바뀌는 과정",
+      facts: [
+        "교실 한 곳, 또는 유희실·강당처럼 넓은 공간에 설치한다",
+        "7m 길이의 두꺼운 암막 여러 장으로 빛을 완전히 차단한다",
+        "블랙라이트 조명과 더비·레이저 조명을 쓴다. 불을 끄면 블랙라이트 효과가 나타난다",
+        "교실 전체 암막 구성과 조명 설치는 반장이 준비한다",
+        "[사진으로 보이는 장면] 교구장이 있던 평범한 교실 벽을 검은 암막이 둘러싸고, 불을 끄면 천장과 벽에 별빛 조명이 퍼진다",
+      ],
+      photo: { alt: "유치원 블랙라이트 체험 교실 설치 과정", caption: "일반 교실을 암막으로 감싸 블랙라이트 공간으로 바꾸는 과정" } },
+    { key: "play", role: "블랙라이트 방에서 놀이가 이어지는 순서 (아래 ①→②→③→④ 순서를 바꾸거나 합치지 않는다)",
+      facts: [
+        "별과 물고기 소품은 찍찍이 재질이라 벽면에 붙일 수 있다",
+        "① 별놀이: 먼저 별만 바닥에 뿌리고 '자신의 별자리를 만들어 보세요' 하고 시작해, 벽면에 별자리를 만든다 (이때 물고기는 아직 꺼내지 않는다)",
+        "② 물고기놀이: 별놀이가 끝나면 그다음에 물고기를 바닥에 뿌리고, 벽에 붙이면서 바다 생물 역할놀이를 한다",
+        "③ 형광블럭놀이: 벽면놀이가 끝나면 바닥에 형광블럭을 뿌린다. 형광블럭은 카프라 소재라 다양한 블럭놀이를 할 수 있다",
+        "반 이름을 만들어 단체사진을 찍을 수 있다 (무엇으로 만드는지는 쓰지 않는다)",
+        "④ 정리: 놀이가 끝나면 놀이한 역순으로 정리해 처음 상태로 돌려놓고 다음 팀이 입장한다",
+        "[사진으로 보이는 장면] 어두운 벽 가득 형광 별과 물고기·해파리·해마·불가사리가 빛나고, 바닥에는 형광블럭이 흩어져 알록달록한 무늬를 만든다. 아이들이 형광블럭을 바닥에 이어 모양을 만들기도 한다",
+        "블랙라이트 방은 한 반 또는 두 반이 함께 놀이한다",
+        "디스코 타임(원에서 음악 준비)과 형광그림 그리기(원에서 형광펜·전지 준비)는 원 선택 활동이며, 참여수업 때는 시간상 하지 않아도 된다",
+      ],
+      photo: { alt: "유치원 블랙라이트 체험 벽면 별자리·물고기 놀이와 형광블럭 놀이", caption: "벽면 별자리·물고기 놀이에 이어 바닥 형광블럭 놀이로 이어지는 블랙라이트 방" } },
+    { key: "keyring", role: "나만의 별자리 열쇠고리 만들기 과정",
+      facts: [
+        "마법필름을 한 명씩 나눠 준다",
+        "그림판(별자리 도안, 예: 물고기자리)에 대고 네임펜이나 유성매직으로 선을 따라 그린다",
+        "뒷면을 색연필로 색칠한다",
+        "전기오븐에 약 10초 구우면 필름이 휘었다가 작아진다",
+        "책으로 살짝 눌러 평평하게 편 뒤 군번줄을 끼워 완성하고, 아이가 가져간다",
+        "엄마·아빠도 함께 열쇠고리를 만들 수 있다",
+        "[사진으로 보이는 장면] 투명 그림판 위에 별자리 도안이 놓이고, 오븐 안 은박지 위에서 색칠한 필름이 구워지며, 완성된 열쇠고리를 목에 건다",
+      ],
+      photo: { alt: "유치원 블랙라이트 체험 별자리 열쇠고리 만들기", caption: "별자리 도안을 따라 그리고 색칠해 오븐에 구워 완성하는 열쇠고리" } },
+    { key: "vr", role: "VR 가상체험 교실",
+      facts: [
+        "반장이 VR 기기와 휴대폰, 충전기를 함께 준비해 원에서 따로 준비할 것이 없다",
+        "VR 기기는 기본 12대이고 최대 24대까지 지원한다",
+        "휴대폰에서 앱을 실행한 뒤 VR 기기에 장착해 체험한다. 개인 휴대폰을 써도 된다",
+        "우주, 바다속, 공룡탐험, 롤러코스터 같은 가상체험 콘텐츠가 있다 (콘텐츠 개수는 쓰지 않는다)",
+        "[사진으로 보이는 장면] VR 화면 속에 토성과 별자리, 하늘로 솟는 로켓, 이글거리는 태양 같은 우주 장면이 펼쳐진다",
+      ],
+      photo: { alt: "유치원 블랙라이트 체험 VR 가상체험", caption: "VR 기기를 쓰고 우주·바다속을 가상으로 체험하는 교실" } },
+    { key: "operation", role: "세 체험을 잇는 운영 방식 (행사 담당자의 선택 정보)",
+      facts: [
+        "보통은 강당이나 큰 교실 한 곳에 전체를 설치한다",
+        "참여수업 때는 교실 세 곳에 체험을 하나씩 설치하고, 반마다 다음 교실로 옮겨 가며 체험한다. 한 체험에 드는 시간은 교실 이동까지 포함해 보통 30분이다 (사장님 확인). 예: 세 반이 세 교실에서 동시에 시작해 30분마다 다음 교실로 옮기면 세 반이 세 체험을 모두 거친다",
+        "교실 공간이 부족하면 축소해서 설치할 수 있다",
+        "세 체험의 방식이 서로 달라 순환 운영이 가능하고, 대기를 줄일 수 있다",
+      ] },
+    { key: "prepare", role: "원에서 준비할 것과 반장이 준비하는 것 (짧은 목록 형태 가능)",
+      facts: [
+        "원 준비: 열쇠고리 선 그리기용 네임펜 또는 유성매직. 선택 활동을 할 경우 디스코 타임 음악, 형광그림용 형광펜과 전지",
+        "반장 준비: 교실 암막과 블랙라이트·더비·레이저 조명, 별자리·물고기 소품과 형광블럭",
+        "반장 준비: 마법필름(인원수만큼), 색연필, 전기오븐, 그림판과 고리",
+        "반장 준비: VR 기기, 휴대폰, 충전기",
+      ] },
+    { key: "closing", role: "마무리와 문의 안내 1회",
+      facts: [
+        "원의 공간과 행사 형태(일반 행사, 참여수업)에 맞춰 설치 방식을 정할 수 있다",
+        "서울·인천·경기의 유치원·어린이집으로 찾아간다 (출장 가능 여부를 제한하는 문장은 쓰지 않는다 — 사장님 확인 2026-10-10)",
+        "상담 때 원의 참여 인원, 사용할 수 있는 교실 수와 강당 여부, 행사 날짜를 알려 달라고 안내한다",
+        "행사 일정과 공간 상담은 반장에 문의하면 된다 (전화번호·가격·할인은 본문에 쓰지 않는다 — 마지막에 고정 문의 안내가 따로 붙는다)",
+      ] },
+  ],
+  cta: ["📞 예약·상담 문의: 010-9020-4545", "출장 지역: 서울·인천·경기", "홈페이지: banjang.co.kr"], // [PILOT-06] 고정 CTA
+  hashtags: ["#유치원블랙라이트체험", "#어린이집블랙라이트체험", "#블랙라이트체험", "#별나라우주여행", "#유치원참여수업", "#유치원행사", "#어린이집행사", "#원방문체험", "#별자리열쇠고리", "#VR가상체험", "#반장"],
+};
+
+function buildBlacklightPilotPrompt(title) {
+  const secText = BLACKLIGHT_PILOT.sections.map((s, i) =>
+    `${i + 1}. key="${s.key}" — 역할: ${s.role}\n` + s.facts.map(f => `   - ${f}`).join("\n")
+  ).join("\n\n");
+  const system = [
+    "너는 유치원·어린이집 원방문 체험 업체 '반장'의 네이버 블로그 글을 쓰는 작가다.",
+    "화자는 원에 찾아가는 업체 반장이다. 글을 읽는 원장님·선생님의 원은 '원장님의 원', '선생님 원'처럼 부르고, 반장을 원(유치원)처럼 쓰지 않는다.",
+    "독자는 행사를 준비하는 원장님과 선생님이다. 이 프로그램을 자기 원에서 할지 판단할 수 있게 쓴다.",
+    "말투는 업체가 소개하는 따뜻하고 자신감 있는 존댓말(~합니다, ~해요)이다. 보고서체(~했다, ~이다)는 쓰지 않는다.",
+    "사실은 아래 섹션별 재료 안에서만 쓴다. 재료에 없는 숫자·장비·시간·가격·수상·인원 기록을 만들지 않는다.",
+    "재료에 ①②③④ 순서가 있으면 그 순서대로 설명한다. 순서를 바꾸거나 두 단계를 한 번에 한 것처럼 합치지 않는다.",
+    "'[사진으로 보이는 장면]' 재료는 실제 사진에 담긴 모습이다. 이 장면을 적극적으로 살려 눈앞에 보이듯 묘사한다. 단 '사진에서는', '사진으로 보시면', '사진 속'처럼 사진을 가리키는 말은 쓰지 않고 장면 자체를 바로 묘사한다.",
+    "'우리'는 반장을 가리킬 때만 쓴다. 원장님의 원이나 교실을 '우리 교실', '우리가 쓰던 교실'처럼 쓰지 않는다.",
+    "아이의 이름을 쓰지 않는다. 특정 아이가 한 말이나 행동을 실제로 있었던 일처럼 쓰지 않는다.",
+    "아이들의 반응은 '~하는 경우가 많습니다', '~하게 됩니다'처럼 일반적인 모습으로 묘사할 수 있다.",
+    "'상상력을 자극하는 체험', '특별한 하루', '눈길을 끄는 형광빛' 같은 자연스러운 감성·홍보 표현은 써도 된다. 다만 '유대감이 강화된다', '학습 효과가 있다'처럼 구체적인 효과·성과를 보장하는 문장은 '~하는 시간이 됩니다'처럼 경험으로 표현한다.",
+    "반장이 직접 기획·구성한 프로그램이라는 점이 글 전체에서 자연스럽게 드러나게 한다.",
+    "각 섹션은 앞 섹션 내용을 이어받아 자연스럽게 연결한다. 한 섹션에서 말한 내용을 다른 섹션에서 다시 설명하지 않는다.",
+    "다른 업종(병원 시술, 미용, 음식점 등)이나 다른 프로그램 이야기는 쓰지 않는다.",
+    "출력은 JSON 하나: {\"sections\":[{\"key\":\"...\",\"heading\":\"...\",\"body\":\"...\"}]}. 섹션 순서와 key 는 그대로 지킨다.",
+    "heading 은 블로그 소제목으로 짧고 자연스럽게 쓴다(번호·'섹션' 같은 말 금지). body 는 문단 사이를 빈 줄로 나눈다.",
+    "글 전체 본문은 공백 포함 약 2,000~2,600자를 목표로 하되, 같은 뜻을 반복해서 늘리지 않는다.",
+  ].join("\n");
+  const user = `제목: ${title}\n\n[섹션별 재료]\n${secText}`;
+  return { system, user };
+}
+
+// 자동검사 — 단어 자체를 금지하지 않고, 실제 노출 여부를 문장 단위로 수집해 사람이 판정한다.
+function auditBlacklightPilot(text, playBody = "") {
+  const sentences = text.split(/(?<=[.!?。])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+  const pick = (re) => sentences.filter(s => re.test(s));
+  // 이름 의심: 「두 글자+이가/이는…」 중 「놀이·아이·사이」처럼 일반 명사로 끝나는 경우는 제외
+  const NAME_RE = /(^|[\s"“])([가-힣]{2})(이는|이가|이도|이의|이랑|이와)\s/;
+  const NOUN_END = /(놀이|아이|사이|차이|높이|길이|넓이)$/;
+  // 순서(참고용): 놀이 섹션 본문에서 별 → 물고기 → 형광블럭이 처음 나오는 위치. FAIL 판정은 사람이 한다.
+  const pos = (re) => { const m = playBody.search(re); return m < 0 ? null : m; };
+  const order = { star: pos(/별/), fish: pos(/물고기/), block: pos(/형광\s?블[럭록]/) };
+  order.ascending = order.star != null && order.fish != null && order.block != null && order.star < order.fish && order.fish < order.block;
+  const COMMON_NAMES = /(민준|서준|도윤|예준|시우|하준|지호|지훈|지우|서연|하은|수진|민수|현수|서윤|지아|하윤|윤서|채원|유나)/;
+  const numbers = (text.match(/\d+(\.\d+)?\s*(m|미터|대|세트|개|반|교실|분|초|가지|명|장|종|시간|원)/g) || []);
+  const ALLOWED_NUM = /^(7\s*m|7\s*미터|12\s*대|24\s*대|3\s*가지|3\s*개|3\s*교실|30\s*분|10\s*초|1\s*반|2\s*반)$/;
+  const big = (s) => new Set(s.replace(/\s/g, "").match(/.{2}/g) || []);
+  const sim = (a, b) => { const A = big(a), B = big(b); let n = 0; A.forEach(x => B.has(x) && n++); return n / Math.max(1, Math.min(A.size, B.size)); };
+  const longS = sentences.filter(s => s.length >= 25);
+  const repeats = [];
+  for (let i = 0; i < longS.length; i++) for (let j = i + 1; j < longS.length; j++) if (sim(longS[i], longS[j]) >= 0.7) repeats.push([longS[i], longS[j]]);
+  return {
+    foreignIndustry: pick(/(성형|피부과|시술|리프팅|레이저토닝|임플란트|한의원|쌍꺼풀)/),
+    quotes: text.match(/["“”][^"“”\n]{1,40}["“”]/g) || [],
+    names: sentences.filter(s => { const m = s.match(NAME_RE); return m && !NOUN_END.test(m[2] + "이"); }).concat(pick(COMMON_NAMES)),
+    speakerAsKindergarten: pick(/(우리|저희)\s*(원|유치원|어린이집)(에서|에|의|은|는|이|을|으로)?(\s|$)/),
+    playOrderReference: order,
+    leaks: pick(/(key=|섹션|재료|JSON|heading|body|프롬프트|🚨|지시문|사진에서|사진으로 보|사진 속)/), // [PILOT-06] 사진 메타 서술 감지
+    truncation: pick(/(\s다\.|[가-힣](며|고|서)\s+다[.\s]|^적이다)/),
+    numbersOutsideFact: numbers.filter(n => !ALLOWED_NUM.test(n.replace(/\s+/g, " ").trim())),
+    repeats,
+    addressBlock: /찾아오시는 길/.test(text),
+    charCount: text.length,
+  };
+}
+
+async function generateBlacklightPilot({ region }) {
+  const r = (region || "").trim();
+  const day = Math.floor(Date.now() / 86400000);
+  // [PILOT-06] 하루 고정 제목 → 생성마다 무작위(같은 날 반복 생성 시 같은 제목 반복 방지). day 는 미사용.
+  void day;
+  const title = r ? BLACKLIGHT_PILOT.regionTitle(r) : BLACKLIGHT_PILOT.titles[Math.floor(Math.random() * BLACKLIGHT_PILOT.titles.length)];
+  const { system, user } = buildBlacklightPilotPrompt(title);
+
+  let parsed = null, lastErr = null;
+  for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: "gpt-4o",
+        temperature: 0.7,
+        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      });
+      const j = JSON.parse(resp.choices[0].message.content || "{}");
+      const keys = BLACKLIGHT_PILOT.sections.map(s => s.key);
+      const secs = Array.isArray(j.sections) ? j.sections : [];
+      if (keys.every(k => secs.some(s => s.key === k && String(s.body || "").trim()))) parsed = secs;
+      else lastErr = new Error("섹션 누락");
+    } catch (e) { lastErr = e; }
+  }
+  if (!parsed) throw lastErr || new Error("블랙라이트 Pilot 생성 실패");
+
+  const parts = [];
+  for (const def of BLACKLIGHT_PILOT.sections) {
+    const s = parsed.find(x => x.key === def.key);
+    parts.push(`${String(s.heading || "").trim()}\n\n${String(s.body).trim()}`);
+    if (def.photo) parts.push(`[이미지: ${def.photo.alt} | ${def.photo.caption}]`);
+  }
+  parts.push(BLACKLIGHT_PILOT.cta.join("\n")); // [PILOT-06] 고정 CTA
+  const tags = (r ? [`#${r.replace(/\s/g, "")}유치원행사`] : []).concat(BLACKLIGHT_PILOT.hashtags).slice(0, 12);
+  const body = parts.join("\n\n");
+  const text = `# ${title}\n\n${body}\n\n${tags.join(" ")}`.replace(/\n{3,}/g, "\n\n").trim(); // 기존 경로와 같은 「# 제목」 첫 줄 형식
+
+  const images = BLACKLIGHT_PILOT.sections.filter(d => d.photo).map(d => ({ alt: d.photo.alt, caption: d.photo.caption }));
+  const charCount = calcCharCount(text);
+  return {
+    success: true,
+    title,
+    text,
+    textMarkdown: text,
+    hashtags: tags,
+    images,
+    imageMeta: images,
+    charCount,
+    mode: "commercial",
+    pilot: "KINDERGARTEN-BLACKLIGHT-PILOT-06",
+    pilotQC: auditBlacklightPilot(body, String((parsed.find(x => x.key === "play") || {}).body || "")),
+    validation: { passed: charCount >= 1500, charCount },
+  };
 }
 
 function addPhotoPoint(text) {
@@ -2514,6 +2724,15 @@ export default async function handleKindergarten(req, res) {
   const region      = sanitizeRegion(userRegion?.trim() || "");
   const memo        = userMemo?.trim() || "";
 
+  // [KINDERGARTEN-BLACKLIGHT-PILOT-02] 블랙라이트 단일 생성만 Pilot 경로. 그 외 프로그램은 아래 기존 경로 그대로.
+  if (mainProgram.id === "blacklight") {
+    try {
+      return res.status(200).json(await generateBlacklightPilot({ region }));
+    } catch (e) {
+      console.error("[kindergarten] 블랙라이트 Pilot 생성 실패:", e?.message);
+      return res.status(500).json({ error: "블랙라이트 원고 생성 중 오류가 발생했습니다." });
+    }
+  }
 
 
   try {
