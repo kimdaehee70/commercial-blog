@@ -747,7 +747,7 @@ const DETAIL_MAP = {
   "레트로":     "딱지, 구슬, 고무줄, 팽이 4종 구성",
   "반죽":       "반죽 20kg, 제면기, 쿠키오븐, 통밀 분쇄기",
   "전통놀이":   "윷놀이, 투호, 제기차기, 팽이 4개 코너 독립 운영",
-  "병영":       "군복 30벌, 장애물코스 5종, 모형총 20정, 단체훈련장",
+  "병영":       "군복 약 65벌·교사 조교복 5벌, 입소·제식훈련·사격교실·유격코스 3개 코스와 유격 장애물 6종", // [MILITARY-PILOT-01] 근거 없는 「군복 30벌·장애물 5종·모형총 20정·단체훈련장」 교체 — 사장님 확인값·홈페이지
   "겨울":       "인공눈 10kg, 눈사람 키트, 스노우볼 20개, 완성품 포장 서비스",
   "여름캠프":   "물총 30정, 워터슬라이드 2대, 물풍선 200개, 안전요원 배치",
 };
@@ -970,6 +970,233 @@ async function generateBlacklightPilot({ region }) {
     mode: "commercial",
     pilot: "KINDERGARTEN-BLACKLIGHT-PILOT-06",
     pilotQC: auditBlacklightPilot(body, String((parsed.find(x => x.key === "play") || {}).body || "")),
+    validation: { passed: charCount >= 1500, charCount },
+  };
+}
+
+// ============================================================
+// [KINDERGARTEN-MILITARY-ENGINE-PILOT-01] 병영체험 전용 Pilot
+//   대상: program.id === "military" 단일 생성만. 블랙라이트 Pilot·다른 프로그램·묶음·보완 경로는 기존 그대로.
+//   FACT 출처: 사장님 확인값(2026-10-10) > 홈페이지(pid=374) > 활동지-병영체험.pptx. data·playConfig 는 보존·미변경.
+//   다양성: 생성마다 관점(angle) 1개를 골라 제목·도입·섹션 순서·강조점을 바꾼다. FACT 재료는 고정.
+//   전화번호·출장지역은 GPT 가 쓰지 않고 마지막에 고정 문구로 붙인다.
+// ============================================================
+const MILITARY_PILOT = {
+  angles: [
+    { id: "program", focus: "반장 병영체험의 3코스 구성과 유격 6종을 원장님이 한눈에 비교할 수 있게 소개하는 데 힘을 준다",
+      titles: ["어린이집 병영체험｜유치원까지 찾아가는 군복·유격·사격 3코스와 부모참여수업",
+               "어린이집 병영체험 프로그램 구성｜유치원·어린이집 입소식부터 사격·유격까지"],
+      order: ["intro", "courses", "ceremony", "shooting", "guerrilla", "uniform", "special", "parent", "closing"] },
+    { id: "parent", focus: "아빠·엄마 참여수업으로 병영체험을 열 때 정식 입소식과 원의 준비가 어떻게 이어지는지에 힘을 준다",
+      titles: ["어린이집 병영체험 부모참여수업｜유치원·어린이집 정식 입소식부터 유격코스까지",
+               "어린이집 병영체험, 아빠참여수업으로 진행하는 방법｜유치원까지 방문 운영"],
+      order: ["intro", "courses", "ceremony", "parent", "shooting", "guerrilla", "uniform", "special", "closing"] },
+    { id: "promo", focus: "군복 등원과 동네 행군처럼 원 밖까지 이어지는 반장 병영체험만의 운영 방식에 힘을 준다",
+      titles: ["어린이집 병영체험｜군복 입고 등원하는 날, 유치원·어린이집 행사 운영 방법",
+               "어린이집 병영체험 군복 등원부터 3코스까지｜유치원·어린이집 방문 체험"],
+      order: ["intro", "courses", "special", "ceremony", "shooting", "guerrilla", "uniform", "parent", "closing"] },
+    { id: "space", focus: "원의 강당·교실 여건에 맞춰 3코스를 어떻게 설치하고 반별로 돌리는지에 힘을 준다",
+      titles: ["어린이집 병영체험 준비｜강당 한 곳 또는 교실별로, 유치원·어린이집 3코스 운영",
+               "어린이집 병영체험, 우리 원 공간에 맞춘 설치 방법｜유치원까지 찾아가는 3코스"],
+      order: ["intro", "courses", "ceremony", "shooting", "guerrilla", "uniform", "special", "parent", "closing"] },
+  ],
+  sections: {
+    intro: { len: "2문단 · 4~6문장", role: "행사를 고민하는 유치원·어린이집 원장님·선생님에게 질문으로 시작 → 반장 병영체험이 무엇인지 소개",
+      facts: [
+        "도입은 고민을 모든 원의 사실처럼 단정하지 않고 질문으로 연다 (예시 문장을 그대로 베끼지 말고 새로 쓴다)",
+        "반장-노리야놀자는 유치원·어린이집으로 찾아가는 원방문 체험 프로그램을 직접 기획하고 운영하는 업체다 (경력 연수·설립연도는 쓰지 않는다)",
+        "병영체험은 아이들이 군복과 베레모를 입고 입소·제식훈련, 사격교실, 유격코스 3코스를 체험하는 반장 자체 기획 프로그램이다",
+        "유치원과 어린이집 모두 진행할 수 있다. 글 전체에서 '유치원·어린이집' 두 기관을 함께 독자로 부른다",
+        "부모참여수업이나 호국보훈의 달·국군의 날 같은 원 행사로 활용할 수 있다",
+      ],
+      photo: { alt: "어린이집 병영체험 군복 입은 아이들 단체사진", caption: "군복과 베레모를 입은 아이들 단체사진 (대표사진)" } },
+    courses: { len: "3코스 짧은 목록 + 2문단 · 4~6문장", role: "기본 3코스와 원 공간에 맞춘 설치 방식",
+      facts: [
+        "기본 3코스: ① 입소·제식훈련(군복 지급, 입소식, 경례·줄 맞춰 걷기) ② 사격교실(소총·박격포·수류탄) ③ 유격코스(징검다리·터널·목봉/외나무다리·보트이동·포복·균형잡기)",
+        "원 공간에 맞춰 배치한다: 큰 강당이 있으면 한곳에 모두 설치하고, 강당이 없으면 교실별로 나누어 설치한다",
+        "교실 공간이 부족하면 코스를 축소해 설치할 수 있다",
+        "행사 전날 오후에 설치를 마치고, 당일에는 반별로 코스를 돌며 놀이한다",
+        "놀이에 쓴 용품 정리는 반장이 한다",
+      ] },
+    ceremony: { len: "2~3문단 · 6~8문장", role: "① 입소·제식훈련 코스",
+      facts: [
+        "아이들은 군복과 베레모를 받아 입고 입소식에 참여한다",
+        "경례 연습, 줄 맞추어 걷기 같은 제식훈련을 한다",
+        "놀이 시작과 중간에 호루라기 신호에 맞춘 PT체조를 넣어 집중을 다시 모은다. 활동지의 진행 멘트: '잘 할 수 있겠습니까?', '목소리가 작습니다', '안 하는 사람이 있습니다' (진행자 멘트로만 쓰고, 특정 아이의 대답이나 반응으로 꾸미지 않는다)",
+        "PT체조와 군가를 행사 전에 교실에서 미리 연습해 두면 당일에는 호루라기만으로 진행이 수월하다",
+        "선생님용 조교복 5벌을 함께 제공한다. 조교 역할을 맡을 선생님을 미리 정해 두면 진행이 수월하다",
+      ],
+      photo: { alt: "어린이집 병영체험 입소식 제식훈련", caption: "입소식과 경례·제식훈련 장면" } },
+    shooting: { len: "2문단 · 5~7문장 (소총·박격포·수류탄을 각각 설명)", role: "② 사격교실 코스",
+      facts: [
+        "소총 사격: 소프트 총과 총알로 과녁을 맞힌다",
+        "박격포 사격: 소프트 박격포로 목표물을 맞힌다",
+        "수류탄 투척: 모형 수류탄의 사용법을 배우고 목표를 향해 던진다",
+        "사격 놀이 전에 사람을 향해 쏘지 않는 등 위험한 행동을 하지 않도록 아이들에게 미리 알려 주기를 원에 부탁한다 (반장이 안전을 보장한다고 쓰지 않는다)",
+        "사격 사이사이에도 PT체조를 넣어 흐름을 정리한다",
+      ],
+      photo: { alt: "어린이집 병영체험 사격교실 소총 박격포 수류탄", caption: "소총·박격포·수류탄 중 한 장면" } },
+    guerrilla: { len: "6종을 하나씩 짧게 소개(목록 가능) + 에어 조형물 옵션 1문단", role: "③ 유격코스 6종 (6가지를 모두 소개하고, 없는 장애물을 더하지 않는다)",
+      facts: [
+        "징검다리: 징검다리를 밟고 건너며 균형 감각을 익힌다",
+        "터널: 터널을 기어서 통과한다",
+        "목봉/외나무다리: 반 친구들이 함께 목봉을 들고, 외나무다리를 통과한다",
+        "보트이동: 여럿이 보트를 머리 위로 들고 함께 이동한다",
+        "포복: 그물 장애물 아래를 포복으로 통과한다",
+        "균형잡기: 균형판 위에서 몸의 중심을 잡는다 (균형판 개수는 쓰지 않는다)",
+        "행사 일정에 따라 유격장에 에어 조형물을 추가로 설치할 수 있다. 기본 구성이 아닌 추가 옵션이며 상담 때 정한다 (에어 조형물의 종류·크기는 쓰지 않는다)",
+      ],
+      photo: { alt: "어린이집 병영체험 유격코스", caption: "징검다리·터널·목봉·보트·포복·균형잡기 중 한 장면" } },
+    uniform: { len: "계절별 짧은 목록 + 2문단 · 4~6문장", role: "계절별 군복 구성과 수량·연령 안내",
+      facts: [
+        "동절기: 군복 상의·하의 + 베레모",
+        "하절기: 원복 흰 티셔츠 + 군복 바지 + 베레모 (더운 날에는 군복 상의 대신 원복 티셔츠를 입는다)",
+        "아동 군복은 행사 요청 시 약 65벌을 기본으로 준비하고, 원아 수가 더 많으면 미리 상의한다 (사이즈별 수량은 쓰지 않는다)",
+        "3~4세 반은 가장 작은 100호 군복을 원에서 자율로 배정하고, 군복을 입고 사진 촬영을 하는 방식으로도 참여할 수 있다. 연령별 참여 범위는 원 상황에 맞춰 상담한다 (특정 연령이 훈련에 참여한다·못 한다고 단정하지 않는다)",
+      ] },
+    special: { len: "군복 등원 2문단 + 동네 행군 1~2문단 · 8~11문장 (군복 등원·동네 행군을 굵은 소항목으로 나눠도 된다)", role: "반장 병영체험만의 선택 운영: 군복 등원과 동네 행군",
+      facts: [
+        "반장의 방문 프로그램은 보통 전날 설치하고 당일 원 안에서 놀이한다. 병영체험은 원 밖까지 이어지는 운영을 선택할 수 있다",
+        "[필수] 군복 등원: 행사 전전날이나 전날 하원할 때 원아 수만큼 군복을 미리 나누어 준다 → 행사 당일 아이들이 군복을 입고 등원 → 하루 동안 군복을 입고 생활 → 행사가 끝나면 평상복으로 갈아입고 귀가",
+        "[필수] 군복 등원 날 아침 통학버스 정류장에는 여러 기관 부모님들이 함께 아이를 기다린다. 군복 입은 아이들과 조교복을 입고 경례하며 아이를 맞이하는 차량 선생님에게 주변 부모님들의 시선이 모인다. 동네 부모님들은 서로 아는 사이가 많아 입소문으로 이어지기 쉽다 ('화제가 된다', '홍보 효과 보장'처럼 결과를 단정하지 않는다)",
+        "[필수] 군복 등원은 원아 수만큼 미리 지급하므로 수량에 따라 견적이 달라지며, 반장과 따로 상담한다 (금액·'약간의 추가비용' 같은 비용 표현은 쓰지 않는다)",
+        "동네 행군: 원 여건에 따라 군복 입은 반 아이들이 원 주변 사람이 많이 다니는 길을 행군할 수 있다. 간단한 군가를 부르고 지나가는 분들께 '충성!' 하고 경례하면 웃음이 나고, 어느 교육기관인지 물어보는 분들이 생긴다",
+        "동네 행군은 원에서 코스와 진행을 정하는 자율 활동이다 (반장이 행군을 진행·인솔한다고 쓰지 않는다. 행군 거리·시간·코스는 쓰지 않는다)",
+      ],
+      photo: { alt: "어린이집 병영체험 군복 등원 동네 행군", caption: "(선택) 군복 등원 또는 동네 행군 장면 — 실제 사진이 있을 때만" } },
+    parent: { len: "1문단 + 식순 7줄 목록 + 1문단 + 원 준비물 짧은 목록 + 마무리 1문장", role: "부모참여수업으로 진행할 때와 원에서 준비할 것",
+      facts: [
+        "부모 참여수업 때는 정식 입소식을 할 수 있고, 식순과 음원은 반장이 준비한다. 입소식 참고 동영상이 필요하면 보내 준다",
+        "[필수] 입소식 식순은 7줄 목록으로 모두 쓴다(순서·이름을 바꾸거나 줄이지 않는다): 1. 대대장님(원장님) 입장 2. 국기에 대한 맹세 3. 애국가 제창 4. 순국선열에 대한 묵념(생략 가능) 5. 입소자 대표 부모님 말씀(생략 가능) 6. 대대장님(원장님) 말씀 7. 반별 지정 위치로 이동",
+        "부모님용 군복은 지급하지 않는다. 참여수업 때는 부모님께 집에 있는 군복을 입고 오시도록 안내하면 좋다",
+        "[필수] 원에서 미리 준비하면 좋은 것(짧은 목록, 계급장 진급 순서 포함): PT체조와 군가 연습 / 명찰과 계급장(패턴 제공 — 코스를 통과할 때마다 이등병 → 일병 → 상병 → 병장으로 바꿔 달아 준다) / 행사 후 군복을 사이즈별로, 상의·하의를 나누어 정리",
+        "마지막은 포토존 앞 반별 단체사진으로 마무리할 수 있다",
+      ] },
+    closing: { len: "2문단 · 4~5문장", role: "마무리와 상담 안내 1회",
+      facts: [
+        "같은 병영체험이라도 원의 공간, 원아 수, 연령, 부모참여 여부에 따라 구성이 달라진다",
+        "강당 통합/교실별 배치, 군복 등원, 에어 조형물 옵션까지 원의 행사 목적에 맞춰 상담으로 정한다",
+        "상담 때 원아 수, 연령, 사용할 수 있는 강당·교실, 행사 날짜, 부모참여 여부를 알려 달라고 안내한다",
+      ] },
+  },
+  cta: ["📞 예약·상담 문의: 010-9020-4545", "출장 지역: 서울·인천·경기", "홈페이지: banjang.co.kr"],
+  hashtags: ["#어린이집병영체험", "#유치원병영체험", "#병영체험", "#어린이집행사", "#유치원행사", "#부모참여수업", "#아빠참여수업", "#원방문체험", "#찾아가는체험", "#병영놀이", "#유격체험", "#반장노리야놀자"],
+};
+
+function buildMilitaryPilotPrompt(title, angle) {
+  const secText = angle.order.map((k, i) => {
+    const s = MILITARY_PILOT.sections[k];
+    return `${i + 1}. key="${k}" — 역할: ${s.role} / 분량: ${s.len}\n` + s.facts.map(f => `   - ${f}`).join("\n");
+  }).join("\n\n");
+  const system = [
+    "너는 유치원·어린이집 원방문 체험 업체 '반장-노리야놀자'의 네이버 블로그 글을 쓰는 작가다.",
+    "화자는 원에 찾아가는 업체 반장이다. 반장을 유치원·어린이집처럼 쓰지 않고, '저희 원', '우리 원'이라고 쓰지 않는다. 독자의 원은 '원장님의 원', '선생님 원'처럼 부른다.",
+    "독자는 병영체험 행사를 준비하는 유치원·어린이집 원장님과 선생님이다. 자기 원에서 이 프로그램을 할지, 반장에게 맡길지 판단할 수 있게 쓴다.",
+    "이 글은 행사 후기가 아니라 프로그램 소개·선택 안내 글이다. 특정 날짜·특정 원에서 있었던 일처럼 쓰지 않는다.",
+    "말투는 업체가 소개하는 따뜻하고 자신감 있는 존댓말(~합니다, ~해요)이다. 보고서체(~했다, ~이다)는 쓰지 않는다.",
+    "사실은 아래 섹션별 재료 안에서만 쓴다. 재료에 없는 숫자·장비·시간·거리·가격·수상·경력·인원 기록을 만들지 않는다.",
+    "재료의 조건과 강도를 바꾸지 않는다: '옵션'은 기본처럼, '원 자율 활동'은 반장이 진행하는 것처럼, '상담'은 확정처럼 쓰지 않는다.",
+    "아이 이름을 쓰지 않는다. 특정 아이가 한 말이나 행동을 실제 있었던 일처럼 쓰지 않는다. 따옴표 대사는 재료에 있는 진행 멘트와 '충성!'만 쓴다.",
+    "아이들 모습은 '~하게 됩니다', '~할 수 있습니다'처럼 프로그램 설명으로 쓴다. '모두 좋아한다', '몰입이 훨씬 커진다'처럼 결과를 단정하지 않는다.",
+    "자연스러운 홍보 표현('원 밖까지 이어지는 행사', '군복을 입는 순간부터 시작되는 체험')은 써도 된다. 효과·성과를 보장하는 문장은 쓰지 않는다.",
+    "반장이 직접 기획하고 운영하는 프로그램이라는 점과, 군복·3코스·선택 운영을 조합해 원마다 행사를 구성한다는 점이 자연스럽게 드러나게 한다.",
+    "섹션마다 앞 섹션을 이어받아 연결한다. 한 섹션에서 설명한 내용을 다른 섹션에서 다시 설명하지 않는다. 같은 문장을 두 번 쓰지 않는다.",
+    "다른 업체·다른 업종·다른 프로그램(에어바운스 대여, 병원, 미용 등) 이야기는 쓰지 않는다. '밀림'이라는 말은 쓰지 않는다.",
+    "본문에 전화번호·출장지역·가격·할인을 쓰지 않고, '연락처는 별도로 안내됩니다' 같은 안내 문장도 쓰지 않는다. '다양한 연령에 맞춰져 있다'처럼 재료에 없는 대상·효과를 덧붙이지 않는다.",
+    "굵게(**) 같은 마크다운 기호를 쓰지 않는다. 소항목이 필요하면 짧은 한 줄 제목으로 쓴다.",
+    "출력은 JSON 하나: {\"sections\":[{\"key\":\"...\",\"heading\":\"...\",\"body\":\"...\"}]}. 섹션 순서와 key 는 그대로 지킨다.",
+    "heading 은 블로그 소제목으로 짧고 자연스럽게 쓴다('섹션' 같은 말 금지, 코스 번호 ①②③은 써도 된다). body 는 문단 사이를 빈 줄로 나눈다. 목록이 자연스러운 곳(3코스, 계절별 군복, 식순, 원 준비물)은 짧은 목록을 써도 된다.",
+    "소제목과 문장 표현은 매번 새로 쓴다. 재료 문장을 그대로 옮겨 적지 말고 자연스럽게 풀어 쓴다(식순 항목 이름과 진행 멘트는 그대로 둔다).",
+    "[필수] 표시 재료는 하나도 빠뜨리거나 뭉뚱그리지 않는다('다양한 순서로 구성됩니다'처럼 요약해 넘기지 않는다).",
+    "섹션마다 적힌 분량을 지킨다. 글 전체 본문은 공백 포함 약 2,500~3,200자다. 같은 뜻을 반복해서 늘리지 않는다.",
+    "번역투·딱딱한 표현('반장 측', '삽입하여', '~하는 경우가 많습니다', '~를 배우게 됩니다')은 쓰지 않는다. 업체 사장님이 직접 소개하듯 자연스럽게 쓴다.",
+  ].join("\n");
+  const user = `제목: ${title}\n이번 글의 관점: ${angle.focus}\n(관점에 맞는 섹션은 조금 더 자세히, 나머지는 핵심만 쓴다. 단 모든 섹션의 재료는 빠뜨리지 않는다.)\n\n[섹션별 재료]\n${secText}`;
+  return { system, user };
+}
+
+// 자동검사 — 금지 FACT·노출·누락을 문장 단위로 수집해 사람이 판정한다(차단하지 않음).
+function auditMilitaryPilot(text) {
+  const sentences = text.split(/(?<=[.!?。])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+  const pick = (re) => sentences.filter(s => re.test(s));
+  const numbers = (text.match(/\d+(\.\d+)?\s*(m|미터|벌|대|세트|개|정|문|발|종|반|교실|코스|분|초|가지|명|장|시간|원|년|호|세|단계|km)/g) || []);
+  const ALLOWED_NUM = /^(65\s*벌|5\s*벌|3\s*코스|3\s*개|3\s*가지|6\s*종|6\s*가지|7\s*단계|100\s*호|3\s*세|4\s*세|1\s*개)$/;
+  const big = (s) => new Set(s.replace(/\s/g, "").match(/.{2}/g) || []);
+  const sim = (a, b) => { const A = big(a), B = big(b); let n = 0; A.forEach(x => B.has(x) && n++); return n / Math.max(1, Math.min(A.size, B.size)); };
+  const longS = sentences.filter(s => s.length >= 25);
+  const repeats = [];
+  for (let i = 0; i < longS.length; i++) for (let j = i + 1; j < longS.length; j++) if (sim(longS[i], longS[j]) >= 0.7) repeats.push([longS[i], longS[j]]);
+  const ALLOWED_QUOTE = /(잘\s?할\s?수\s?있겠습니까|목소리가\s?작습니다|안\s?하는\s?사람이\s?있습니다|충성)/;
+  return {
+    wrongFacts: pick(/(밀림|30\s*벌|20\s*정|장애물\s*코스\s*5|5\s*종|단체\s*훈련장|빨간\s*모자|에어\s*바운스|전국|소독|무료|할인|만\s*원|\d+\s*원\b|경력|\d+\s*년\s*(동안|간|째|경력)|설립)/),
+    unsureClaims: pick(/(보장|확실히|반드시\s*(좋|효과)|모두\s*좋아|무척\s*좋아|훨씬|최고|압도|화제|대박|1위)/),
+    speakerAsKindergarten: pick(/(우리|저희)\s*(원|유치원|어린이집)(에서|에|의|은|는|이|을|으로)?(\s|$)/),
+    quotesOutside: (text.match(/["“'‘][^"“”'‘’\n]{1,40}["”'’]/g) || []).filter(q => !ALLOWED_QUOTE.test(q)),
+    numbersOutsideFact: numbers.filter(n => !ALLOWED_NUM.test(n.replace(/\s+/g, " ").trim())),
+    leaks: pick(/(key=|섹션|재료|JSON|heading|body|프롬프트|지시문|관점:)/),
+    foreignIndustry: pick(/(성형|피부과|시술|임플란트|한의원|음식점)/),
+    guerrillaMissing: ["징검다리", "터널", "목봉", "보트", "포복", "균형"].filter(w => !text.includes(w)),
+    hasKindergarten: /유치원/.test(text), hasDaycare: /어린이집/.test(text),
+    repeats,
+    charCount: text.length,
+  };
+}
+
+async function generateMilitaryPilot({ region }) {
+  const r = (region || "").trim();
+  const angle = MILITARY_PILOT.angles[Math.floor(Math.random() * MILITARY_PILOT.angles.length)];
+  const baseTitle = angle.titles[Math.floor(Math.random() * angle.titles.length)];
+  const title = r ? `${r} ${baseTitle}` : baseTitle;
+  const { system, user } = buildMilitaryPilotPrompt(title, angle);
+
+  let parsed = null, lastErr = null;
+  for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: "gpt-4o",
+        temperature: 0.8,
+        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      });
+      const j = JSON.parse(resp.choices[0].message.content || "{}");
+      const secs = Array.isArray(j.sections) ? j.sections : [];
+      if (angle.order.every(k => secs.some(s => s.key === k && String(s.body || "").trim()))) parsed = secs;
+      else lastErr = new Error("섹션 누락");
+    } catch (e) { lastErr = e; }
+  }
+  if (!parsed) throw lastErr || new Error("병영체험 Pilot 생성 실패");
+
+  const parts = [];
+  for (const k of angle.order) {
+    const def = MILITARY_PILOT.sections[k];
+    const s = parsed.find(x => x.key === k);
+    const photo = def.photo ? `[이미지: ${def.photo.alt} | ${def.photo.caption}]\n\n` : "";
+    const head = k === "intro" ? "" : `${String(s.heading || "").replace(/\*\*/g, "").trim()}\n\n`;
+    let secBody = String(s.body).replace(/\*\*/g, "").trim(); // 마크다운 굵게 기호 제거(블로그 붙여넣기 시 그대로 노출)
+    // Hard FACT 고정(SOP §29.2): 군복 등원 견적 상담 문장은 GPT 가 자주 누락 → 없으면 고정 문장 1줄 보강
+    if (k === "special" && !/견적/.test(secBody)) secBody += "\n\n군복 등원은 원아 수만큼 군복을 미리 지급하므로 수량에 따라 견적이 달라집니다. 반장과 따로 상담해 주세요.";
+    parts.push(`${head}${photo}${secBody}`);
+  }
+  parts.push(MILITARY_PILOT.cta.join("\n"));
+  const tags = (r ? [`#${r.replace(/\s/g, "")}어린이집행사`] : []).concat(MILITARY_PILOT.hashtags).slice(0, 12);
+  const body = parts.join("\n\n");
+  const text = `# ${title}\n\n${body}\n\n${tags.join(" ")}`.replace(/\n{3,}/g, "\n\n").trim();
+
+  const images = angle.order.map(k => MILITARY_PILOT.sections[k].photo).filter(Boolean).map(p => ({ alt: p.alt, caption: p.caption }));
+  const charCount = calcCharCount(text);
+  return {
+    success: true,
+    title,
+    text,
+    textMarkdown: text,
+    hashtags: tags,
+    images,
+    imageMeta: images,
+    charCount,
+    mode: "commercial",
+    pilot: "KINDERGARTEN-MILITARY-ENGINE-PILOT-01",
+    pilotAngle: angle.id,
+    pilotQC: auditMilitaryPilot(body),
     validation: { passed: charCount >= 1500, charCount },
   };
 }
@@ -2734,6 +2961,15 @@ export default async function handleKindergarten(req, res) {
     }
   }
 
+  // [KINDERGARTEN-MILITARY-ENGINE-PILOT-01] 병영체험 단일 생성만 Pilot 경로. 그 외 프로그램은 아래 기존 경로 그대로.
+  if (mainProgram.id === "military") {
+    try {
+      return res.status(200).json(await generateMilitaryPilot({ region }));
+    } catch (e) {
+      console.error("[kindergarten] 병영체험 Pilot 생성 실패:", e?.message);
+      return res.status(500).json({ error: "병영체험 원고 생성 중 오류가 발생했습니다." });
+    }
+  }
 
   try {
     console.log("[v36] 섹션 분할 생성 시작");
