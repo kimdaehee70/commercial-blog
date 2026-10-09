@@ -1184,11 +1184,19 @@ async function generateMilitaryPilot({ region }) {
     secBody = secBody.split("\n").map(line => line.split(/(?<=[.!?])\s+/).filter(s => !/(최고|최상|최적|1위|압도적|으뜸)/.test(s)).join(" ")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
     // Hard FACT 고정(SOP §29.2): 군복 등원 견적 상담 문장은 GPT 가 자주 누락 → 없으면 고정 문장 1줄 보강
     if (k === "special" && !/견적/.test(secBody)) secBody += "\n\n군복 등원은 원아 수만큼 군복을 미리 지급하므로 수량에 따라 견적이 달라집니다. 반장과 따로 상담해 주세요.";
-    // [MILITARY-PRODUCTION-FIX-01] 군복 등원 아침 장면(주체 고정)이 빠지면 고정 문장 보강 — 동네 행군 소항목 앞에 넣는다
-    if (k === "special" && !/(정류장|차량 선생님)/.test(secBody)) {
-      const scene = "군복 등원 날 아침에는 조교복을 입은 차량 선생님이 경례하며 군복 입은 원아들을 맞이해 차량에 태웁니다. 통학버스 정류장에서 함께 아이를 기다리던 여러 기관 부모님들의 시선이 자연스럽게 모이고, 서로 아는 사이가 많은 동네 부모님들 사이에서 입소문으로 이어질 수 있습니다.";
-      secBody = /\n\n동네 행군/.test(secBody) ? secBody.replace(/\n\n동네 행군/, `\n\n${scene}\n\n동네 행군`) : `${secBody}\n\n${scene}`;
+    // [MILITARY-FINAL-FIX-02] 군복 등원 보완을 역할 / 부모님 시선 두 부분으로 나눈다 — 동네 행군 소항목 앞에 넣는다
+    //   역할(원아=군복 · 차량 선생님=조교복·경례·탑승)은 모든 관점에서 필수 → 차량 선생님 문장이 없을 때만 1회 보강
+    //   부모님 시선은 선택 홍보 요소 → 군복 등원 홍보 관점(promo)에서만, 정류장·시선·입소문이 모두 없을 때만 1회 보강
+    if (k === "special") {
+      const add = [];
+      if (!/차량 선생님/.test(secBody)) add.push("군복 등원 날 아침에는 조교복을 입은 차량 선생님이 경례하며 군복 입은 원아들을 맞이해 차량에 태웁니다.");
+      if (angle.id === "promo" && !/(정류장|시선|입소문)/.test(secBody)) add.push("통학버스 정류장에서 함께 아이를 기다리던 다른 기관 부모님들도 이 모습을 보게 되고, 동네 부모님들 사이에서 입소문으로 이어질 수 있습니다.");
+      if (add.length) {
+        const scene = add.join(" ");
+        secBody = /\n\n동네 행군/.test(secBody) ? secBody.replace(/\n\n동네 행군/, `\n\n${scene}\n\n동네 행군`) : `${secBody}\n\n${scene}`;
+      }
     }
+    secBody = secBody.replace(/반장에서(\s*)(준비|제공)/g, "반장이$1$2"); // [MILITARY-FINAL-FIX-02] 「반장에서 준비」 → 「반장이 준비」 국소 보정
     parts.push(`${head}${photo}${secBody}`);
   }
   parts.push(MILITARY_PILOT.cta.join("\n"));
