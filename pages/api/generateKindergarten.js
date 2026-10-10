@@ -1524,6 +1524,249 @@ async function generateMarketPilot({ region }) {
   };
 }
 
+// ============================================================
+// [KINDERGARTEN-AIRBOUNCE-PILOT-01] 교실 에어바운스(교실바운스 크레용) 전용 Pilot
+//   대상: program.id === "airbounce" 단일 생성만. 블랙라이트·병영·시장놀이 Pilot·다른 프로그램·묶음·보완 경로는 기존 그대로.
+//   FACT 출처: 사장님 확인값(2026-10-10) > 설계도(높이 230cm)·홈페이지 「교실바운스/크레용」. data 의 airbounce 항목은 보존·미변경
+//     (그 안의 「안전요원 상시 배치」「10~20명 동시」 등은 미확인이라 이 경로에서 쓰지 않는다).
+//   Search Question: 「강당이 없어도 유치원·어린이집 교실에서 에어바운스 놀이를 할 수 있을까?」 — 모든 관점의 제목·본문이 같은 질문에 답한다.
+//   230cm 는 장비 높이일 뿐 설치 가능 보장이 아니다 → 교실 천장 높이·바닥 공간 확인 조건을 Hard FACT 로 고정한다.
+//   전화번호·출장지역은 GPT 가 쓰지 않고 마지막에 고정 문구로 붙인다.
+// ============================================================
+const AIRBOUNCE_PILOT = {
+  angles: [
+    { id: "classroom", focus: "강당이 없는 원도 교실에서 에어바운스 놀이를 할 수 있도록 높이 230cm로 만든 교실형 바운스라는 점과, 교실 천장 높이·공간 확인에 힘을 준다",
+      titles: ["어린이집 에어바운스, 강당 없어도 교실에서｜높이 230cm 교실바운스로 유치원·어린이집 실내 놀이",
+               "어린이집 에어바운스 교실 설치｜강당 없는 유치원·어린이집도 가능한지 천장 높이부터 확인"],
+      opener: "강당이 없거나 강당 일정이 빠듯해서 에어바운스는 어렵다고 생각했던 원의 고민을 질문으로 꺼내며 시작한다",
+      order: ["intro", "classroom", "bounce", "setup", "operation", "closing"] },
+    { id: "operation", focus: "전날 설치하고 송풍기 스위치만 켜면 약 3분 안에 바운스가 서는 준비 과정과, 당일 원에서 반별로 놀이하는 운영 방식에 힘을 준다",
+      titles: ["어린이집 에어바운스 대여｜전날 교실에 설치, 스위치 켜면 3분 만에 서는 유치원·어린이집 바운스",
+               "어린이집 에어바운스 운영 방법｜교실 설치부터 당일 반별 놀이까지, 유치원도 함께"],
+      opener: "행사 전날 반장이 교실에 바운스를 설치해 두고, 다음 날 송풍기 스위치를 켜면 교실 안에 바운스가 부풀어 오르는 장면으로 시작한다",
+      order: ["intro", "setup", "operation", "classroom", "bounce", "closing"] },
+    { id: "bounce", focus: "크레용 모양 기둥과 점프 공간, 미끄럼틀이 있는 교실바운스 크레용이 교실 안에 들어선 모습과 놀이에 힘을 준다",
+      titles: ["어린이집 에어바운스｜교실 안에 들어서는 크레용 바운스, 유치원·어린이집 실내 놀이",
+               "어린이집 에어바운스 크레용 교실바운스｜점프하고 미끄럼 타는 유치원·어린이집 교실 놀이"],
+      opener: "평소 수업하던 교실에 알록달록한 크레용 기둥의 바운스가 들어선 모습으로 시작한다",
+      order: ["intro", "bounce", "classroom", "setup", "operation", "closing"] },
+  ],
+  sections: {
+    intro: { len: "2문단 · 4~6문장", role: "이번 관점의 시작점에서 열고 → 반장 교실바운스 크레용 소개",
+      facts: [
+        "__OPENER__ (원의 고민을 모든 원의 사실처럼 단정하지 않는다. 예시 문장을 그대로 베끼지 말고 새로 쓴다)",
+        "반장-노리야놀자는 유치원·어린이집으로 찾아가는 원방문 체험 프로그램을 직접 기획하고 운영하는 업체다 (경력 연수·설립연도는 쓰지 않는다)",
+        "반장의 교실바운스 크레용은 일반 에어바운스를 유치원·어린이집 실내에서 쓸 수 있도록 높이 230cm로 만든 교실형 에어바운스다",
+        "유치원과 어린이집 모두 진행할 수 있다. 글 전체에서 '유치원·어린이집' 두 기관을 함께 독자로 부르고, 어느 한쪽을 덧붙이듯 쓰지 않는다",
+        "원 행사나 실내 놀이 프로그램으로 단독 진행할 수 있다",
+      ],
+      photo: { alt: "어린이집 에어바운스 교실에 설치된 교실바운스 크레용", caption: "교실 안에 설치된 교실바운스 크레용 (대표사진)" } },
+    classroom: { len: "3문단 · 6~8문장", role: "강당이 없어도 교실에서 할 수 있는 이유와 설치 공간 확인 (이 글의 질문에 대한 답)",
+      facts: [
+        "[필수] 교실바운스 크레용의 높이는 230cm다. 강당이 아닌 교실 천장 아래에도 설치하는 것을 생각해 높이를 맞춰 만들었다",
+        "[필수] 230cm 는 바운스 자체의 높이다. 실제로 설치할 수 있는지는 원 교실의 천장 높이와 바운스를 펼칠 바닥 공간을 상담 때 함께 확인해서 정한다 (어느 교실·강당이든 설치된다고 쓰지 않는다)",
+        "실내와 실외 모두 쓸 수 있다. 실외도 설치할 자리의 공간 조건을 확인해서 정한다",
+        "바운스의 가로·세로 크기와 교실 면적 숫자는 쓰지 않는다 (재료에 없다)",
+        "강당이 있는 원도 일정이나 행사 구성에 맞춰 교실 설치를 고를 수 있다",
+      ],
+      photo: { alt: "유치원 에어바운스 교실 천장 아래 설치 모습", caption: "교실 천장 아래에 맞춘 높이 230cm" } },
+    bounce: { len: "2~3문단 · 6~8문장", role: "교실바운스 크레용의 모습과 놀이",
+      facts: [
+        "크레용 모양 기둥이 서 있는 알록달록한 바운스로, 안쪽에서 콩콩 뛰는 점프 공간과 미끄럼틀이 있다 (사진 속 실제 모습. 다른 놀이 구조물을 만들어 내지 않는다)",
+        "[필수] 캠프장·이벤트용에 쓰는 튼튼한 소재로 만든 교실형 에어바운스다 (튼튼하다는 것은 소재 설명으로만 쓰고, 몇 명이 함께 타도 된다·안전하다·사고가 없다처럼 수용 인원이나 안전을 보장하는 말로 넓히지 않는다)",
+        "아이들은 바운스 안에서 뛰고, 미끄럼틀을 타고 내려오며 몸을 마음껏 움직이는 실내 놀이를 할 수 있다 (프로그램 설명으로 쓴다)",
+        "평소 수업하던 교실이 하루 동안 신나는 놀이 공간으로 바뀐다는 행사 분위기는 생생하게 그려도 된다 (아이들의 목소리·표정·반응을 실제 있었던 일처럼 쓰지 않는다)",
+        "아이 이름, 아이의 대사, 특정 원에서 있었던 장면은 쓰지 않는다",
+      ],
+      photo: { alt: "어린이집 에어바운스 미끄럼틀 타기", caption: "점프 공간과 미끄럼틀이 있는 교실바운스 크레용" } },
+    setup: { len: "2문단 · 4~6문장", role: "구성과 준비 (원이 놀이 장비를 따로 준비하지 않아도 되는 부분과 현장에서 확인할 부분을 구분)",
+      facts: [
+        "[필수] 구성은 에어바운스와 송풍기다. 반장이 함께 가져와 설치한다",
+        "[필수] 송풍기 전기 스위치를 켜면 약 3분 안에 바운스가 부풀어 놀이를 시작할 수 있다 ('약 3분'을 지킨다. 1분·즉시처럼 줄이지 않는다)",
+        "[필수] 원에서 따로 준비할 놀이 장비는 없다. 다만 송풍기에 전원을 연결할 수 있는 위치는 설치 공간을 확인할 때 함께 본다 (준비할 것이 '아무것도' 없다고 쓰지 않는다)",
+      ],
+      photo: { alt: "유치원 에어바운스 설치 구조", caption: "에어바운스와 송풍기로 이루어진 구성" } },
+    operation: { len: "2문단 · 4~6문장", role: "설치·운영 방식",
+      facts: [
+        "[필수] 반장은 행사 전날 원에 와서 바운스를 설치하고, 설치하면서 선생님들께 사용 방법을 안내한다. 당일 놀이는 원에서 자체적으로 진행한다 (반장이 당일 진행·상주한다고 쓰지 않는다. 안전요원·진행 요원이 있다고 쓰지 않는다)",
+        "[필수] 놀이가 끝난 당일에 반장이 회수한다. 설치·회수 시간은 원과 상의해 정한다 (특정 시각을 약속하지 않는다)",
+        "보통 반별로 돌아가며 놀이한다 (한 번에 몇 명, 몇 분처럼 숫자를 만들지 않는다)",
+      ] },
+    closing: { len: "2문단 · 4~5문장", role: "마무리와 상담 안내 1회",
+      facts: [
+        "강당이 없어도 교실 여건이 맞으면 교실에서 에어바운스 놀이를 열 수 있다는 점을 다시 짚는다 (무조건 된다고 쓰지 않는다)",
+        "반장 교실바운스는 크레용 외에 아쿠아 모델도 따로 대여할 수 있다 (아쿠아의 크기·구성은 쓰지 않는다)",
+        "필요하면 슬라이드나 놀이동산 프로그램을 더해 함께 꾸밀 수 있으며, 상담으로 정한다",
+        "상담 때 설치할 교실의 천장 높이와 공간, 행사 날짜, 원아 수와 반 수를 알려 달라고 안내한다",
+      ] },
+  },
+  cta: ["📞 예약·상담 문의: 010-9020-4545", "출장 지역: 서울·인천·경기", "홈페이지: banjang.co.kr"],
+  hashtags: ["#어린이집에어바운스", "#유치원에어바운스", "#교실에어바운스", "#실내에어바운스", "#에어바운스대여", "#교실바운스", "#어린이집행사", "#유치원행사", "#실내놀이", "#원방문체험", "#찾아가는체험", "#반장노리야놀자"],
+};
+
+function buildAirbouncePilotPrompt(title, angle) {
+  const secText = angle.order.map((k, i) => {
+    const s = AIRBOUNCE_PILOT.sections[k];
+    return `${i + 1}. key="${k}" — 역할: ${s.role} / 분량: ${s.len}\n` + s.facts.map(f => `   - ${f.replace("__OPENER__", angle.opener)}`).join("\n");
+  }).join("\n\n");
+  const system = [
+    "너는 유치원·어린이집 원방문 체험 업체 '반장-노리야놀자'의 네이버 블로그 글을 쓰는 작가다.",
+    "화자는 원에 찾아가는 업체 반장이다. 반장은 '반장' 또는 '저희 반장'으로 부르고, 반장이 주어일 때는 '반장은', '반장이'처럼 쓴다('반장에서는'처럼 쓰지 않는다). '저희 원', '우리 원'이라고 쓰지 않는다. 독자의 원은 그냥 '원'이라고 부른다. 원의 아이들은 '아이들' 또는 '원아들'이라고 부른다.",
+    "독자는 실내 에어바운스 행사를 고민하는 유치원·어린이집 원장님과 행사 담당 선생님이다. 이 글은 '강당이 없어도 유치원·어린이집 교실에서 에어바운스 놀이를 할 수 있을까?'라는 질문에 답한다. 읽고 나서 '우리 원 교실에도 설치할 수 있겠는데?' 하는 관심이 생기고, 설치 공간 확인과 예약 상담으로 이어지게 쓴다.",
+    "이 글은 행사 후기가 아니라 프로그램 소개·설치 안내 글이다. 특정 날짜·특정 원에서 있었던 일처럼 쓰지 않는다.",
+    "말투는 업체가 소개하는 따뜻하고 자신감 있는 존댓말(~합니다, ~해요)이다. 보고서체(~했다, ~이다)는 쓰지 않는다.",
+    "사실은 아래 섹션별 재료 안에서만 쓴다. 재료에 없는 숫자·크기·장비·시간·가격·인원·연령·수상·경력을 만들지 않는다. 숫자는 높이 230cm, 약 3분만 쓴다. 바운스 가로·세로 크기, 한 번에 탈 수 있는 인원, 권장 이용 인원은 쓰지 않는다.",
+    "안전요원·진행 요원 배치, 안전 보장, 사고 예방 효과, 하중·수용 인원 보장, 재예약·인기·만족도('많은 원에서 찾는다', '한 번 하면 또 찾는다')를 만들지 않는다.",
+    "230cm 는 바운스 높이일 뿐이다. '어느 교실이든', '강당·교실 어디든', '무조건' 설치된다고 쓰지 않는다. 설치 여부는 교실 천장 높이와 공간을 확인해서 정한다는 조건을 빼지 않는다.",
+    "물놀이·물 미끄럼틀·워터 슬라이드 이야기는 쓰지 않는다.",
+    "아이 이름을 쓰지 않는다. 특정 아이가 한 말이나 행동을 실제 있었던 일처럼 쓰지 않는다. 따옴표로 된 대사는 쓰지 않는다. 아이들 모습은 '~할 수 있습니다'처럼 프로그램 설명으로 쓴다.",
+    "자연스러운 홍보 표현('평소 수업하던 교실이 하루 만에 놀이 공간으로 바뀝니다', '스위치를 켜면 교실 안에 크레용 바운스가 솟아오릅니다')은 적극적으로 써도 된다. 효과·성과를 보장하는 문장, 근거 없는 최상급·순위·다른 업체와 비교하는 표현은 쓰지 않는다.",
+    "반장이 하는 일은 설치·선생님 안내·회수다. 반장을 주어로 '놀이를 진행한다', '놀이를 이끈다', '아이들을 지도한다'처럼 쓰지 않는다. 당일 놀이의 주어는 원·선생님·아이들이다. 반장이 하지 않는 일(상주하지 않는다, 진행하지 않는다 등)을 부정문으로 적지 않고, 원이 자체적으로 놀이한다는 긍정문으로 쓴다.",
+    "소재는 '튼튼한 소재'라는 설명으로만 쓰고, '그래서 안전하다', '안심', '걱정 없다'로 잇지 않는다. 소제목·본문에 '쉽게 설치', '어디서나'처럼 설치를 장담하는 말을 쓰지 않는다.",
+    "섹션마다 앞 섹션을 이어받아 연결한다. 한 섹션에서 설명한 내용을 다른 섹션에서 다시 설명하지 않는다. 같은 문장을 두 번 쓰지 않는다.",
+    "다른 업체·다른 업종·다른 프로그램 이야기는 쓰지 않는다(재료에 있는 슬라이드·놀이동산 연계와 아쿠아 모델은 예외). 반장을 '전문가', '전문 업체'라고 부르지 않는다.",
+    "본문에 전화번호·출장지역·가격·할인을 쓰지 않고, '연락처는 별도로 안내됩니다' 같은 안내 문장도 쓰지 않는다.",
+    "굵게(**) 같은 마크다운 기호를 쓰지 않는다. 소항목이 필요하면 짧은 한 줄 제목으로 쓴다.",
+    "출력은 JSON 하나: {\"sections\":[{\"key\":\"...\",\"heading\":\"...\",\"body\":\"...\"}]}. 섹션 순서와 key 는 그대로 지킨다.",
+    "heading 은 블로그 소제목으로 짧고 자연스럽게 쓴다('섹션' 같은 말 금지). body 는 문단 사이를 빈 줄로 나눈다.",
+    "소제목과 문장 표현은 매번 새로 쓴다. 재료 문장을 그대로 옮겨 적지 말고 자연스럽게 풀어 쓴다(230cm·약 3분 숫자는 그대로 둔다).",
+    "[필수] 표시 재료는 하나도 빠뜨리거나 뭉뚱그리지 않는다.",
+    "섹션마다 적힌 분량을 지킨다. 글 전체 본문은 공백 포함 약 2,500~3,200자다. 같은 뜻을 반복해서 늘리지 않고, 교실이 놀이 공간으로 바뀌는 장면·바운스 모습·설치 흐름을 구체적으로 그려 분량을 채운다.",
+    "번역투·딱딱한 표현('반장 측', '삽입하여', '~하는 경우가 많습니다', '~하시는 분들이 많으실 텐데요')은 쓰지 않는다. 업체 사장님이 직접 소개하듯 자연스럽게 쓴다.",
+  ].join("\n");
+  const user = `제목: ${title}\n이번 글의 관점: ${angle.focus}\n(관점에 맞는 섹션은 조금 더 자세히, 나머지는 핵심만 쓴다. 단 모든 섹션의 재료는 빠뜨리지 않는다.)\n\n[섹션별 재료]\n${secText}`;
+  return { system, user };
+}
+
+// 자동검사 — 금지 FACT·노출·누락을 문장 단위로 수집해 사람이 판정한다(차단하지 않음).
+function auditAirbouncePilot(text) {
+  const sentences = text.split(/(?<=[.!?。])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+  const pick = (re) => sentences.filter(s => re.test(s));
+  const numbers = (text.match(/\d+(\.\d+)?\s*(cm|센티|m|미터|mm|명|분|초|시간|개|대|곳|반|평|원|년|세|kg)/g) || []);
+  const ALLOWED_NUM = /^(230\s*(cm|센티)|3\s*분)$/;
+  const big = (s) => new Set(s.replace(/\s/g, "").match(/.{2}/g) || []);
+  const sim = (a, b) => { const A = big(a), B = big(b); let n = 0; A.forEach(x => B.has(x) && n++); return n / Math.max(1, Math.min(A.size, B.size)); };
+  const longS = sentences.filter(s => s.length >= 25);
+  const repeats = [];
+  for (let i = 0; i < longS.length; i++) for (let j = i + 1; j < longS.length; j++) if (sim(longS[i], longS[j]) >= 0.7) repeats.push([longS[i], longS[j]]);
+  return {
+    wrongFacts: pick(/(안전\s*요원|진행\s*요원|상주|강사|\d+\s*명|여러\s*명이\s*(함께|동시)|동시에\s*(타|이용)|하중|가로\s*·?\s*세로|가로\s*\d|세로\s*\d|물놀이|워터|물\s*미끄럼|재예약|재요청|다시\s*찾|인기|만족도|많은\s*(원|유치원|어린이집|기관)|\d+\s*만\s*원|무료|할인|경력|설립|\d+\s*년\s*(동안|간|째))/),
+    unsureClaims: pick(/(보장|안전합니다|안전하게\s*즐길|사고\s*(없|걱정|예방)|걱정\s*없|확실히|모두\s*좋아|최고|최상|최적|압도|1위|무조건|어디(든|서나|서든|에서든)|어느\s*(교실|곳)(이든|에서나|이나)|언제든)/),
+    teacherNoPrep: pick(/(아무것도\s*(준비하지|필요)|준비(할\s*것|물)?(이|은|는)?\s*(전혀\s*)?없(습니다|어요|이)|손\s*하나)/),
+    speakerAsKindergarten: pick(/(우리|저희)\s*(원|유치원|어린이집)(에서|에|의|은|는|이|을|으로)?(\s|$)/),
+    banjangParticle: pick(/(반장|노리야놀자)에서/),
+    banjangRunsDay: pick(/반장(이|은|도)?[^.]{0,20}(진행합니다|진행해|진행하는|이끌|지도)/),
+    quotes: text.match(/["“'‘][^"“”'‘’\n]{1,40}["”'’]/g) || [],
+    numbersOutsideFact: numbers.filter(n => !ALLOWED_NUM.test(n.replace(/\s+/g, " ").trim())),
+    leaks: pick(/(key=|섹션|재료:|\[섹션|JSON|heading|body|프롬프트|지시문|관점:)/),
+    foreignIndustry: pick(/(성형|피부과|시술|임플란트|한의원|병영|블랙라이트|시장놀이)/),
+    selfClaims: pick(/(전문가|전문\s*업체|직접\s*만들어)/),
+    hardFactMissing: [["230cm", /230\s*(cm|센티)/], ["천장 높이 확인", /천장\s*높이/], ["약 3분", /3\s*분/], ["송풍기", /송풍기/], ["전날 설치", /전날/], ["당일 회수", /회수/], ["튼튼한 소재", /소재/], ["크레용", /크레용/], ["아쿠아", /아쿠아/]]
+      .filter(([, re]) => !re.test(text)).map(([k]) => k),
+    hasKindergarten: /유치원/.test(text), hasDaycare: /어린이집/.test(text),
+    repeats,
+    charCount: text.length,
+  };
+}
+
+async function generateAirbouncePilot({ region }) {
+  const r = (region || "").trim();
+  const angle = AIRBOUNCE_PILOT.angles[Math.floor(Math.random() * AIRBOUNCE_PILOT.angles.length)];
+  const baseTitle = angle.titles[Math.floor(Math.random() * angle.titles.length)];
+  const title = r ? `${r} ${baseTitle}` : baseTitle;
+  const { system, user } = buildAirbouncePilotPrompt(title, angle);
+
+  let parsed = null, lastErr = null;
+  for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: "gpt-4o",
+        temperature: 0.8,
+        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      });
+      const j = JSON.parse(resp.choices[0].message.content || "{}");
+      const secs = Array.isArray(j.sections) ? j.sections : [];
+      if (angle.order.every(k => secs.some(s => s.key === k && String(s.body || "").trim()))) parsed = secs;
+      else lastErr = new Error("섹션 누락");
+    } catch (e) { lastErr = e; }
+  }
+  if (!parsed) throw lastErr || new Error("에어바운스 Pilot 생성 실패");
+
+  const parts = [];
+  for (const k of angle.order) {
+    const def = AIRBOUNCE_PILOT.sections[k];
+    const s = parsed.find(x => x.key === k);
+    const photo = def.photo ? `[이미지: ${def.photo.alt} | ${def.photo.caption}]\n\n` : "";
+    const headText = String(s.heading || "").replace(/\*\*/g, "").trim().replace(/반장에서(\s*)(준비|제공|가져|챙겨|설치|안내)/g, "반장이$1$2");
+    const head = k === "intro" ? "" : `${headText}\n\n`;
+    let secBody = String(s.body).replace(/\*\*/g, "").trim()
+      .replace(/반장-노리야놀자에서는/g, "반장-노리야놀자는").replace(/반장에서는/g, "반장은").replace(/반장에서도/g, "반장도").replace(/반장에서(\s*)(준비|제공|가져|챙겨|설치|안내)/g, "반장이$1$2");
+    // 소재를 안전·안심으로 넓힌 문장은 승인 FACT 문장으로 바꾸고, 설치를 장담(어디서나·무조건)하는 문장만 뺀다(에어바운스 경로 한정)
+    //   「유치원과 어린이집 어디서든」처럼 두 기관을 가리킨 말은 「모두」로 바꿔 문장을 살린다
+    secBody = secBody.replace(/(유치원\s*(과|·|,)\s*어린이집)\s*어디(서나|든|서든|에서든|에서나)/g, "$1 모두");
+    secBody = secBody.split("\n").map(line => line.split(/(?<=[.!?])\s+/).map(x => {
+      if (/(튼튼|소재)/.test(x) && /(안전|안심|걱정\s*없|든든)/.test(x)) return "캠프장·이벤트용에 쓰는 튼튼한 소재로 만든 교실형 에어바운스입니다.";
+      return /(어디(서나|든|서든|에서든)|어느\s*(교실|곳|공간)(이든|에서나|이나)|무조건|문제\s*없이\s*설치)/.test(x) ? "" : x;
+    }).filter(Boolean).join(" ")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    // 근거 없는 다수 원의 선택·인기 단정은 시장놀이 ⑨와 같은 방식으로 앞 절만 맺고, 「최적」은 「알맞은」으로(에어바운스 경로 한정 · fixMarketWording 은 시장 전용 규칙이 섞여 재사용하지 않는다)
+    const CROWD = /(?<![가이]\s?)(많은|여러|다수의?|수많은)\s*(원|유치원|어린이집|기관|곳|분|선생님|학부모)(들)?\s*(에서|이|가|께서|의)?\s*[^.!?\n]{0,15}?(주목|인기|찾|선택|관심|호응)|인기\s*(프로그램|가\s*(많|높)|를\s*(끌|얻))/;
+    secBody = secBody.split("\n").map(line => line.split(/(?<=[.!?])\s+/).map(x => {
+      const m = x.match(CROWD);
+      if (!m) return x;
+      const h = x.slice(0, m.index).match(/^(.*?(수\s*있|좋|적합하?|가능하?))(?:어서|어|아|여|해서|해|으며|며|고),?\s*$/);
+      return h ? `${h[1].replace(/하$/, "")}${/[좋있]$/.test(h[2]) ? "습" : "합"}니다.` : "";
+    }).filter(Boolean).join(" ")).join("\n").replace(/최적화하여/g, "맞춰").replace(/최적의/g, "알맞은").replace(/최적/g, "알맞은").replace(/\n{3,}/g, "\n\n").trim();
+    // [AIRBOUNCE-PILOT-01 FINAL PATCH] 선장 판정 표현 3건 국소 보정(에어바운스 경로 한정)
+    //   ① 확인 절차를 안심 보장으로 넓힌 말(「확인하므로 걱정 없이 진행」) → 확인 절차만 남긴다
+    //   ② 번역투 「(특별한) 솔루션」 → 교실바운스 대여·설치 안내 · 「반장(-노리야놀자)에서 …제공/대여」 조사 교정
+    //   ③ 「따로 준비할 것은 없습니다」 → 준비가 필요 없는 범위를 놀이 장비로 한정(전원·공간 확인 문장은 그대로)
+    secBody = secBody.split("\n").map(line => line.split(/(?<=[.!?])\s+/).map(x => {
+      if (!/(걱정\s*(없|하지\s*않|마시|안\s*하)|안심하(고|셔도))/.test(x)) return x;
+      const c = x.match(/^(.*?(확인|점검|상의|협의|안내))(하|해)(므로|니까|니|기\s*때문에|여|서)\s*,?\s/);
+      if (c) return `${c[1]}합니다.`;
+      const y = x.replace(/(걱정\s*없이|안심하고)\s*/g, "");
+      return /걱정|안심/.test(y) ? "" : y;
+    }).filter(Boolean).join(" ")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    secBody = secBody.replace(/(특별한\s*|맞춤(형)?\s*)?솔루션을/g, "교실바운스 대여와 설치를").replace(/(특별한\s*|맞춤(형)?\s*)?솔루션/g, "교실바운스 대여·설치")
+      .replace(/반장-노리야놀자에서(?=\s[^.!?\n]{0,30}(제공|운영|대여|선보|마련))/g, "반장-노리야놀자가").replace(/반장에서(?=\s[^.!?\n]{0,30}(제공|운영|대여|선보|마련))/g, "반장이");
+    secBody = secBody.replace(/(따로|별도로|별도의|추가로)\s*준비(하실|할|해야\s*할)\s*(것|게)(은|이|는)?\s*없/g, "$1 준비할 놀이 장비는 없")
+      .replace(/(별도의|따로|추가)\s*(추가\s*)?준비\s*없이/g, "놀이 장비를 따로 준비하지 않고도");
+    // Hard FACT 고정(SOP §29.2): 질문의 답(230cm + 천장 높이·공간 확인 조건)과 준비 FACT(약 3분)를 해당 섹션에 보장한다
+    if (k === "classroom") {
+      if (!/230\s*(cm|센티)/.test(secBody)) secBody = `교실바운스 크레용은 교실 천장 아래 설치를 생각해 높이 230cm로 만들었습니다.\n\n${secBody}`;
+      if (!/천장\s*높이/.test(secBody)) secBody += "\n\n다만 230cm는 바운스 자체의 높이라, 실제로 설치할 수 있는지는 원 교실의 천장 높이와 바닥 공간을 상담 때 함께 확인해서 정합니다.";
+    }
+    if (k === "setup" && !/3\s*분/.test(secBody)) secBody += "\n\n송풍기 전기 스위치를 켜면 약 3분 안에 바운스가 부풀어 놀이를 시작할 수 있습니다.";
+    if (k === "setup" && !/전원/.test(secBody)) secBody += "\n\n원에서 따로 준비할 놀이 장비는 없고, 송풍기 전원을 연결할 위치는 설치 공간을 확인할 때 함께 봅니다.";
+    if (k === "bounce" && !/소재/.test(secBody)) secBody += "\n\n교실바운스 크레용은 캠프장·이벤트용에 쓰는 튼튼한 소재로 만든 교실형 에어바운스입니다.";
+    if (k === "closing" && !/아쿠아/.test(secBody)) secBody += "\n\n교실바운스는 크레용 외에 아쿠아 모델도 따로 대여할 수 있습니다.";
+    parts.push(`${head}${photo}${secBody}`);
+  }
+  parts.push(AIRBOUNCE_PILOT.cta.join("\n"));
+  const tags = r ? [`#${r.replace(/\s/g, "")}어린이집행사`].concat(AIRBOUNCE_PILOT.hashtags.filter(h => h !== "#찾아가는체험")).slice(0, 12) : AIRBOUNCE_PILOT.hashtags.slice(0, 12);
+  const body = parts.join("\n\n");
+  const text = `# ${title}\n\n${body}\n\n${tags.join(" ")}`.replace(/\n{3,}/g, "\n\n").trim();
+
+  const images = angle.order.map(k => AIRBOUNCE_PILOT.sections[k].photo).filter(Boolean).map(p => ({ alt: p.alt, caption: p.caption }));
+  const charCount = calcCharCount(text);
+  return {
+    success: true,
+    title,
+    text,
+    textMarkdown: text,
+    hashtags: tags,
+    images,
+    imageMeta: images,
+    charCount,
+    mode: "commercial",
+    pilot: "KINDERGARTEN-AIRBOUNCE-PILOT-01",
+    pilotAngle: angle.id,
+    pilotQC: auditAirbouncePilot(body),
+    validation: { passed: charCount >= 1500, charCount },
+  };
+}
+
 function addPhotoPoint(text) {
   return text + `\n\n사진은 아이들이 활동에 몰입하는 순간을 중심으로 촬영하면 좋다.\n손을 사용하는 장면, 표정이 살아있는 순간, 친구와 상호작용하는 장면이 가장 잘 나온다.`;
 }
@@ -3301,6 +3544,16 @@ export default async function handleKindergarten(req, res) {
     } catch (e) {
       console.error("[kindergarten] 시장놀이 Pilot 생성 실패:", e?.message);
       return res.status(500).json({ error: "시장놀이 원고 생성 중 오류가 발생했습니다." });
+    }
+  }
+
+  // [KINDERGARTEN-AIRBOUNCE-PILOT-01] 에어바운스 단일 생성만 Pilot 경로. 그 외 프로그램은 아래 기존 경로 그대로.
+  if (mainProgram.id === "airbounce") {
+    try {
+      return res.status(200).json(await generateAirbouncePilot({ region }));
+    } catch (e) {
+      console.error("[kindergarten] 에어바운스 Pilot 생성 실패:", e?.message);
+      return res.status(500).json({ error: "에어바운스 원고 생성 중 오류가 발생했습니다." });
     }
   }
 
