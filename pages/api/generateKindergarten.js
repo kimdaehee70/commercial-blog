@@ -2373,6 +2373,390 @@ async function generateCampingPilot({ region }) {
   };
 }
 
+// ============================================================
+// [KINDERGARTEN-POLICE-01] 경찰놀이·교통안전 전용 Pilot
+//   대상: program.id === "police" 단일 생성만. 블랙라이트·병영·시장놀이·에어바운스·겨울이야기·캠핑 Pilot·다른 프로그램·묶음·보완 경로는 기존 그대로.
+//   FACT 출처: 활동지(활동지-경찰-교통안전.pptx) · 홈페이지 pid=330(원방문)·355(단품) · 현장 사진 · 사장님 확인값(2026-10-11: 강당 또는 각 교실 ·
+//     지문·족적 찾기 · 경찰복 약 30벌(활동하는 반이 경찰) · 최대 인원은 원마다 다름 · 출동벨 10개 원 자율 배치 · 범인은 따로 정하지 않음(생활 약속 → 교사 안내 → 계속되면 벨) ·
+//     감옥 퀴즈 = 기본생활습관+안전 · 모든 연령 · 반별 30분~1시간 원 자율 · 8m 배경막+도로 바닥 · 교통 역할 경찰2·신호등2·자동차8·나머지 보행자 · 가격 미기재)
+//   선장 판정(STEP 3-C): 사이렌·경찰모자·출동일지 사용 · 경찰↔범인 역할 교대 제외 · 반장 설치 시 구두 안내 제외(안내문 메일만) · 「하루 종일」은 원 전체 분위기로만.
+//     data·playConfig·DETAIL_MAP·기존 경찰 6단 프롬프트의 police 항목(식당용 호출벨·코너당 5명·오후 2시·회전식 신호등 등)은 보존·미변경 — 이 경로에서 쓰지 않는다.
+//   Search Question: 「원 안에서 하는 경찰놀이, 아이들은 무엇을 하며 놀까?」(보조: 경찰놀이 출동벨, 원 전체가 함께 어떻게 참여할까?) · Core 어린이집 경찰놀이(메인) / 유치원 경찰놀이(보조)
+//   세부 수량은 허위 방지 기준일 뿐 매번 나열하지 않는다(쓰면 정확히). 관점(play·space·day)마다 섹션 구성·깊이가 다르다.
+//   전화번호·출장지역은 GPT 가 쓰지 않고 마지막에 고정 문구로 붙인다.
+// ============================================================
+// [DEAD-CODE-CLEANUP-01] 장면 조각 구조 전환 후 실행 경로가 쓰는 것은 use[0](맺음 재료) 하나뿐 — 나머지 섹션 재료는 삭제
+const POLICE_FACTS = {
+  use: [
+    "영아반부터 모든 연령의 반이 참여할 수 있다",
+  ],
+};
+
+// [OPERATION-FACT-OWNERSHIP-01] 반복 변형되던 운영 HARD FACT 정본 — 서버가 섹션에 그대로 넣는다(GPT 재서술 금지).
+//   놀이 장면·도입·소제목·감성 표현·상담 연결은 GPT 가 쓴다. 섹션 정의의 fixed:{pos,keys} 로 위치를 정한다(start/end/only).
+const POLICE_FIXED = {
+  bells: "출동벨 10개는 원이 정한 곳(교실·주방·원장실 등)에 둡니다. 벨을 누르면 출동센터에 사이렌이 울리고 수신기에 번호가 뜨며, 경찰 역할을 맡은 아이들이 그 번호에 정해 둔 장소로 출동합니다.",
+  teacherBell: "아이가 생활 약속에 어긋나는 행동을 하면 선생님이 먼저 바른 행동을 알려 주시고, 그래도 그 행동이 계속될 때 출동벨을 누릅니다.",
+  log: "번호마다 벨을 둔 장소는 반장이 드리는 출동일지에 적어 둡니다.",
+  classTime: "반별 놀이 시간은 원의 전체 일정에 맞춰 30분~1시간 사이에서 원이 정합니다.",
+  setup: "설치는 활동 전날 할 수 있고, 설치·회수 시간은 원과 미리 상의해 정하며, 당일 활동이 끝나면 바로 회수합니다.",
+  space: "설치 장소는 원의 공간 사정에 따라 강당 한 곳이나 교실로 정하고, 실제 배치는 상담에서 원의 공간을 듣고 함께 정합니다.",
+  cover: "교실이라면 교구장이나 책상을 벽 쪽으로 옮겨 주시면, 다른 곳으로 옮기지 않아도 배경막으로 가려 설치할 수 있습니다.",
+  mail: "예약하시면 지원 내용과 진행 방법을 담은 안내문을 메일로 보내 드립니다.",
+  prep: "반장은 경찰서와 교통안전 공간을 준비해 설치합니다.",
+  partial: "원이 요청하면 일부 구성만 대여할 수도 있으며, 전화 상담 후 정합니다.",
+  // [PLAY-FACT-OWNERSHIP-01] 놀이 정의 정본 — 놀이의 작동 원리(무엇을·어디서·어떻게)만 최소 문장으로. 장면·분위기는 GPT.
+  dispatchDef: "출동한 경찰 아이들은 그 장소에서 친구를 감옥 놀이 공간으로 데려옵니다.", // bells 바로 뒤에 붙여 「번호→장소」 설명과 겹치지 않게 한다
+  forensicsDef: "과학수사는 어린이 경찰학교에서 합니다. 범인의 지문 사진을 보고 여러 지문 모델과 대조해 같은 지문을 찾고, 발자국도 같은 방식으로 찾습니다.",
+  jailDef: "어린이 감옥은 벌을 받는 곳이 아니라, 기본생활습관·안전 퀴즈를 맞히면 나오는 놀이 공간입니다.",
+  trafficDef: "교통안전 놀이에서는 교통경찰·신호등·자동차·보행자 역할을 맡아, 교통경찰이 멈추라고 하면 신호등 역할 아이가 신호 표지판을 바꾸고, 자동차는 멈추고, 보행자는 횡단보도를 건넙니다.",
+};
+// GPT 에게는 고정 문장 원문도 주제도 보여 주지 않는다(원문·주제 설명을 보여 주면 그대로 재서술한다 — 시스템에어컨 재감사 · 이번 3편 실측).
+
+// [DEAD-CODE-CLEANUP-01] 실행 경로가 쓰는 필드만 보존: angles[].id·focus·titles·sections[].key/photo(사진 alt·캡션 매핑) · cta · hashtags
+const POLICE_PILOT = {
+  angles: [
+    { id: "play", focus: "아이들이 경찰이 되어 출동벨에 맞춰 원 곳곳으로 출동하고, 과학수사·감옥 퀴즈·교통안전 역할놀이도 하는 놀이 장면을 가장 생생하게 보여준다. 공간과 운영은 짧게 정리한다",
+      titles: ["어린이집 경찰놀이｜출동벨이 울리면 출동! 지문 찾기·횡단보도까지, 유치원 경찰놀이", "어린이집 경찰놀이 뭐 하고 놀까｜출동·과학수사·교통안전 역할놀이, 유치원 경찰놀이"],
+      sections: [
+        { key: "intro", photo: { alt: "어린이집 경찰놀이 출동센터에서 경찰복을 입고 대기하는 아이들", caption: "경찰서 배경막 앞 출동센터 (대표사진)" } },
+        { key: "dispatch", photo: { alt: "유치원 경찰놀이 경광봉과 무전기를 들고 출동을 준비하는 아이들", caption: "출동벨 번호를 기다리는 경찰 아이들" } },
+        { key: "school", photo: { alt: "어린이집 경찰놀이 과학수사 지문 찾기 놀이", caption: "범인과 같은 지문 찾기" } },
+        { key: "jail", photo: { alt: "유치원 경찰놀이 어린이 감옥 퀴즈 놀이", caption: "퀴즈를 맞히면 나가는 어린이 감옥" } },
+        { key: "traffic", photo: { alt: "어린이집 교통안전 놀이 횡단보도 역할놀이", caption: "신호등·자동차·보행자 역할로 건너는 횡단보도" } },
+        { key: "setup" },
+        { key: "closing" },
+      ] },
+    { id: "space", focus: "원의 강당이나 교실이 경찰서와 교통안전 거리로 어떻게 바뀌는지, 공간 사정에 따라 어떻게 설치하는지, 출동벨로 원 전체가 놀이 무대가 되는 모습을 가장 자세히 보여준다",
+      titles: ["어린이집 경찰놀이｜강당이나 교실에 차리는 경찰서와 횡단보도, 유치원 경찰놀이", "어린이집 경찰놀이 공간 구성｜원 안이 경찰서와 도로가 되는 유치원 경찰놀이"],
+      sections: [
+        { key: "intro", photo: { alt: "어린이집 경찰놀이 경찰서 배경막과 출동센터를 설치한 공간", caption: "원 안에 차린 경찰서 (대표사진)" } },
+        { key: "space", photo: { alt: "유치원 경찰놀이 교실에 설치한 어린이 경찰학교 배경막", caption: "교실에 설치한 어린이 경찰학교" } },
+        { key: "station", photo: { alt: "어린이집 경찰놀이 어린이 감옥 놀이 공간", caption: "무섭지 않은 어린이 감옥 놀이 공간" } },
+        { key: "traffic", photo: { alt: "유치원 교통안전 놀이 거리 배경막과 횡단보도 바닥", caption: "거리 배경막과 도로 바닥으로 꾸민 교통안전 공간" } },
+        { key: "wholeplace", photo: { alt: "어린이집 경찰놀이 출동벨이 울려 출동하는 경찰 아이들", caption: "번호가 뜬 장소로 출동" } },
+        { key: "operation" },
+        { key: "closing" },
+      ] },
+    { id: "day", focus: "원에서 경찰놀이 행사를 어떻게 준비하고, 당일 선생님과 원 전체가 출동벨로 어떻게 함께 참여하며, 반별로 어떻게 돌아가는지를 가장 자세히 보여준다",
+      titles: ["어린이집 경찰놀이 행사｜출동벨 10개로 원 전체가 함께하는 유치원 경찰놀이", "어린이집 경찰놀이｜반별로 돌아가며 출동하는 하루, 유치원 경찰놀이 운영"],
+      sections: [
+        { key: "intro", photo: { alt: "어린이집 경찰놀이 출동 대기 중인 경찰 아이들", caption: "출동벨을 기다리는 경찰 아이들 (대표사진)" } },
+        { key: "prepare", photo: { alt: "유치원 경찰놀이 출동일지와 경광봉", caption: "번호별 장소를 적어 두는 출동일지" } },
+        { key: "bell", photo: { alt: "어린이집 경찰놀이 출동센터 수신기 번호와 경광등", caption: "벨이 울리면 수신기에 번호가 떠요" } },
+        { key: "classturn", photo: { alt: "유치원 교통안전 놀이 교통경찰과 신호등 역할", caption: "교통경찰과 신호등 역할로 하는 교통안전 놀이" } },
+        { key: "space" },
+        { key: "closing" },
+      ] },
+  ],
+  cta: ["📞 예약·상담 문의: 010-9020-4545", "출장 지역: 서울·인천·경기", "홈페이지: banjang.co.kr"],
+  hashtags: ["#어린이집경찰놀이", "#유치원경찰놀이", "#경찰놀이체험", "#교통안전놀이", "#과학수사놀이", "#출동놀이", "#경찰역할놀이", "#어린이집행사", "#유치원행사", "#원방문체험", "#찾아가는체험"],
+};
+
+// 명백한 허위 FACT·무근거 보장만 문장 단위로 지운다(경찰 경로 한정). 지운 문장은 fixes 에 남겨 사람이 원고를 확인한다.
+const POLICE_FALSE_FACT = [
+  /식당용/,
+  /(순찰차|경찰차)[^.!?]{0,12}(소품|모형|타고|타\s|탑승|운전|핸들)/,
+  /(씽씽카|싱싱카|킥보드)[^.!?]{0,10}(소품|타고|타며|탑승|준비)/,
+  /유괴/,
+  /오후\s*2\s*시|2\s*시\s*(에\s*)?(철수|회수)/,
+  /코너(마다|당|별)[^.!?]{0,8}\d+\s*명/,
+  /(대기|기다림)\s*없이/,
+  /개입\s*없이/,
+  /2\s*차선/,
+  /회전식\s*신호등/,
+  /노란\s*조끼/,
+  /반장(은|이|도)?[^.!?]{0,20}(당일[^.!?]{0,10}(진행|함께|지도)|상주)/,
+  /(한\s*반|반별|각\s*반|한\s*반\s*아이들)[^.!?]{0,25}하루\s*종일/,
+  /(최대|한\s*번에)\s*\d+\s*명/,
+  /무전기[^.!?\d]{0,6}\d+\s*(대|개)/,
+];
+
+// 자동검사 — FACT 검사와 상품성 검사를 나눠 문장 단위로 수집해 사람이 판정한다(차단하지 않음).
+function auditPolicePilot(text, angleId, own = {}) {
+  const sentences = text.split(/(?<=[.!?。])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+  const pick = (re) => sentences.filter(s => re.test(s));
+  const QTY = [
+    [/출동\s*벨[^.!?\d]{0,8}(\d+)\s*개/, 10], [/경찰복[^.!?\d]{0,8}(\d+)\s*벌/, 30], [/자동차[^.!?\d]{0,10}(\d+)\s*(명|벌)/, 8],
+    [/교통\s*경찰[^.!?\d]{0,4}(\d+)\s*명/, 2], [/신호등[^.!?\d]{0,4}(\d+)\s*명/, 2], [/배경막[^.!?\d]{0,6}(\d+)\s*(m|미터)/, 8], [/(\d+)\s*(m|미터)[^.!?]{0,8}배경막/, 8],
+  ];
+  const wrongQty = [];
+  for (const s of sentences) for (const [re, ok] of QTY) {
+    const m = s.match(re); if (!m) continue;
+    const n = Number([...m].slice(1).find(x => /^\d+$/.test(x || "")));
+    if (n && n !== ok) wrongQty.push(s);
+  }
+  const numbers = (text.match(/\d+(\.\d+)?(\s*~\s*\d+)?\s*(cm|센티|m|미터|mm|명|분|초|시간|개|대|동|곳|반|평|원|년|세|kg|월|일|종|마리|교실|벌)/g) || []);
+  const ALLOWED_NUM = /^(10\s*개|30\s*벌|8\s*(벌|명|m|미터)|2\s*(명|가지|개)|30\s*분|1\s*시간|30\s*분\s*~\s*1\s*시간)$/;
+  const big = (s) => new Set(s.replace(/\s/g, "").match(/.{2}/g) || []);
+  const sim = (a, b) => { const A = big(a), B = big(b); let n = 0; A.forEach(x => B.has(x) && n++); return n / Math.max(1, Math.min(A.size, B.size)); };
+  const longS = sentences.filter(s => s.length >= 25);
+  const repeats = [];
+  for (let i = 0; i < longS.length; i++) for (let j = i + 1; j < longS.length; j++) if (sim(longS[i], longS[j]) >= 0.7) repeats.push([longS[i], longS[j]]);
+  const paras = text.split(/\n\n+/).filter(p => !/^\[이미지:/.test(p.trim()));
+  const early = paras.slice(0, 3).join(" ");
+  const CORE = {
+    play: [["출동벨·번호", /번호/], ["출동", /출동/], ["과학수사(지문)", /지문/], ["감옥 퀴즈", /퀴즈/], ["교통 역할", /(신호등|보행자)/]],
+    space: [["강당", /강당/], ["교실", /교실/], ["배경막", /배경막/], ["교구장 가림", /교구장/], ["교통 공간", /(도로|횡단보도)/]],
+    day: [["출동벨 10개", /10\s*개/], ["원 전체 참여", /(원\s*전체|원\s*곳곳)/], ["선생님 벨", /선생님[^.!?]{0,30}(벨|누르)/], ["반별 시간", /(30\s*분|1\s*시간)/], ["출동일지", /출동일지/]],
+  };
+  return {
+    facts: {
+      falseFactRemaining: sentences.filter(s => POLICE_FALSE_FACT.some(re => re.test(s))),
+      wrongQty,
+      numbersOutsideFact: numbers.filter(n => !ALLOWED_NUM.test(n.replace(/\s+/g, " ").trim())),
+      roleSwapPoliceSuspect: pick(/범인/).filter(s => /(역할을?\s*(서로\s*)?바꿔|역할을?\s*바꾸|교대)/.test(s)),
+      punitiveContext: pick(/(벌을|벌로|혼나|혼내|처벌|잡혀가|끌려가|무서운\s*감옥)/).filter(s => !/(아니라|아니에요|아닙니다|않|없)/.test(s)),
+      sirenDetail: pick(/사이렌[^.!?]{0,15}(크게|요란|우렁|음량|자동으로|소리가\s*(크|나))/),
+      // FIX-B — 교육효과 「확정」만 수집(교육 목적·가능성 표현은 제외) · 관찰한 반응 창작만 수집(놀이 홍보 감성어는 제외)
+      educationClaims: pick(/(인식(이|을)\s*(높|키|향상)|문제\s*해결\s*(능력|력)|능력(을|이)\s*(키|길러|길러|향상|높)|(집중력|관찰력|자신감|사회성|창의력|자기\s*조절력)[^.!?]{0,8}(향상|높아|높여|높입|길러|길러|키워|키웁|생기|생깁|좋아)|향상(됩니다|시킵니다|돼요|시켜|됐)|행동이\s*(바뀌|바뀝|달라|변하|변합)|습관이\s*(생기|생깁|길러|잡히|잡힙|몸에\s*배)|효과(가|를)\s*(있|봅|높))/),
+      unsureClaims: pick(/(보장|안전합니다|걱정\s*없|확실히|1위|최고의|가장\s*인기|인기\s*(만점|최고|폭발)|많은\s*원에서|모두\s*좋아)/),
+      reactionClaims: pick(/(무서워|울음|울어|환호|소리\s*(치|쳐|를\s*지르)|비명)/),
+      observedReaction: pick(/((얼굴|표정|눈빛|눈)[^.!?]{0,15}(가득|빛나|빛납|환해|환합|밝아|밝습)|자신감(이|을|에)\s*(가득|넘치|얻|생기|생깁)|만족(했|합니다|해했|스러워)|모든\s*아이(가|들이)[^.!?]{0,12}(만족|좋아했|즐거워했)|미소(를|가)\s*(짓|지었|띠|번지)|성취감(을|이)\s*(느끼|느낍|얻|가득))/),
+      flowDistortion: pick(/(출동센터로\s*(모여|모이|모입|달려가|돌아와)|(벨|사이렌)[^.!?]{0,15}(울리면|울리자)[^.!?]{0,15}출동센터로)/),
+      // FACT-FLOW-PATCH-01 — 경찰·감옥 역할 교대 혼동 / 출동 장소에서 과학수사로 연결
+      roleSwapJail: pick(/역할을?\s*(서로\s*)?(번갈아|바꿔|바꾸|교대)/).filter(s => /(감옥|범인|경찰과)/.test(s) && !/(신호등|자동차|보행자|교통)/.test(s)),
+      // FINAL-FACT-CLEANUP — 수집만
+      alwaysTogether: pick(/항상\s*(함께|같이)/),
+      spaceSizeInference: pick(/(넓은\s*강당(이|에서|이라면|을)|강당이\s*넓|자신의\s*반에서|자기\s*반에서)/),
+      teacherAsRuleBreaker: pick(/선생님(이|께서)\s*생활\s*약속을\s*(지키지\s*않|어기)/),
+      prepOnly: pick(/(만\s*(하면|준비하면|정하면|적으면)\s*(됩니다|돼요|되어)|준비만\s*하면)/),
+      dispatchToForensics: pick(/출동(해|하여|해서|한\s*(뒤|후|다음|장소에서)|하고)[^.!?]{0,25}(지문|발자국|족적|과학수사)/),
+      // FIX-A 수집 보강 — 삭제하지 않고 사람이 판정한다
+      allDayReview: pick(/하루\s*종일/).map(s => (/(원\s*곳곳|원\s*전체|분위기)/.test(s) ? "[분위기] " : "[확인필요] ") + s),
+      setupDefinite: pick(/전날[^.!?]{0,25}(설치합니다|설치해\s*드립니다|설치해\s*드리|이루어지|완료|마칩니다|마쳐)/).filter(s => !/(수\s*있|가능)/.test(s)),
+      inventedOrder: pick(/((순차적|차례대로|순서대로)\s*(으로\s*)?(울|출동)|(끝나면|마친\s*(뒤|후)|마치고)[^.!?]{0,15}(교통|횡단|신호)|(넓(다면|으면)|좁(다면|으면)|협소))/).filter(s => !/순번/.test(s)), // 순번 출동 지도 = 승인 FACT
+      fingerprintMix: pick(/(지문\s*사진[^.!?]{0,15}발자국|발자국\s*(모형|모델|사진))/),
+      safetyOverclaim: pick(/(안전하게\s*(놀|즐길|즐기|참여)|완벽|모든\s*준비|아무것도\s*준비)/),
+      clicheClosing: pick(/(언제든지|편하게\s*연락|자세히\s*안내해\s*드리겠|특별한\s*(하루|경험|추억)(을|를)?\s*(선사|만들|드리))/),
+      speakerAsKindergarten: pick(/(우리|저희)\s*(원|유치원|어린이집)(에서|에|의|은|는|이|을|으로)?(\s|$)/),
+      banjangRunsDay: pick(/반장(이|은|도)?[^.]{0,20}(진행합니다|진행해|진행하는|이끌|지도)/),
+      quotes: text.match(/["“'‘][^"“”'‘’\n]{1,40}["”'’]/g) || [],
+      leaks: pick(/(key=|섹션|재료:|\[섹션|JSON|heading|body|프롬프트|지시문|관점:|운영\s*안내|안내에\s*따라|붙는\s*문단|사실\s*문단)/),
+      foreignIndustry: pick(/(성형|피부과|시술|임플란트|한의원|병영|블랙라이트|시장놀이|교실바운스|겨울이야기|캠핑)/),
+      selfClaims: pick(/(전문가|전문\s*업체)/),
+    },
+    // [PLAY-FACT-QUALITY-GATE-01] 놀이 장면 FACT 오류 유형(문맥 기준 수집만 · 삭제 없음 · 발행 전 사람 확인)
+    playFact: (() => {
+      const g = String(own.gptText || text);
+      const gs = g.split(/(?<=[.!?。])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+      const p = (re) => gs.filter(s => re.test(s));
+      return {
+        bellShowsNumber: p(/(출동\s*)?벨(에서|에|의)\s*[^.!?]{0,8}번호(가|를|는)?\s*(뜨|뜹|표시|나타)|(출동\s*)?벨에\s*(뜨는|뜬|표시되는|나타나는)\s*번호/),
+        bellAtCenter: p(/(출동\s*벨이?\s*(설치된|놓인|달린|있는)\s*출동\s*센터|출동\s*센터(에|에는)[^.!?]{0,12}출동\s*벨(을|이)?\s*(설치|두|놓|배치|있))/),
+        topPreference: p(/(가장|제일)\s*(흥미로워|흥미|좋아|재미있어|즐거워|인기)/),
+        unapprovedActivity: p(/((협동|협력)(하며|해서|하여|해)?[^.!?]{0,15}(문제|해결|사건)|서로의?\s*안전을\s*(책임|지켜|지키)|서로\s*(도우며|돕고)|친구(들)?(을|를)\s*(돕|도와)|무전을\s*받고)/),
+        // 출동과 다른 놀이를 순서·동시로 엮은 서술(FACT-FLOW 재발 감시)
+        flowLink: p(/(출동\s*(후|뒤|다음)(에는|에)?[^.!?]{0,25}(경찰학교|지문|발자국|과학수사|교통)|동시에[^.!?]{0,25}(경찰학교|지문|발자국|과학수사|교통)|다른\s*친구들은\s*교통)/),
+        bellPlaceList: p(/(복도|화장실|놀이터|현관|운동장|놀이\s*공간|강당|식당)[^.!?]{0,20}(출동\s*)?벨|(출동\s*)?벨[^.!?]{0,25}(복도|화장실|놀이터|현관|운동장|놀이\s*공간|식당)/).filter(s => !/(배경막|설치\s*장소|강당\s*한\s*곳|강당이나\s*교실|감옥\s*놀이\s*공간)/.test(s)),
+        // 표현 자체는 허용 — 능력 향상·효과를 「단정」하는지 사람이 판정
+        abilityReview: p(/(집중력|관찰력|사고력|창의력|추리력|문제\s*해결\s*(능력|력))[^.!?]{0,10}(발휘|키우|키워|키웁|길러|향상|기르|높)/),
+      };
+    })(),
+    // [OPERATION-FACT-OWNERSHIP-01] GPT 본문이 운영 FACT 를 다시 쓴 문장 / 서버 정본 문장과 겹치는 문장(수집만)
+    ownership: (() => {
+      const g = String(own.gptText || "");
+      const gs = g.split(/(?<=[.!?。])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+      const OPS = /(30\s*분|1\s*시간|전날|회수|일부\s*구성|대여|교구장|출동일지|안내문|강당\s*한\s*곳|교실(에|로)\s*나누|(먼저)[^.!?]{0,20}(알려|안내)[^.!?]{0,30}(벨|누르)|만\s*(하면|정하면|정해\s*주시면|준비하면)\s*(됩니다|돼요))/;
+      return {
+        opsInGpt: gs.filter(s => OPS.test(s)),
+        fixedDup: gs.filter(s => s.length >= 20 && (own.fixedUsed || []).some(f => sim(s, f) >= 0.6)),
+        fixedCount: (own.fixedUsed || []).length,
+      };
+    })(),
+    commercial: {
+      angle: angleId,
+      coreMissing: (CORE[angleId] || []).filter(([, re]) => !re.test(text)).map(([k]) => k),
+      answerInEarlyParas: /출동/.test(early) && /(지문|과학수사|감옥|퀴즈|교통|횡단보도|신호등)/.test(early),
+      hasKindergarten: /유치원/.test(text), hasDaycare: /어린이집/.test(text),
+      repeats,
+      charCount: text.length,
+    },
+  };
+}
+
+// ============================================================
+// [SCENE-FRAGMENT-PILOT-01] 장면 조각 구조
+//   사실의 주체 = 서버(POLICE_FIXED 운영·놀이 정의 정본) / 표현의 주체 = GPT(장면 조각 2~3문장 · 도입 · 소제목 · 맺음)
+//   연결의 주체 = 서버(관점별 레이아웃이 조각과 정본의 순서를 정한다). GPT 는 섹션 산문·앞뒤 연결을 쓰지 않는다.
+// ============================================================
+// 장면 조각 — basis 는 그 조각의 근거 FACT(이 안에서만 쓴다), ask 는 표현할 장면
+const POLICE_FRAGS = {
+  // [FINAL-PROP-BOUNDARY-01] 소품 명칭·존재는 서버(lead)가 소유 — GPT 는 기다리는 분위기만(FINAL-6 「호루라기」 창작 실측)
+  wait:        { lead: "경찰복과 경찰모자를 입은 아이들이 경광봉이나 무전기를 들고 출동센터에서 벨을 기다립니다.", basis: "출동센터에서 경찰 역할 아이들이 벨이 울리기를 기다린다 (옷과 소품은 앞 문장이 이미 썼다)", ask: "출동을 기다리는 설렘과 활기찬 출동센터 분위기 1~2문장 (옷·소품·물건 이름은 쓰지 않는다. 아이의 구체적 표정·반응을 사실처럼 단정하지 않는다)" },
+  // siren 조각은 운영 정본 bells(사이렌·수신기 번호)와 의미가 겹쳐 rush 로 교체(SCENE-FRAGMENT 1차 3편 실측)
+  // [SCENE-COMMERCIAL-POLISH-01] 핵심 조각(rush·detective·street·spaceShift)은 len 3~4문장 · 승인된 물품·배경막만으로 시각 요소를 구체화
+  rush:        { len: "3~4문장", basis: "경찰복과 경찰모자를 입은 경찰 아이들이 경광봉이나 무전기를 들고 출동센터에서 출동한다. 원 곳곳에 경찰 아이들이 오간다", ask: "경광봉을 쥐고 무전기를 챙겨 출동센터를 박차고 나가는 순간, 경찰복 차림의 아이들이 원 안을 가로지르는 모습처럼 눈앞에 그려지는 현장감 (사이렌·번호·벨이 무엇인지, 출동한 뒤 그 장소에서 하는 일은 쓰지 않는다)" },
+  wholeOne:    { basis: "한 반의 놀이지만 원 곳곳에서 벨을 자주 눌러 줘야 출동이 이어지는 원 전체 놀이다. 행사 날 원 곳곳에서 출동벨이 울리고 출동이 이어진다", ask: "원 곳곳에서 벨이 울리며 원 전체가 놀이 무대가 되는 활기 ('하루 종일'은 원 전체 분위기로만 쓴다)" },
+  detective:   { len: "3~4문장", basis: "어린이 경찰학교에는 범인의 지문 사진과 여러 개의 지문 모델, 발자국 자료가 놓여 있고, 무전기·총 모형·경광등 지시봉·수갑 같은 경찰 물품도 있다. 아이들은 물품을 손에 들고 살펴본다", ask: "지문 모델을 하나씩 손에 들고 지문 사진 옆에 대어 보며 들여다보는 탐정 같은 장면, 수갑이나 무전기를 만져 보는 손길 (어떻게 찾아내는지·맞혔는지는 쓰지 않는다)" },
+  jailMood:    { basis: "어린이 감옥 놀이 공간은 경찰서 공간 한쪽에 차려진다", ask: "경찰서 공간 한쪽에 감옥 놀이 공간이 자리한 모습과 그 앞의 가벼운 놀이 분위기 1~2문장 (앞 문장이 쓴 '무섭지 않다', '퀴즈', '나온다'는 말은 다시 쓰지 않는다)" },
+  street:      { len: "3~4문장", basis: "교통안전 공간은 8m 거리 배경막과 도로가 그려진 바닥으로 꾸민다. 배경막에는 공놀이·씽씽카·줄서기처럼 도로에서 일어날 수 있는 상황이 그림으로 그려져 있다. 주의·규제·지시 표지판 그림자료가 있고, 자동차 역할 아이들은 자동차 의상을 입으며, 신호등 역할 아이는 빨강·파랑 신호 표지판을 든다", ask: "길게 펼쳐진 거리 배경막과 도로 그림 바닥, 표지판 그림자료, 자동차 의상과 신호 표지판이 어우러진 교통안전 공간의 생생한 모습 (그림 속 상황을 아이들이 따라 한다고 쓰지 않고, 신호를 바꾸는 방식은 쓰지 않는다)" },
+  trafficPlay: { basis: "한 아이가 두 가지 이상의 역할을 해 볼 수 있도록 역할을 바꿔 가며 한다", ask: "역할을 바꿔 가며 횡단보도 놀이를 이어 가는 활기 (신호를 바꾸는 방식은 쓰지 않는다)" },
+  spaceShift:  { len: "3~4문장", basis: "원의 강당이나 교실에 경찰서 배경막을 두르고 수신기가 있는 출동센터를 차리며, 교통안전 공간에는 8m 거리 배경막과 도로 그림 바닥을 깐다", ask: "평소 수업하던 강당·교실이 배경막 하나로 경찰서와 거리로 바뀌는 순간 — 출동센터의 수신기, 길게 이어진 거리 배경막과 도로 바닥이 눈에 들어오는 모습 (공간 크기·설치 방법 선택·인원은 쓰지 않는다)" },
+  stationLook: { basis: "경찰서 공간에는 경찰서 배경막, 수신기가 있는 출동센터, 어린이 경찰학교, 어린이 감옥 놀이 공간이 있다", ask: "출동센터·어린이 경찰학교·감옥 놀이 공간이 자리 잡은 경찰서 공간의 모습 (각 놀이를 어떻게 하는지는 쓰지 않는다)" },
+  prepMood:    { basis: "원은 어느 반이 언제 경찰이 될지, 출동벨을 어디에 둘지 정한다", ask: "행사를 앞두고 선생님들이 반 순서와 벨 둘 곳을 이야기 나누는 설레는 분위기 (예약·안내문·설치 일정은 쓰지 않는다)" },
+  teacherJoin: { basis: "원 곳곳의 선생님들이 벨을 자주 눌러 줘야 출동이 이어진다. 출동할 때 아이들이 한꺼번에 뛰어가므로 순번을 정해 일정 인원씩 출동하도록 지도하면 좋다", ask: "선생님들이 곳곳에서 함께 놀이를 살리는 모습과 순번 출동 지도 (벨을 누르는 조건·순서는 쓰지 않는다)" },
+  dayPlays:    { basis: "경찰이 된 반 아이들은 어린이 경찰학교와 교통안전 공간에서도 논다", ask: "경찰 반 아이들이 경찰학교와 교통안전 공간에서도 놀 수 있다는 짧은 소개 1~2문장 (놀이 방식·순서는 쓰지 않는다)" },
+  nextClass:   { basis: "반별로 돌아가며 놀이하고, 다음 반 아이들이 경찰복을 입고 경찰이 된다", ask: "한 반의 놀이가 끝나고 다음 반이 경찰이 되어 놀이가 이어지는 흐름" },
+};
+// 관점별 레이아웃 — paras 는 문단 목록, 항목은 f:조각 / x:정본 / c:맺음. 문단 안 항목은 이어 붙인다.
+const POLICE_FRAG_LAYOUT = {
+  play: [
+    { key: "intro" },
+    // POLISH: 정본 4문장 덩어리를 장면 사이로 분산(정본 순서 teacherBell → bells → dispatchDef 유지 · bells 와 dispatchDef 는 「그 장소」 지시 때문에 붙여 둔다)
+    { key: "dispatch", head: "출동벨이 울리면", paras: [["f:wait"], ["x:teacherBell"], ["f:wholeOne"], ["x:bells", "x:dispatchDef"], ["f:rush"]] },
+    { key: "school", head: "어린이 경찰학교의 과학수사", paras: [["x:forensicsDef"], ["f:detective"]] },
+    { key: "jail", head: "무섭지 않은 어린이 감옥", paras: [["x:jailDef", "f:jailMood"]] },
+    { key: "traffic", head: "교통안전 역할놀이", paras: [["f:street"], ["x:trafficDef"], ["f:trafficPlay"]] },
+    { key: "setup", head: "공간과 운영 안내", paras: [["x:space", "x:setup", "x:classTime"]] },
+    { key: "closing", head: "경찰놀이 상담 안내", paras: [["x:prep", "x:partial"], ["c:closing"]] },
+  ],
+  space: [
+    { key: "intro" },
+    { key: "space", head: "강당과 교실이 경찰서로", paras: [["x:space"], ["f:spaceShift"], ["x:cover"]] },
+    { key: "station", head: "경찰서 공간", paras: [["f:stationLook"], ["x:forensicsDef", "x:jailDef"]] },
+    { key: "traffic", head: "교통안전 거리", paras: [["f:street"], ["x:trafficDef"]] },
+    { key: "wholeplace", head: "원 전체가 놀이 무대", paras: [["x:bells", "x:dispatchDef", "x:log"], ["f:wholeOne"]] },
+    { key: "operation", head: "설치와 운영 안내", paras: [["x:setup", "x:classTime", "x:mail"]] },
+    { key: "closing", head: "경찰놀이 상담 안내", paras: [["x:prep", "x:partial"], ["c:closing"]] },
+  ],
+  day: [
+    { key: "intro" },
+    { key: "prepare", head: "행사 준비", paras: [["f:prepMood"], ["x:mail", "x:log", "x:setup"]] },
+    { key: "bell", head: "출동벨로 함께하는 원", paras: [["x:teacherBell", "x:bells", "x:dispatchDef"], ["f:teacherJoin"], ["f:wholeOne"]] },
+    { key: "classturn", head: "한 반의 경찰놀이 시간", paras: [["x:classTime", "f:wait"], ["f:dayPlays", "x:forensicsDef"], ["x:trafficDef", "f:nextClass"]] },
+    { key: "space", head: "원 공간에 맞추기", paras: [["x:space", "x:cover"]] },
+    { key: "closing", head: "경찰놀이 상담 안내", paras: [["x:prep", "x:partial"], ["c:closing"]] },
+  ],
+};
+
+// [INTRO-FACT-OWNERSHIP-01] 도입부 — SQ 핵심 답 1문장은 서버 소유(관점별 · 본문 정본과 같은 말 반복 없이 최소),
+//   GPT 는 독자의 고민을 짚는 첫머리(hook)와 본문으로 넘어가는 말(bridge)만 쓴다. 벨 위치·설치 주체·놀이 방식은 도입에서 쓰지 않는다.
+const POLICE_INTRO = {
+  play:  { answer: "반장의 경찰놀이·교통안전은 원 안에서 아이들이 경찰이 되어 출동하고, 어린이 경찰학교·어린이 감옥·교통안전 놀이까지 경험하는 프로그램입니다.",
+           hook: "원 안에서 하는 경찰놀이에서 아이들이 무엇을 하며 노는지 궁금한 원장님·선생님께 말을 거는 1~2문장" },
+  space: { answer: "반장의 경찰놀이·교통안전은 원의 강당이나 교실을 경찰서와 교통안전 거리로 꾸며, 아이들이 그 안에서 경찰이 되어 노는 프로그램입니다.",
+           hook: "우리 원의 강당이나 교실에서도 경찰놀이를 열 수 있을지 고민하는 원장님·선생님께 말을 거는 1~2문장" },
+  day:   { answer: "반장의 경찰놀이·교통안전은 반별로 돌아가며 경찰 역할을 맡고, 원이 곳곳에 둔 출동벨로 원 전체가 함께 참여하는 행사입니다.",
+           hook: "한 반의 놀이를 원 전체가 함께하는 행사로 만들 수 있을지 고민하는 원장님·선생님께 말을 거는 1~2문장" },
+};
+
+function buildPoliceFragPrompt(title, angle, layout) {
+  const intro = POLICE_INTRO[angle.id];
+  const fragKeys = [...new Set(layout.flatMap(s => (s.paras || []).flat()).filter(x => x.startsWith("f:")).map(x => x.slice(2)))];
+  const headKeys = layout.filter(s => s.key !== "intro").map(s => `${s.key}(${s.head})`);
+  const system = [
+    "너는 유치원·어린이집 원방문 체험 업체 '반장-노리야놀자'의 네이버 블로그 글을 쓰는 작가다. 화자는 업체 반장이고, 독자는 원 안에서 경찰놀이 행사를 열지 고민하는 유치원·어린이집 원장님과 행사 담당 선생님이다. 반장은 '반장' 또는 '저희 반장'으로 부르고, '저희 원', '우리 원'이라고 쓰지 않는다. 상품명은 '경찰놀이·교통안전'이고, 행사 후기가 아니라 프로그램 소개 글이다.",
+    "말투는 업체가 소개하는 따뜻하고 자신감 있는 존댓말(~합니다, ~해요)이다. 마크다운 기호, 전화번호·출장지역·가격, 아이 이름, 따옴표 대사는 쓰지 않는다.",
+    "[역할] 행사 운영 사실과 놀이 방식(출동·과학수사·감옥·교통안전이 무엇이고 어떻게 하는지), 그리고 이 프로그램이 무엇인지 답하는 문장은 반장이 정한 문장으로 서버가 붙인다. 너는 ① 도입 첫머리(introHook) ② 본문으로 넘어가는 말(introBridge) ③ 소제목 ④ 장면 조각 ⑤ 맺음 2~3문장만 쓴다. 글의 순서와 연결은 서버가 정한다.",
+    "[도입] introHook 은 독자의 고민·기대를 짚는 말이고, 바로 뒤에 서버의 답 문장이 붙는다. introBridge 는 본문의 장면으로 넘어가는 1~2문장이다. 도입에서는 출동벨의 위치·개수·설치 주체, 출동센터·수신기, 놀이 방식과 순서를 쓰지 않는다. 행사의 설렘이나 분위기는 써도 된다.",
+    "[장면 조각] 조각마다 주어진 장면 하나만, 적힌 문장 수(기본 2~3문장)로 생생하게 그린다. 근거에 적힌 사실 안에서만 쓴다. 다른 조각이나 앞뒤 일과 잇는 말('그 후', '이어서', '출동한 뒤', '그곳에서', '그러면')을 쓰지 않는다. 새 행동·순서·장소·주체·물건·숫자를 만들지 않고, 놀이 방식을 설명하지 않는다. 벨은 원이 정한 곳에 있고, 번호는 출동센터 수신기에 뜬다.",
+    "아이의 표정·감정·만족·능력 향상을 관찰한 사실처럼 단정하지 않는다('얼굴에 자신감이 가득', '눈빛이 반짝', '집중력이 길러진다' 등). '신나는', '활기찬', '탐정 같은', '설레는'처럼 장면을 꾸미는 표현은 적극적으로 써도 된다. '가장 좋아한다'처럼 선호를 단정하지 않는다.",
+    "'하루 종일'은 원 곳곳에서 출동이 이어지는 원 전체 분위기에만 쓴다. 행사 운영 사실(시간·설치·배치·준비·대여)은 쓰지 않는다. 반장이 벨을 설치한다고 쓰지 않는다. 효과·안전·만족 보장, 인기·최상급·비교, '전문가'라는 표현은 쓰지 않는다.",
+    "출력은 JSON 하나: {\"introHook\":\"1~2문장\",\"introBridge\":\"1~2문장\",\"headings\":{\"key\":\"소제목\"},\"frags\":{\"조각key\":\"2~3문장\"},\"closing\":\"2~3문장\"}. headings 와 frags 는 요청한 key 를 모두 채운다. 소제목은 짧고 자연스럽게 쓴다.",
+  ].join("\n");
+  const user = [
+    `제목: ${title}`,
+    `이번 글의 관점: ${angle.focus}`,
+    "",
+    `[introHook] ${intro.hook} (뒤에 서버 답 문장이 붙으므로 답을 미리 하지 않는다)`,
+    "[introBridge] 본문의 장면으로 자연스럽게 넘어가는 1~2문장 (사실·운영·놀이 방식은 쓰지 않는다)",
+    "",
+    `[소제목 key] ${headKeys.join(", ")} (괄호는 기본 주제 — 자연스럽게 다듬어 쓴다)`,
+    "",
+    "[장면 조각]",
+    ...fragKeys.map(k => `- ${k} (${POLICE_FRAGS[k].len || "2~3문장"}): 장면 = ${POLICE_FRAGS[k].ask} / 근거 = ${POLICE_FRAGS[k].basis}`),
+    "(3~4문장 조각은 근거에 있는 물품·배경막·모습을 구체적으로 그려 채운다. 감탄사, 상투적 홍보 문장, 같은 뜻의 반복으로 늘리지 않는다)",
+    "",
+    "[맺음 2~3문장 재료]",
+    `- ${POLICE_FACTS.use[0]}`,
+    "- 앞의 놀이 장면을 한 번 떠올리게 하고, 상담 때 행사 날짜·반 수·설치할 강당이나 교실·출동벨을 둘 장소를 알려 달라고 안내하며 끝낸다. 반장이 해 주는 일이나 원이 준비할 일은 쓰지 않는다. 상투적인 맺음말('언제든지 연락 주세요', '특별한 하루를 선사')은 쓰지 않는다.",
+  ].join("\n");
+  return { system, user, fragKeys };
+}
+
+async function generatePolicePilot({ region }) {
+  const r = (region || "").trim();
+  const angle = POLICE_PILOT.angles[Math.floor(Math.random() * POLICE_PILOT.angles.length)];
+  const baseTitle = angle.titles[Math.floor(Math.random() * angle.titles.length)];
+  const title = r ? `${r} ${baseTitle}` : baseTitle;
+  const layout = POLICE_FRAG_LAYOUT[angle.id];
+  const { system, user, fragKeys } = buildPoliceFragPrompt(title, angle, layout);
+
+  let parsed = null, lastErr = null;
+  for (let attempt = 0; attempt < 2 && !parsed; attempt++) {
+    try {
+      const resp = await openai.chat.completions.create({
+        model: "gpt-4o",
+        temperature: 0.8,
+        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      });
+      const j = JSON.parse(resp.choices[0].message.content || "{}");
+      const ok = String(j.introHook || "").trim() && String(j.introBridge || "").trim() && String(j.closing || "").trim() && j.frags && fragKeys.every(k => String(j.frags[k] || "").trim());
+      if (ok) parsed = j; else lastErr = new Error("조각 누락");
+    } catch (e) { lastErr = e; }
+  }
+  if (!parsed) throw lastErr || new Error("경찰놀이 Pilot 생성 실패");
+
+  const fixes = [];
+  const OUR_WON = /(우리|저희)\s*원(?=\s|에|의|을|이|은|는|으로|$)/g;
+  const clean = (t, tag) => String(t || "").replace(/\*\*/g, "").trim().replace(OUR_WON, "원")
+    .replace(/반장-노리야놀자에서는/g, "반장-노리야놀자는").replace(/반장에서는/g, "반장은").replace(/반장에서(\s*)(준비|제공|가져|챙겨|설치|안내)/g, "반장이$1$2")
+    .split("\n").map(line => line.split(/(?<=[.!?])\s+/).filter(x => {
+      const drop = POLICE_FALSE_FACT.some(re => re.test(x));
+      if (drop) fixes.push(`[${tag}] ${x}`);
+      return !drop;
+    }).join(" ")).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const gptParts = [], fixedUsed = [];
+  // [INTRO-FACT-OWNERSHIP-01] 첫 문단 = GPT 첫머리 + 서버 SQ 답 / 둘째 문단 = GPT 넘어가는 말
+  const introHook = clean(parsed.introHook, "introHook"), introBridge = clean(parsed.introBridge, "introBridge");
+  gptParts.push(introHook, introBridge);
+  const introAnswer = POLICE_INTRO[angle.id].answer; fixedUsed.push(introAnswer);
+  const intro = `${introHook} ${introAnswer}${introBridge ? `\n\n${introBridge}` : ""}`.trim();
+  const closing = clean(parsed.closing, "closing"); gptParts.push(closing);
+  const frag = {}; for (const k of fragKeys) { frag[k] = clean(parsed.frags[k], k); gptParts.push(frag[k]); }
+  const item = (x) => {
+    const [t, k] = [x.slice(0, 1), x.slice(2)];
+    if (t === "x") { fixedUsed.push(POLICE_FIXED[k]); return POLICE_FIXED[k]; }
+    if (t === "f") { const ld = POLICE_FRAGS[k].lead; if (ld) fixedUsed.push(ld); return ld ? `${ld} ${frag[k]}` : frag[k]; }
+    return closing;
+  };
+  const photoOf = (key) => (angle.sections.find(s => s.key === key) || {}).photo;
+  const parts = [];
+  for (const sec of layout) {
+    const photo = photoOf(sec.key);
+    const ph = photo ? `[이미지: ${photo.alt} | ${photo.caption}]\n\n` : "";
+    if (sec.key === "intro") { parts.push(`${ph}${intro}`); continue; }
+    const head = (clean((parsed.headings || {})[sec.key], `head:${sec.key}`) || sec.head).replace(/\n/g, " ");
+    const body = sec.paras.map(p => p.map(item).filter(Boolean).join(" ")).filter(Boolean).join("\n\n");
+    parts.push(`${head}\n\n${ph}${body}`);
+  }
+  parts.push(POLICE_PILOT.cta.join("\n"));
+  const tags = r ? [`#${r.replace(/\s/g, "")}어린이집경찰놀이`].concat(POLICE_PILOT.hashtags.filter(h => h !== "#찾아가는체험")).slice(0, 12) : POLICE_PILOT.hashtags.slice(0, 12);
+  const body = parts.join("\n\n");
+  const text = `# ${title}\n\n${body}\n\n${tags.join(" ")}`.replace(/\n{3,}/g, "\n\n").trim();
+
+  const images = layout.map(s => photoOf(s.key)).filter(Boolean).map(p => ({ alt: p.alt, caption: p.caption }));
+  const charCount = calcCharCount(text);
+  return {
+    success: true,
+    title,
+    text,
+    textMarkdown: text,
+    hashtags: tags,
+    images,
+    imageMeta: images,
+    charCount,
+    mode: "commercial",
+    pilot: "KINDERGARTEN-POLICE-01",
+    pilotAngle: angle.id,
+    pilotStructure: "scene-fragment",
+    pilotQC: { ...auditPolicePilot(body, angle.id, { gptText: gptParts.join("\n\n"), fixedUsed }), fixes },
+    validation: { passed: charCount >= 1500, charCount },
+  };
+}
+
 function addPhotoPoint(text) {
   return text + `\n\n사진은 아이들이 활동에 몰입하는 순간을 중심으로 촬영하면 좋다.\n손을 사용하는 장면, 표정이 살아있는 순간, 친구와 상호작용하는 장면이 가장 잘 나온다.`;
 }
@@ -4180,6 +4564,16 @@ export default async function handleKindergarten(req, res) {
     } catch (e) {
       console.error("[kindergarten] 캠핑놀이 Pilot 생성 실패:", e?.message);
       return res.status(500).json({ error: "캠핑놀이 원고 생성 중 오류가 발생했습니다." });
+    }
+  }
+
+  // [KINDERGARTEN-POLICE-01] 경찰놀이·교통안전 단일 생성만 Pilot 경로. 그 외 프로그램은 아래 기존 경로 그대로.
+  if (mainProgram.id === "police") {
+    try {
+      return res.status(200).json(await generatePolicePilot({ region }));
+    } catch (e) {
+      console.error("[kindergarten] 경찰놀이 Pilot 생성 실패:", e?.message);
+      return res.status(500).json({ error: "경찰놀이 원고 생성 중 오류가 발생했습니다." });
     }
   }
 
